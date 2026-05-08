@@ -32,6 +32,7 @@ model User {
   accounts Account[]
   sessions Session[]
   contactLists ContactList[]
+  emailTemplates EmailTemplate[]
   
   @@map("users")
 }
@@ -146,4 +147,22 @@ enum ContactSource {
   IMPORT
   MANUAL
   API
+}
+
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  category    String?
+  thumbnail   String?
+  html        String   @db.Text
+  json        String?  @db.Text
+  createdBy   String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("email_templates")
 }

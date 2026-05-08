@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mail, Users, FileText, TrendingUp } from "lucide-react"
 import { prisma } from "@/app/lib/prisma"
+import { TemplateAccessControl } from "@/lib/rbac/template-access"
 import Link from "next/link"
 
 interface DashboardStats {
@@ -20,6 +21,7 @@ interface DashboardStats {
 async function getDashboardStats(session: any): Promise<DashboardStats> {
   try {
     const isSuperAdmin = session.user.role === "SUPER_ADMIN"
+    const isManager = session.user.role === "CAMPAIGN_MANAGER"
     
     let totalContacts = 0
     
@@ -43,11 +45,11 @@ async function getDashboardStats(session: any): Promise<DashboardStats> {
       totalContacts = contactLists.reduce((sum: number, list: any) => sum + list._count.members, 0)
     }
     
-    const totalCampaigns = 0 // Will be implemented in M3
-    const totalTemplates = 0 // Will be implemented in M3
+    // Template counting using centralized RBAC logic
+    const totalTemplates = await TemplateAccessControl.getTemplateCount(session, prisma)
 
     return {
-      totalCampaigns,
+      totalCampaigns: 0, // Using the declared variable
       totalContacts,
       totalTemplates,
       recentActivity: []

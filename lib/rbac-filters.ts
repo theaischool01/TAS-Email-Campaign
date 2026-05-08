@@ -18,7 +18,7 @@ export function createOwnerFilter(session: Session | null) {
   const isSuperAdmin = session.user.role === "SUPER_ADMIN"
   
   // SUPER_ADMIN can see all data, others only their own
-  return isSuperAdmin ? {} : { ownerId: session.user.id }
+  return isSuperAdmin ? {} : { createdBy: session.user.id }
 }
 
 /**
