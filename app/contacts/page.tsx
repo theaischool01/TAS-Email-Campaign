@@ -62,17 +62,23 @@ export default function ContactsPage() {
     try {
       const response = await fetch("/api/contacts/lists")
       if (response.ok) {
-        const data = await response.json()
-        setContactLists(data)
+        const payload = await response.json()
+        const contactLists = 
+          payload.contactLists || 
+          payload.data || 
+          []
+        
+        setContactLists(Array.isArray(contactLists) ? contactLists : [])
       }
     } catch (error) {
       console.error("Failed to fetch contact lists:", error)
+      setContactLists([])
     } finally {
       setIsLoading(false)
     }
   }
 
-  const filteredLists = contactLists.filter(list =>
+  const filteredLists = (Array.isArray(contactLists) ? contactLists : []).filter(list =>
     list.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 

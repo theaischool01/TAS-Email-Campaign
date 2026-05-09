@@ -156,10 +156,15 @@ export default function TemplatesPage() {
       setIsLoading(true)
       const response = await fetch('/api/templates')
       if (response.ok) {
-        const data = await response.json()
-        console.log("📋 Frontend Debug - Templates received:", data.length)
-        console.log("📋 Frontend Debug - Template list:", data.map((t: any) => ({ id: t.id, name: t.name, category: t.category })))
-        setTemplates(data)
+        const payload = await response.json()
+        const templates = 
+          payload.templates || 
+          payload.data || 
+          []
+        
+        console.log("📋 Frontend Debug - Templates received:", templates.length)
+        console.log("📋 Frontend Debug - Template list:", templates.map((t: any) => ({ id: t.id, name: t.name, category: t.category })))
+        setTemplates(Array.isArray(templates) ? templates : [])
       }
     } catch (error) {
       console.error("Error fetching templates:", error)

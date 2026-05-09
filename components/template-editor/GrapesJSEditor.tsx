@@ -99,7 +99,7 @@ const GrapesJSEditor = forwardRef<GrapesJSEditorRef, GrapesJSEditorProps>(
       // Expose editor methods via ref
       useImperativeHandle(ref, () => ({
         getHtml: () => editor.getHtml(),
-        getCss: () => editor.getCss(),
+        getCss: () => editor.getCss() || '',
         getComponents: () => editor.getComponents(),
         getProjectData: () => editor.getProjectData(),
         destroy: () => editor.destroy()

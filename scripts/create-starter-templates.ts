@@ -501,7 +501,7 @@ async function createStarterTemplates(): Promise<void> {
     
     if (!adminUser) {
       // Create a default admin user if none exists
-      const hashedPassword = await bcrypt.hash('admin123')
+      const hashedPassword = await bcrypt.hash('admin123', 10)
       adminUser = await prisma.user.create({
         data: {
           email: 'admin@template.com',

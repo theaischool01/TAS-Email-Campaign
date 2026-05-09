@@ -33,6 +33,7 @@ model User {
   sessions Session[]
   contactLists ContactList[]
   emailTemplates EmailTemplate[]
+  campaigns Campaign[]
   
   @@map("users")
 }
@@ -88,6 +89,8 @@ model ContactList {
   owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   members     ContactListMember[]
   contacts     Contact[]
+  recipientLists CampaignRecipientList[]
+  excludedLists CampaignExcludedList[]
   
   @@map("contact_lists")
 }
@@ -149,6 +152,15 @@ enum ContactSource {
   API
 }
 
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
 model EmailTemplate {
   id          String   @id @default(cuid())
   name        String
@@ -163,6 +175,95 @@ model EmailTemplate {
 
   // Relations
   user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
 
+  // Prevent duplicate template names per user
+  @@unique([createdBy, name])
   @@map("email_templates")
+}
+
+model Campaign {
+  id                    String         @id @default(cuid())
+  name                  String
+  subject               String
+  previewText           String?
+  senderName            String?
+  senderEmail           String?
+  replyToEmail           String?
+  status                CampaignStatus @default(DRAFT)
+  scheduledAt           DateTime?
+  sentAt                DateTime?
+  timezone              String?
+  recipientCount        Int            @default(0)
+  estimatedRecipients   Int?
+  openRate              Float?
+  clickRate             Float?
+  totalSent             Int             @default(0)
+  totalOpened           Int             @default(0)
+  totalClicked          Int             @default(0)
+  tags                  String?         // JSON array of tags
+  currentStep           Int             @default(1)  // Wizard progress tracking
+  templateId            String?
+  createdBy              String
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  // Relations
+  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  template EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipientLists CampaignRecipientList[]
+  excludedLists CampaignExcludedList[]
+  testSends CampaignTestSend[]
+  activityLogs CampaignActivityLog[]
+
+  // Prevent duplicate campaign names per user
+  @@unique([createdBy, name])
+  @@map("campaigns")
+}
+
+model CampaignRecipientList {
+  id           String   @id @default(cuid())
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String
+  contactList  ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  contactListId String
+  createdAt    DateTime @default(now())
+
+  @@unique([campaignId, contactListId])
+  @@map("campaign_recipient_lists")
+}
+
+model CampaignExcludedList {
+  id           String   @id @default(cuid())
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String
+  contactList  ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  contactListId String
+  createdAt    DateTime @default(now())
+
+  @@unique([campaignId, contactListId])
+  @@map("campaign_excluded_lists")
+}
+
+model CampaignTestSend {
+  id         String   @id @default(cuid())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  email      String
+  sentBy     String
+  sentAt     DateTime @default(now())
+
+  @@map("campaign_test_sends")
+}
+
+model CampaignActivityLog {
+  id        String   @id @default(cuid())
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  actorId   String
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@map("campaign_activity_logs")
 }

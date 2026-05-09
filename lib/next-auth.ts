@@ -48,22 +48,32 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.role = user.role
-        token.sub = user.id // Use sub field consistently for user ID
-        token.name = user.name
-        token.email = user.email
+      try {
+        if (user) {
+          token.role = user.role
+          token.sub = user.id // Use sub field consistently for user ID
+          token.name = user.name
+          token.email = user.email
+        }
+        return token
+      } catch (error: any) {
+        console.error("NextAuth JWT callback error:", error)
+        throw new Error(`Authentication failed: ${error instanceof Error ? error.message : String(error)}`)
       }
-      return token
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.sub as string // Use token.sub consistently
-        session.user.role = token.role as any
-        session.user.name = token.name as string
-        session.user.email = token.email as string
+      try {
+        if (token) {
+          session.user.id = token.sub as string // Use token.sub consistently
+          session.user.role = token.role as any
+          session.user.name = token.name as string
+          session.user.email = token.email as string
+        }
+        return session
+      } catch (error: any) {
+        console.error("NextAuth session callback error:", error)
+        throw new Error(`Session creation failed: ${error instanceof Error ? error.message : String(error)}`)
       }
-      return session
     }
   },
   pages: {

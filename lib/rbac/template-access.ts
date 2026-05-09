@@ -1,5 +1,6 @@
 import { Session } from "next-auth"
 import { PrismaClient } from '@prisma/client'
+import { TemplateVisibilityFilter, isImpossibleFilter } from "@/types/rbac"
 
 export interface UserSession {
   id: string
@@ -15,9 +16,8 @@ export interface UserSession {
 export class TemplateAccessControl {
   /**
    * Get visibility filter for templates based on user role
-   * Ensures consistent RBAC across all components
    */
-  static getTemplateVisibilityFilter(session: Session | null) {
+  static getTemplateVisibilityFilter(session: Session | null): TemplateVisibilityFilter {
     if (!session?.user) {
       throw new Error("No session found")
     }
@@ -25,7 +25,6 @@ export class TemplateAccessControl {
     const isSuperAdmin = session.user.role === "SUPER_ADMIN"
     const isManager = session.user.role === "CAMPAIGN_MANAGER"
     const isViewer = session.user.role === "VIEWER"
-
     console.log("🔍 Template Access Debug:", {
       role: session.user.role,
       userId: session.user.id,
@@ -33,13 +32,11 @@ export class TemplateAccessControl {
       isManager,
       isViewer
     })
-
     // SUPER_ADMIN: sees all templates
     if (isSuperAdmin) {
       console.log("📊 Admin visibility filter: ALL templates")
-      return {} // No filter - sees everything
+      return { id: session.user.id } // Valid filter for admin
     }
-
     // CAMPAIGN_MANAGER: sees own templates + public templates
     if (isManager) {
       const filter = {
@@ -51,14 +48,12 @@ export class TemplateAccessControl {
       console.log("📊 Manager visibility filter:", filter)
       return filter
     }
-
     // VIEWER: sees public templates only (preview-only access)
     if (isViewer) {
       const filter = { isPublic: true }
       console.log("📊 Viewer visibility filter:", filter)
       return filter
     }
-
     // Default: no access
     console.log("📊 Default visibility filter: NO ACCESS")
     return { id: "__no_access_impossible__" } // Impossible filter
@@ -186,7 +181,7 @@ export class TemplateAccessControl {
     const visibilityFilter = this.getTemplateVisibilityFilter(session)
     
     // Handle impossible filter for no access
-    if (visibilityFilter.id === "__no_access_impossible__") {
+    if (isImpossibleFilter(visibilityFilter)) {
       console.log("📊 Template count: 0 (no access)")
       return 0
     }

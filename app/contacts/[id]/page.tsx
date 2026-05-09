@@ -198,7 +198,7 @@ export default function ContactDetailPage() {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Source</label>
-                  <p className="text-gray-900">{contact.source}</p>
+                  <p className="text-gray-900">{(contact as any).source || 'Unknown'}</p>
                 </div>
                 
                 <div>
@@ -219,10 +219,10 @@ export default function ContactDetailPage() {
               <CardContent>
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">
-                    This contact belongs to {contact.contactLists?.length || 0} list(s)
+                    This contact belongs to {(contact as any).contactLists?.length || 0} list(s)
                   </p>
                   <div className="space-y-2">
-                    {contact.contactLists?.map((list: ContactList) => (
+                    {(contact as any).contactLists?.map((list: ContactList) => (
                       <div key={list.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div>
                           <h4 className="font-medium text-gray-900">{list.name}</h4>

@@ -131,13 +131,13 @@ export async function POST(
   } catch (error) {
     console.error("CONTACT CREATE ERROR:", {
       error: error,
-      message: error.message,
-      code: error.code,
-      meta: error.meta,
-      stack: error.stack
+      message: (error as any).message,
+      code: (error as any).code,
+      meta: (error as any).meta,
+      stack: (error as any).stack
     })
     return NextResponse.json(
-      { error: "Failed to add contact", details: error.message },
+      { error: "Failed to add contact", details: (error as any).message },
       { status: 500 }
     )
   }

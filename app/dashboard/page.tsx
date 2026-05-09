@@ -5,7 +5,7 @@ import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mail, Users, FileText, TrendingUp } from "lucide-react"
 import { prisma } from "@/app/lib/prisma"
-import { TemplateAccessControl } from "@/lib/rbac/template-access"
+import { DashboardService } from "@/lib/services/dashboard.service"
 import Link from "next/link"
 
 interface DashboardStats {
@@ -20,36 +20,23 @@ interface DashboardStats {
 
 async function getDashboardStats(session: any): Promise<DashboardStats> {
   try {
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
+    // Use centralized services for consistent RBAC across platform
+    const [totalCampaigns, totalContacts, totalTemplates] = await Promise.all([
+      DashboardService.getCampaignCount(session, prisma),
+      DashboardService.getContactCount(session, prisma),
+      DashboardService.getTemplateCount(session, prisma)
+    ])
     
-    let totalContacts = 0
+    console.log("📊 Dashboard Stats:", {
+      totalCampaigns,
+      totalContacts,
+      totalTemplates,
+      userId: session.user.id,
+      userRole: session.user.role
+    })
     
-    if (isSuperAdmin) {
-      // SUPER_ADMIN sees all contacts across all users
-      totalContacts = await prisma.contactListMember.count()
-    } else {
-      // Other users see only their own contacts
-      const contactLists = await prisma.contactList.findMany({
-        where: {
-          ownerId: session.user.id
-        },
-        include: {
-          _count: {
-            select: {
-              members: true
-            }
-          }
-        }
-      })
-      totalContacts = contactLists.reduce((sum: number, list: any) => sum + list._count.members, 0)
-    }
-    
-    // Template counting using centralized RBAC logic
-    const totalTemplates = await TemplateAccessControl.getTemplateCount(session, prisma)
-
     return {
-      totalCampaigns: 0, // Using the declared variable
+      totalCampaigns,
       totalContacts,
       totalTemplates,
       recentActivity: []

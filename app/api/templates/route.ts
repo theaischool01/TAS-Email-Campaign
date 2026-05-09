@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma } from "@/app/lib/prisma"
-import { TemplateAccessControl } from "@/lib/rbac/template-access"
+import { TemplateService } from "@/lib/services/template.service"
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,55 +16,13 @@ export async function GET(request: NextRequest) {
     const search = url.searchParams.get("search") || ""
     const category = url.searchParams.get("category") || ""
 
-    // Get templates with centralized RBAC filtering
-    const visibilityFilter = TemplateAccessControl.getTemplateVisibilityFilter(session)
-    console.log("🔍 API Debug - Session:", session.user)
-    console.log("🔍 API Debug - Visibility Filter:", visibilityFilter)
-    console.log("🔍 API Debug - Search:", search)
-    console.log("🔍 API Debug - Category:", category)
-    
-    // Build query with centralized visibility filter + search/category
-    let whereClause = { ...visibilityFilter }
-    
-    if (search) {
-      whereClause = {
-        ...whereClause,
-        name: {
-          contains: search,
-          mode: "insensitive"
-        }
-      }
-    }
-    
-    if (category) {
-      whereClause = {
-        ...whereClause,
-        category: {
-          contains: category,
-          mode: "insensitive"
-        }
-      }
-    }
+    // Use centralized service for consistent RBAC across platform
+    const templates = await TemplateService.getTemplates(session, prisma, { search, category })
 
-    const templates = await prisma.emailTemplate.findMany({
-      where: whereClause,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true
-          }
-        }
-      },
-      orderBy: {
-        updatedAt: "desc"
-      }
+    return NextResponse.json({
+      success: true,
+      templates
     })
-
-    console.log("📊 Templates fetched:", templates.map(t => ({ id: t.id, name: t.name, category: t.category, createdBy: t.createdBy, isPublic: t.isPublic })))
-    return NextResponse.json(templates)
   } catch (error) {
     console.error("Error fetching templates:", error)
     return NextResponse.json(

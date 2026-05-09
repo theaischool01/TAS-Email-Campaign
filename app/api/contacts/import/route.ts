@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
-import { prisma } from "@/app/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient() as any
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,6 +58,32 @@ export async function POST(request: NextRequest) {
       tags: headers.indexOf('tags')
     }
 
+    // Get or create default list
+    let listId = targetListId
+    if (!listId) {
+      const defaultList = await prisma.contactList.findFirst({
+        where: {
+          ownerId: session.user.id,
+          name: "Imported Contacts"
+        }
+      })
+
+      if (!defaultList) {
+        const newList = await prisma.contactList.create({
+          data: {
+            name: "Imported Contacts",
+            description: "Contacts imported from CSV file",
+            ownerId: session.user.id
+          }
+        })
+        listId = newList.id
+      } else {
+        listId = defaultList.id
+      }
+    }
+
+    const contactIds = []
+
     // Process contacts
     for (const line of dataLines) {
       if (!line.trim()) continue
@@ -104,50 +132,34 @@ export async function POST(request: NextRequest) {
           }
         })
 
-        // Add to specified list or default list
-        let listId = targetListId
-        if (!listId) {
-          const defaultList = await prisma.contactList.findFirst({
-            where: {
-              ownerId: session.user.id,
-              name: "Imported Contacts"
-            }
-          })
+        contactIds.push(newContact.id)
+        addedCount++
 
-          if (!defaultList) {
-            const newList = await prisma.contactList.create({
-              data: {
-                name: "Imported Contacts",
-                description: "Contacts imported from CSV file",
-                ownerId: session.user.id
-                if (!existingContact) {
-                  const newContact = await prisma.contact.create({
-                    data: {
-                      email: contactEmail,
-                      firstName: contactValues[1]?.trim() || null,
-                      lastName: contactValues[2]?.trim() || null,
-                      phone: contactValues[3]?.trim() || null,
-                      status: 'ACTIVE',
-                      source: 'IMPORT'
-                    }
-                  })
-                  contactIds.push(newContact.id)
-                }
-              }
-            }
-          }
+        results.push({
+          success: true,
+          message: `Contact imported: ${email}`,
+          details: 'Successfully created new contact'
+        })
 
-          // Add contacts to the default list
-          if (contactIds.length > 0) {
-            await prisma.contactListMember.createMany({
-              data: contactIds.map(contactId => ({
-                contactListId: defaultList.id,
-                contactId
-              }))
-            })
-          }
-        }
+      } catch (error) {
+        console.error('Error importing contact:', error)
+        skippedCount++
+        results.push({
+          success: false,
+          message: `Error importing: ${email}`,
+          details: 'Failed to create contact'
+        })
       }
+    }
+
+    // Add contacts to the list
+    if (contactIds.length > 0) {
+      await prisma.contactListMember.createMany({
+        data: contactIds.map(contactId => ({
+          contactListId: listId,
+          contactId
+        }))
+      })
     }
 
     return NextResponse.json({

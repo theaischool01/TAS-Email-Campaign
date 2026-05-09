@@ -242,7 +242,7 @@ export default function ImportContactsPage() {
                           <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
                             {Object.values(row.data).map((value, cellIndex) => (
                               <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {value || <span className="text-gray-400">-</span>}
+                                {value != null ? String(value) : <span className="text-gray-400">-</span>}
                               </td>
                             ))}
                           </tr>
