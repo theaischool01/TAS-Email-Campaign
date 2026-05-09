@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
-import { prisma } from "@/app/lib/prisma"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { canAccessResource } from "@/lib/rbac-filters"
+
+const prisma = prismaClient as any
 
 export async function GET(
   request: NextRequest,

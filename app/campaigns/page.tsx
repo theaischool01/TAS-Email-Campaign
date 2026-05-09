@@ -75,7 +75,7 @@ export default function CampaignsPage() {
         page: (filters.page || 1).toString(),
         limit: (filters.limit || 20).toString(),
         ...(filters.search && { search: filters.search }),
-        ...(filters.status && filters.status !== 'all' && { status: filters.status as CampaignStatus }),
+        ...(filters.status && (filters.status as string) !== 'all' && { status: filters.status as CampaignStatus }),
         ...(filters.dateRange && { 
           dateRange: JSON.stringify(filters.dateRange) 
         }),
@@ -144,23 +144,45 @@ export default function CampaignsPage() {
     router.push(`/campaigns/${campaignId}/edit`)
   }, [router])
 
-  const handleDuplicate = useCallback(async (campaignId: string) => {
+  const handleDuplicate = async (id: string) => {
     try {
-      const response = await fetch(`/api/campaigns/${campaignId}/duplicate`, {
-        method: 'POST'
+      const response = await fetch(`/api/campaigns/${id}/duplicate`, {
+        method: 'POST',
       })
-      
+
       if (!response.ok) {
-        throw new Error('Failed to duplicate campaign')
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to duplicate campaign')
       }
 
+      const data = await response.json()
       toast.success('Campaign duplicated successfully')
-      fetchCampaigns()
-    } catch (error) {
+      router.push(`/campaigns/wizard/${data.data.id}`)
+    } catch (error: any) {
       console.error('Error duplicating campaign:', error)
-      toast.error('Failed to duplicate campaign')
+      toast.error(error.message)
     }
-  }, [fetchCampaigns])
+  }
+
+  const handleResend = async (id: string) => {
+    try {
+      const response = await fetch(`/api/campaigns/${id}/resend`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create re-send campaign')
+      }
+
+      const data = await response.json()
+      toast.success('Re-send campaign created as draft')
+      router.push(`/campaigns/wizard/${data.data.id}`)
+    } catch (error: any) {
+      console.error('Error creating re-send campaign:', error)
+      toast.error(error.message)
+    }
+  }
 
   const handleDelete = useCallback(async (campaignId: string, campaignName: string) => {
     if (!confirm(`Are you sure you want to delete "${campaignName}"? This action cannot be undone.`)) {
@@ -240,43 +262,99 @@ export default function CampaignsPage() {
       {/* Filters */}
       <Card className="mb-6">
         <CardContent className="p-6">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search campaigns..."
-                  value={filters.search || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
-                  className="pl-10"
-                />
+          <div className="flex flex-col space-y-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Search */}
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search campaigns..."
+                    value={filters.search || ''}
+                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              {/* Status Filter */}
+              <div className="w-full lg:w-48">
+                <Select
+                  value={filters.status || 'all'}
+                  onValueChange={(value) => setFilters(prev => ({ 
+                    ...prev, 
+                    status: value === 'all' ? undefined : value as CampaignStatus, 
+                    page: 1 
+                  }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="DRAFT">Draft</SelectItem>
+                    <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+                    <SelectItem value="SENDING">Sending</SelectItem>
+                    <SelectItem value="SENT">Sent</SelectItem>
+                    <SelectItem value="PAUSED">Paused</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Status Filter */}
-            <div className="w-full lg:w-48">
-              <Select
-                value={filters.status || ''}
-                onValueChange={(value) => setFilters(prev => ({ 
-                  ...prev, 
-                  status: value as CampaignStatus || undefined, 
-                  page: 1 
-                }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="DRAFT">Draft</SelectItem>
-                  <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                  <SelectItem value="SENDING">Sending</SelectItem>
-                  <SelectItem value="SENT">Sent</SelectItem>
-                  <SelectItem value="PAUSED">Paused</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Date Range: From */}
+              <div className="w-full lg:w-48 flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-10">From:</span>
+                <Input
+                  type="date"
+                  value={filters.dateRange?.start?.toISOString().split('T')[0] || ''}
+                  onChange={(e) => {
+                    const start = e.target.value ? new Date(e.target.value) : undefined
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      dateRange: { start, end: prev.dateRange?.end },
+                      page: 1 
+                    }))
+                  }}
+                  className="flex-1"
+                />
+              </div>
+
+              {/* Date Range: To */}
+              <div className="w-full lg:w-48 flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-10">To:</span>
+                <Input
+                  type="date"
+                  value={filters.dateRange?.end?.toISOString().split('T')[0] || ''}
+                  onChange={(e) => {
+                    const end = e.target.value ? new Date(e.target.value) : undefined
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      dateRange: { start: prev.dateRange?.start, end },
+                      page: 1 
+                    }))
+                  }}
+                  className="flex-1"
+                />
+              </div>
+
+              {/* Tags Filter */}
+              <div className="w-full lg:w-64">
+                <Input
+                  placeholder="Filter by tags (comma separated)"
+                  value={filters.tags?.join(', ') || ''}
+                  onChange={(e) => {
+                    const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t)
+                    setFilters(prev => ({ 
+                      ...prev, 
+                      tags: tags.length > 0 ? tags : undefined, 
+                      page: 1 
+                    }))
+                  }}
+                />
+              </div>
             </div>
           </div>
         </CardContent>
@@ -426,6 +504,13 @@ export default function CampaignsPage() {
                                   <DropdownMenuItem onClick={() => handleDuplicate(campaign.id)}>
                                     <Copy className="h-4 w-4 mr-2" />
                                     Duplicate
+                                  </DropdownMenuItem>
+                                )}
+
+                                {campaign.status === 'SENT' && canDuplicateCampaign(campaign) && (
+                                  <DropdownMenuItem onClick={() => handleResend(campaign.id)}>
+                                    <Send className="h-4 w-4 mr-2" />
+                                    Re-send to Non-Openers
                                   </DropdownMenuItem>
                                 )}
                                 

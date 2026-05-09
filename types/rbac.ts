@@ -19,10 +19,10 @@ export type CampaignVisibilityFilter =
 
 // Template visibility filter types  
 export type TemplateVisibilityFilter = 
+  | {} // Super admin can see all templates
   | { OR: Array<{ createdBy: string; isPublic?: undefined } | { isPublic: boolean; createdBy?: undefined }> }
   | { isPublic: boolean }
   | { id: string }
-  | { id: string } // For admin access
   | ImpossibleFilter
 
 // Helper function to check if filter is impossible

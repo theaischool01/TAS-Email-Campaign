@@ -5,6 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Eye, Palette, Layout } from "lucide-react"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import dynamic from "next/dynamic"
+
+const TemplateBuilder = dynamic(
+  () => import("@/components/templates/TemplateBuilder"),
+  { 
+    ssr: false,
+    loading: () => <div className="h-full w-full flex items-center justify-center p-20">Loading editor...</div>
+  }
+)
 
 interface Step3DesignProps {
   selectedTemplate?: string
@@ -20,6 +30,7 @@ export function Step3Design({
   validationErrors 
 }: Step3DesignProps) {
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
 
   const categories = [
     { id: "all", name: "All Templates", icon: Layout },
@@ -114,20 +125,48 @@ export function Step3Design({
       )}
 
       {/* Custom Design Option */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Custom Design</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground mb-4">
-            Want to create your own design? Use our advanced template editor to build a custom email from scratch.
-          </p>
-          <Button variant="outline">
-            <Palette className="h-4 w-4 mr-2" />
-            Create Custom Template
-          </Button>
-        </CardContent>
-      </Card>
+      {!isEditorOpen && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Custom Design</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Want to create your own design? Use our advanced template editor to build a custom email from scratch.
+            </p>
+            <Button variant="outline" onClick={() => setIsEditorOpen(true)}>
+              <Palette className="h-4 w-4 mr-2" />
+              Create Custom Template
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Inline Editor */}
+      {isEditorOpen && (
+        <Card className="border-primary">
+          <CardHeader className="bg-muted/50 pb-4">
+            <div className="flex justify-between items-center">
+              <CardTitle>Inline Template Editor</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditorOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[800px] w-full border-t">
+              <TemplateBuilder 
+                mode="create" 
+                onSaved={(id) => {
+                  onUpdate(id)
+                  setIsEditorOpen(false)
+                }}
+                onCancel={() => setIsEditorOpen(false)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

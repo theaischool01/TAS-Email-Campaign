@@ -16,7 +16,8 @@ const createCampaignSchema = z.object({
   senderEmail: z.string().email("Invalid sender email").optional().or(z.literal("")),
   replyToEmail: z.string().email("Invalid reply-to email").optional().or(z.literal("")),
   templateId: z.string().optional(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  currentStep: z.number().int().min(1).max(4).optional()
 })
 
 const campaignFiltersSchema = z.object({
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
       status: searchParams.get('status') as any || undefined,
       tags: searchParams.get('tags')?.split(',').filter(Boolean) || undefined,
       creator: searchParams.get('creator') || undefined,
+      dateRange: searchParams.get('dateRange') ? JSON.parse(searchParams.get('dateRange')!) : undefined,
       page: parseInt(searchParams.get('page') || '1'),
       limit: parseInt(searchParams.get('limit') || '20')
     }
@@ -99,9 +101,15 @@ export async function GET(request: NextRequest) {
 
     // Add tags filter
     if (validatedParams.tags && validatedParams.tags.length > 0) {
-      whereClause.tags = {
-        hasSome: validatedParams.tags
-      }
+      // Tags are stored as a stringified JSON array in the database
+      // Since prisma doesn't support array operations on string columns natively for sqlite/basic pg without JSON fields,
+      // we'll use a basic string contains for each tag.
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        ...validatedParams.tags.map(tag => ({
+          tags: { contains: tag, mode: 'insensitive' }
+        }))
+      ]
     }
 
     console.log("📋 Final where clause:", whereClause)
@@ -240,6 +248,7 @@ export async function POST(request: NextRequest) {
       replyToEmail: validatedData.replyToEmail,
       templateId: normalizedData.templateId,
       tags: normalizedData.tags,
+      currentStep: validatedData.currentStep,
       createdBy: session.user.id,
       status: 'DRAFT'
     })
@@ -255,6 +264,7 @@ export async function POST(request: NextRequest) {
           replyToEmail: validatedData.replyToEmail || null,
           templateId: validatedData.templateId || null,
           tags: validatedData.tags && validatedData.tags.length > 0 ? JSON.stringify(validatedData.tags) : null,
+          currentStep: validatedData.currentStep || 1,
           createdBy: session.user.id,
           status: 'DRAFT'
         },

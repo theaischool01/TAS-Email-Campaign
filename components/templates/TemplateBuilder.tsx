@@ -61,6 +61,8 @@ const HtmlCodeEditor = dynamic(
 interface TemplateBuilderProps {
   mode: "create" | "edit" | "duplicate"
   templateId?: string
+  onSaved?: (templateId: string) => void
+  onCancel?: () => void
 }
 
 interface TemplateBlock {
@@ -71,7 +73,7 @@ interface TemplateBlock {
   children?: TemplateBlock[]
 }
 
-export default function TemplateBuilder({ mode, templateId }: TemplateBuilderProps) {
+export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }: TemplateBuilderProps) {
   const { data: session } = useSession()
   const router = useRouter()
   const [template, setTemplate] = useState<EmailTemplate | null>(null)
@@ -86,6 +88,7 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
   const [templateName, setTemplateName] = useState("")
   const [templateCategory, setTemplateCategory] = useState("")
   const [templateDescription, setTemplateDescription] = useState("")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const isAdmin = session?.user?.role === "SUPER_ADMIN"
   const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
@@ -214,9 +217,8 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
     // Validation: Template must contain at least one content block
     if (!Array.isArray(blocks) || blocks.length === 0) {
       console.log("❌ Save blocked: No blocks")
+      setErrorMessage("Template must contain at least one content block")
       setSaveStatus("error")
-      // You could add a toast notification here
-      console.error("Template must contain at least one content block")
       return
     }
 
@@ -254,16 +256,25 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
         
         if (mode === "create" || mode === "duplicate") {
           const savedTemplate = await response.json()
-          router.push(`/templates/editor/${savedTemplate.id}`)
+          if (onSaved) {
+            onSaved(savedTemplate.id)
+          } else {
+            router.push(`/templates/editor/${savedTemplate.id}`)
+          }
+        } else if (mode === "edit" && templateId && onSaved) {
+          onSaved(templateId)
         }
       } else {
+        const errorData = await response?.json().catch(() => ({}))
+        setErrorMessage(errorData?.error || "Failed to save template")
         setSaveStatus("error")
-        setTimeout(() => setSaveStatus("idle"), 3000)
+        setTimeout(() => setSaveStatus("idle"), 5000)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving template:", error)
+      setErrorMessage(error?.message || "An unexpected error occurred")
       setSaveStatus("error")
-      setTimeout(() => setSaveStatus("idle"), 3000)
+      setTimeout(() => setSaveStatus("idle"), 5000)
     } finally {
       setIsSaving(false)
     }
@@ -404,6 +415,68 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
             </tr>
           </table>
         `
+      case '2column':
+        return `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+            <tr>
+              <td width="50%" style="padding: 10px; vertical-align: top;">
+                ${block.content.text1 || "Column 1 content"}
+              </td>
+              <td width="50%" style="padding: 10px; vertical-align: top;">
+                ${block.content.text2 || "Column 2 content"}
+              </td>
+            </tr>
+          </table>
+        `
+      case '3column':
+        return `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+            <tr>
+              <td width="33.33%" style="padding: 10px; vertical-align: top;">
+                ${block.content.text1 || "Column 1 content"}
+              </td>
+              <td width="33.33%" style="padding: 10px; vertical-align: top;">
+                ${block.content.text2 || "Column 2 content"}
+              </td>
+              <td width="33.33%" style="padding: 10px; vertical-align: top;">
+                ${block.content.text3 || "Column 3 content"}
+              </td>
+            </tr>
+          </table>
+        `
+      case 'social':
+        const platforms = [
+          { id: 'facebook', label: 'FB' },
+          { id: 'twitter', label: 'X' },
+          { id: 'linkedin', label: 'IN' },
+          { id: 'instagram', label: 'IG' },
+          { id: 'youtube', label: 'YT' }
+        ];
+        const socialLinks = platforms.map(p => {
+          if (block.content[p.id]) {
+            return `<a href="${block.content[p.id]}" target="_blank" style="display: inline-block; width: 36px; height: 36px; line-height: 36px; margin: 0 5px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 12px; text-align: center;">${p.label}</a>`;
+          }
+          return '';
+        }).join('');
+        return `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+            <tr>
+              <td style="padding: 20px; text-align: center;">
+                ${socialLinks || '<span style="color: #9ca3af; font-size: 12px; font-style: italic;">Configure social links</span>'}
+              </td>
+            </tr>
+          </table>
+        `
+      case 'html':
+        return `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0">
+            <tr>
+              <td style="padding: 20px;">
+                ${block.content.html || '<div>Custom HTML Block</div>'}
+              </td>
+            </tr>
+          </table>
+        `
       default:
         return ''
     }
@@ -507,6 +580,14 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
           unsubscribeText: "You received this email because you're subscribed to our newsletter.",
           copyright: `© ${new Date().getFullYear()} Your Company Name. All rights reserved.`
         }
+      case '2column':
+        return { text1: "Column 1 content", text2: "Column 2 content" }
+      case '3column':
+        return { text1: "Column 1 content", text2: "Column 2 content", text3: "Column 3 content" }
+      case 'social':
+        return { facebook: "", twitter: "", linkedin: "", instagram: "", youtube: "" }
+      case 'html':
+        return { html: "<div style='text-align: center; color: #666;'>Custom HTML content here</div>" }
       default:
         return {}
     }
@@ -528,6 +609,14 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
         return { height: "20px" }
       case 'footer':
         return { backgroundColor: "#f8f9fa", color: "#6c757d", fontSize: "12px", padding: "20px", textAlign: "center" }
+      case '2column':
+        return { padding: "10px" }
+      case '3column':
+        return { padding: "10px" }
+      case 'social':
+        return { padding: "20px", textAlign: "center" }
+      case 'html':
+        return { padding: "20px" }
       default:
         return {}
     }
@@ -630,10 +719,17 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/templates" className="flex items-center text-gray-600 hover:text-gray-900">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              <span className="font-medium">{templateName}</span>
-            </Link>
+            {onCancel ? (
+              <button onClick={onCancel} className="flex items-center text-gray-600 hover:text-gray-900">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                <span className="font-medium">{templateName}</span>
+              </button>
+            ) : (
+              <Link href="/templates" className="flex items-center text-gray-600 hover:text-gray-900">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                <span className="font-medium">{templateName}</span>
+              </Link>
+            )}
             
             <div className="flex items-center gap-4">
               <div className="flex-1 space-y-2">
@@ -686,9 +782,9 @@ export default function TemplateBuilder({ mode, templateId }: TemplateBuilderPro
                 </div>
               )}
               {saveStatus === "error" && (
-                <div className="flex items-center text-red-600">
+                <div className="flex items-center text-red-600 bg-red-50 px-3 py-1 rounded-md border border-red-200">
                   <X className="h-4 w-4 mr-2" />
-                  <span className="text-sm">Template must contain at least one block</span>
+                  <span className="text-sm font-medium">{errorMessage || "An error occurred"}</span>
                 </div>
               )}
               {saveStatus === "idle" && unsavedChanges && (

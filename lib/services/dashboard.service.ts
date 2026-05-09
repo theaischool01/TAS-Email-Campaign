@@ -29,16 +29,16 @@ export class DashboardService {
   }
 
   /**
-   * Get contact count for dashboard analytics
+   * Get contact count for dashboard analytics (total unique contacts)
    */
   static async getContactCount(session: Session | null, prisma: PrismaClient) {
-    const filter = ContactAccessControl.getContactListVisibilityFilter(session)
+    const filter = ContactAccessControl.getContactVisibilityFilter(session)
     
-    const count = await prisma.contactList.count({
+    const count = await prisma.contact.count({
       where: filter
     })
     
-    console.log("📊 Dashboard Contact Count:", {
+    console.log("📊 Dashboard Contact Count (Contacts):", {
       filter,
       count,
       userId: session?.user?.id,

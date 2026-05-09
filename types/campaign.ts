@@ -180,8 +180,8 @@ export interface CampaignFilters {
   search?: string
   status?: CampaignStatus
   dateRange?: {
-    start: Date
-    end: Date
+    start?: Date
+    end?: Date
   }
   tags?: string[]
   creator?: string

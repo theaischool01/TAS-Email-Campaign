@@ -134,7 +134,7 @@ export default function ContactListDetailPage() {
     }
 
     try {
-      const response = await fetch(`/api/contacts/lists/${params.id}/contacts/${contactId}`, {
+      const response = await fetch(`/api/contacts/${contactId}`, {
         method: "DELETE"
       })
 

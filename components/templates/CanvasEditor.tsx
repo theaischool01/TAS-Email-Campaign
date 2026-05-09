@@ -136,16 +136,16 @@ export default function CanvasEditor({
           )
         case '2column':
           return (
-            <div style={{ padding: '10px', display: 'table', width: '100%' }}>
+            <div style={{ padding: '10px', display: 'table', width: '100%', tableLayout: 'fixed' }}>
               <div style={{ display: 'table-row' }}>
                 <div style={{ display: 'table-cell', width: '50%', padding: '10px', verticalAlign: 'top' }}>
-                  <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px' }}>
-                    Column 1
+                  <div style={{ border: '1px dashed #e5e7eb', padding: '10px', minHeight: '50px', fontSize: '13px' }}>
+                    {block.content.text1 || "Column 1"}
                   </div>
                 </div>
                 <div style={{ display: 'table-cell', width: '50%', padding: '10px', verticalAlign: 'top' }}>
-                  <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px' }}>
-                    Column 2
+                  <div style={{ border: '1px dashed #e5e7eb', padding: '10px', minHeight: '50px', fontSize: '13px' }}>
+                    {block.content.text2 || "Column 2"}
                   </div>
                 </div>
               </div>
@@ -153,39 +153,67 @@ export default function CanvasEditor({
           )
         case '3column':
           return (
-            <div style={{ padding: '10px', display: 'table', width: '100%' }}>
+            <div style={{ padding: '10px', display: 'table', width: '100%', tableLayout: 'fixed' }}>
               <div style={{ display: 'table-row' }}>
-                <div style={{ display: 'table-cell', width: '33%', padding: '10px', verticalAlign: 'top' }}>
-                  <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px' }}>
-                    Column 1
+                <div style={{ display: 'table-cell', width: '33.33%', padding: '10px', verticalAlign: 'top' }}>
+                  <div style={{ border: '1px dashed #e5e7eb', padding: '10px', minHeight: '50px', fontSize: '12px' }}>
+                    {block.content.text1 || "Col 1"}
                   </div>
                 </div>
-                <div style={{ display: 'table-cell', width: '33%', padding: '10px', verticalAlign: 'top' }}>
-                  <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px' }}>
-                    Column 2
+                <div style={{ display: 'table-cell', width: '33.33%', padding: '10px', verticalAlign: 'top' }}>
+                  <div style={{ border: '1px dashed #e5e7eb', padding: '10px', minHeight: '50px', fontSize: '12px' }}>
+                    {block.content.text2 || "Col 2"}
                   </div>
                 </div>
-                <div style={{ display: 'table-cell', width: '34%', padding: '10px', verticalAlign: 'top' }}>
-                  <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px' }}>
-                    Column 3
+                <div style={{ display: 'table-cell', width: '33.34%', padding: '10px', verticalAlign: 'top' }}>
+                  <div style={{ border: '1px dashed #e5e7eb', padding: '10px', minHeight: '50px', fontSize: '12px' }}>
+                    {block.content.text3 || "Col 3"}
                   </div>
                 </div>
               </div>
             </div>
           )
         case 'social':
+          const platforms = [
+            { id: 'facebook', label: 'FB' },
+            { id: 'twitter', label: 'X' },
+            { id: 'linkedin', label: 'IN' },
+            { id: 'instagram', label: 'IG' },
+            { id: 'youtube', label: 'YT' }
+          ]
           return (
             <div style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                <div style={{ width: '40px', height: '40px', backgroundColor: '#007bff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
-                  f
-                </div>
-                <div style={{ width: '40px', height: '40px', backgroundColor: '#1da1f2', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
-                  t
-                </div>
-                <div style={{ width: '40px', height: '40px', backgroundColor: '#e1306c', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
-                  in
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {platforms.map(p => (
+                  block.content[p.id] && (
+                    <a 
+                      key={p.id} 
+                      href={block.content[p.id]} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ 
+                        width: '36px', 
+                        height: '36px', 
+                        backgroundColor: '#3b82f6', 
+                        borderRadius: '4px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        color: 'white', 
+                        textDecoration: 'none',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {p.label}
+                    </a>
+                  )
+                ))}
+                {!Object.values(block.content).some(v => v) && (
+                  <div style={{ color: '#9ca3af', fontSize: '12px', fontStyle: 'italic' }}>
+                    Configure social links in the style panel
+                  </div>
+                )}
               </div>
             </div>
           )

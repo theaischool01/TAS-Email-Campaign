@@ -32,10 +32,10 @@ export class TemplateAccessControl {
       isManager,
       isViewer
     })
-    // SUPER_ADMIN: sees all templates
+    // SUPER_ADMIN: sees all templates (unfiltered access)
     if (isSuperAdmin) {
       console.log("📊 Admin visibility filter: ALL templates")
-      return { id: session.user.id } // Valid filter for admin
+      return {} 
     }
     // CAMPAIGN_MANAGER: sees own templates + public templates
     if (isManager) {

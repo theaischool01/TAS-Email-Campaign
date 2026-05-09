@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
-import { prisma } from "@/app/lib/prisma"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { TemplateService } from "@/lib/services/template.service"
+
+const prisma = prismaClient as any
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,18 +54,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name and HTML content are required" }, { status: 400 })
     }
 
-    const template = await prisma.emailTemplate.create({
-      data: {
-        name,
-        category,
-        html,
-        json,
-        isPublic,
-        createdBy: session.user.id
-      }
-    })
+    try {
+      const template = await prisma.emailTemplate.create({
+        data: {
+          name,
+          category,
+          html,
+          json,
+          isPublic,
+          createdBy: session.user.id
+        }
+      })
 
-    return NextResponse.json(template, { status: 201 })
+      return NextResponse.json(template, { status: 201 })
+    } catch (error: any) {
+      // Handle Prisma unique constraint violation
+      if (error.code === 'P2002') {
+        return NextResponse.json(
+          { error: "A template with this name already exists for your account" },
+          { status: 409 }
+        )
+      }
+      throw error
+    }
   } catch (error) {
     console.error("Error creating template:", error)
     return NextResponse.json(

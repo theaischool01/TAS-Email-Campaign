@@ -19,6 +19,7 @@ export interface WizardState {
   mode: WizardMode
   campaignDetails: CampaignFormData
   selectedRecipients: string[]
+  selectedSegments: string[]
   excludedRecipients: string[]
   selectedTemplate?: string
   editorState?: any
@@ -29,6 +30,7 @@ export interface WizardState {
   isDirty: boolean
   hasInteracted: boolean
   submitAttempted: boolean
+  status: CampaignStatus
 }
 
 // Wizard context hook
@@ -56,17 +58,20 @@ export function useCampaignWizard() {
       tags: []
     },
     selectedRecipients: [],
+    selectedSegments: [],
     excludedRecipients: [],
     reviewState: {},
     validationErrors: {},
     autosaveStatus: 'idle',
     isDirty: false,
     hasInteracted: false,
-    submitAttempted: false
+    submitAttempted: false,
+    status: 'DRAFT'
   })
 
   const [loading, setLoading] = useState(true)
   const [contactLists, setContactLists] = useState<any[]>([])
+  const [segments, setSegments] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
 
   // Create stable autosave payload - only includes data that needs to be saved
@@ -74,6 +79,7 @@ export function useCampaignWizard() {
     currentStep: state.currentStep,
     campaignDetails: state.campaignDetails,
     selectedRecipients: state.selectedRecipients,
+    selectedSegments: state.selectedSegments,
     excludedRecipients: state.excludedRecipients,
     selectedTemplate: state.selectedTemplate,
     mode: state.mode,
@@ -88,17 +94,20 @@ export function useCampaignWizard() {
     state.campaignDetails.replyToEmail,
     state.campaignDetails.tags,
     JSON.stringify(state.selectedRecipients),
+    JSON.stringify(state.selectedSegments),
     JSON.stringify(state.excludedRecipients),
     state.selectedTemplate,
     state.mode,
-    state.campaignId
+    state.campaignId,
+    state.status
   ])
 
   // Create stable dirty state trigger
   const autosaveTrigger = useMemo(() => ({
     isDirty: state.isDirty,
-    autosaveStatus: state.autosaveStatus
-  }), [state.isDirty, state.autosaveStatus])
+    autosaveStatus: state.autosaveStatus,
+    status: state.status
+  }), [state.isDirty, state.autosaveStatus, state.status])
 
   // Determine mode from URL
   useEffect(() => {
@@ -166,6 +175,7 @@ export function useCampaignWizard() {
 
       // Extract recipient list IDs from relational data
       const selectedRecipients = campaign.recipientLists?.map((rl: any) => rl.contactList.id) || []
+      const excludedRecipients = campaign.excludedLists?.map((el: any) => el.contactList.id) || []
       
       // Parse tags from JSON string if needed
       let parsedTags: string[] = []
@@ -182,12 +192,22 @@ export function useCampaignWizard() {
         }
       }
 
+      // Smart fallback for older campaigns where currentStep wasn't saved properly
+      let calculatedStep = (campaign as any).currentStep || 1
+      if (calculatedStep === 1) {
+        if (campaign.templateId) {
+          calculatedStep = 3
+        } else if (selectedRecipients.length > 0 || excludedRecipients.length > 0) {
+          calculatedStep = 2
+        }
+      }
+
       // Restore complete wizard state
       setState(prev => ({
         ...prev,
         campaignId: campaign.id, // CRITICAL: Set campaignId during hydration
         mode: 'edit', // CRITICAL: Set mode to edit
-        currentStep: (campaign as any).currentStep || 1, // Will be added to schema
+        currentStep: calculatedStep,
         campaignDetails: {
           name: campaign.name,
           subject: campaign.subject,
@@ -198,6 +218,7 @@ export function useCampaignWizard() {
           tags: parsedTags
         },
         selectedRecipients,
+        excludedRecipients,
         selectedTemplate: campaign.templateId || undefined,
         isDirty: false,
         validationErrors: {},
@@ -207,8 +228,9 @@ export function useCampaignWizard() {
       console.log("📥 HYDRATION COMPLETE:", {
         campaignId: campaign.id,
         mode: 'edit',
-        currentStep: (campaign as any).currentStep || 1,
+        currentStep: calculatedStep,
         selectedRecipients: selectedRecipients.length,
+        excludedRecipients: excludedRecipients.length,
         selectedTemplate: campaign.templateId,
         campaignName: campaign.name
       })
@@ -249,12 +271,15 @@ export function useCampaignWizard() {
         // Load contact lists and templates in parallel
         console.log("📋 WIZARD INIT: Loading contact lists and templates")
         const listsUrl = '/api/contacts/lists'
+        const segmentsUrl = '/api/segments'
         const templatesUrl = '/api/templates'
         console.log("🌐 FETCHING CONTACT LISTS:", listsUrl)
+        console.log("🌐 FETCHING SEGMENTS:", segmentsUrl)
         console.log("🌐 FETCHING TEMPLATES:", templatesUrl)
         
-        const [listsRes, templatesRes] = await Promise.all([
+        const [listsRes, segmentsRes, templatesRes] = await Promise.all([
           fetch(listsUrl),
+          fetch(segmentsUrl),
           fetch(templatesUrl)
         ])
 
@@ -286,6 +311,14 @@ export function useCampaignWizard() {
             url: listsUrl
           })
           setContactLists([])
+        }
+
+        if (segmentsRes.ok) {
+          const segmentsData = await segmentsRes.json()
+          setSegments(segmentsData.data || [])
+        } else {
+          console.error("❌ WIZARD INIT: Failed to load segments")
+          setSegments([])
         }
 
         if (templatesRes.ok) {
@@ -333,7 +366,7 @@ export function useCampaignWizard() {
 
   // Autosave functionality - with minimum threshold and race condition protection
   const autosave = useCallback(async () => {
-    if (!session || !state.isDirty || state.autosaveStatus === 'saving') return
+    if (!session || !state.isDirty || state.autosaveStatus === 'saving' || state.status !== 'DRAFT') return
 
     // CRITICAL: Block autosave during hydration/initialization
     if (!hydrationCompleteRef.current) {
@@ -377,16 +410,24 @@ export function useCampaignWizard() {
       setState(prev => ({ ...prev, autosaveStatus: 'saving' }))
 
       // Use stable payload for save data
-      const campaignData = {
+      // Only include email fields when they have real values to avoid overwriting stored data
+      const campaignData: Record<string, any> = {
         name: autosavePayload.campaignDetails.name || '',
         subject: autosavePayload.campaignDetails.subject || '',
-        previewText: autosavePayload.campaignDetails.previewText || undefined,
-        senderName: autosavePayload.campaignDetails.senderName || undefined,
-        senderEmail: autosavePayload.campaignDetails.senderEmail || undefined,
-        replyToEmail: autosavePayload.campaignDetails.replyToEmail || undefined,
-        templateId: autosavePayload.selectedTemplate || undefined,
+        currentStep: autosavePayload.currentStep,
         tags: autosavePayload.campaignDetails.tags || []
       }
+
+      if (autosavePayload.campaignDetails.previewText)
+        campaignData.previewText = autosavePayload.campaignDetails.previewText
+      if (autosavePayload.campaignDetails.senderName)
+        campaignData.senderName = autosavePayload.campaignDetails.senderName
+      if (autosavePayload.campaignDetails.senderEmail && autosavePayload.campaignDetails.senderEmail.trim())
+        campaignData.senderEmail = autosavePayload.campaignDetails.senderEmail
+      if (autosavePayload.campaignDetails.replyToEmail && autosavePayload.campaignDetails.replyToEmail.trim())
+        campaignData.replyToEmail = autosavePayload.campaignDetails.replyToEmail
+      if (autosavePayload.selectedTemplate)
+        campaignData.templateId = autosavePayload.selectedTemplate
 
       console.log(" AUTOSAVE DEBUG: Campaign data to save:", campaignData)
 
@@ -434,6 +475,26 @@ export function useCampaignWizard() {
 
       console.log(" AUTOSAVE DEBUG: Campaign saved successfully:", savedCampaign.id)
 
+      // Additionally save recipients if we are on Step 2 or if we have recipients
+      if (autosavePayload.selectedRecipients.length > 0 || autosavePayload.excludedRecipients.length > 0) {
+        try {
+          const recipResponse = await fetch(`/api/campaigns/${savedCampaign.id}/recipients`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipientListIds: autosavePayload.selectedRecipients,
+              recipientSegmentIds: autosavePayload.selectedSegments || [],
+              excludedListIds: autosavePayload.excludedRecipients || []
+            })
+          })
+          if (!recipResponse.ok) {
+            console.error("❌ AUTOSAVE: Failed to save recipients:", recipResponse.status)
+          }
+        } catch (error) {
+          console.error("❌ AUTOSAVE: Error saving recipients:", error)
+        }
+      }
+
       // Lightweight state update - only update what's necessary
       setState(prev => {
         console.log("🔄 AUTOSAVE DEBUG: State updated", {
@@ -450,6 +511,7 @@ export function useCampaignWizard() {
           mode: 'edit',
           autosaveStatus: 'saved',
           lastSavedAt: new Date(),
+          status: savedCampaign.status,
           isDirty: false
         }
       })
@@ -553,14 +615,29 @@ export function useCampaignWizard() {
   }, [])
 
   // Update recipients
-  const updateRecipients = useCallback((selected: string[], excluded: string[]) => {
+  const updateRecipients = useCallback((selected: string[], excluded: string[], selectedSegments: string[]) => {
     setState(prev => ({
       ...prev,
       selectedRecipients: selected,
       excludedRecipients: excluded,
+      selectedSegments: selectedSegments,
       isDirty: true,
       hasInteracted: true // Mark as interacted
     }))
+  }, [])
+
+  // Refetch templates
+  const refreshTemplates = useCallback(async () => {
+    try {
+      const templatesRes = await fetch('/api/templates')
+      if (templatesRes.ok) {
+        const templatesData = await templatesRes.json()
+        const templates = templatesData.templates || templatesData.data || []
+        setTemplates(Array.isArray(templates) ? templates : [])
+      }
+    } catch (error) {
+      console.error("Failed to refresh templates", error)
+    }
   }, [])
 
   // Update template
@@ -573,12 +650,16 @@ export function useCampaignWizard() {
     }))
   }, [])
 
+  // Update status
+  const updateStatus = useCallback((status: CampaignStatus) => {
+    setState(prev => ({ ...prev, status, isDirty: false }))
+  }, [])
+
   // Navigate to step
   const goToStep = useCallback(async (step: WizardStep) => {
     // Validate current step before moving (this will show all validation errors)
     const errors = validateCurrentStepErrors()
     if (Object.keys(errors).length > 0) {
-      // Set validation errors to show them to user and mark submit attempted
       setState(prev => ({ 
         ...prev, 
         validationErrors: errors,
@@ -590,17 +671,48 @@ export function useCampaignWizard() {
     // Update local state first for immediate UI response
     setState(prev => ({ ...prev, currentStep: step }))
 
-    // Persist step to database if campaign exists
     if (state.campaignId && session) {
+      // When leaving Step 2 — persist recipient list associations to the DB.
+      // The autosave only updates Campaign fields; it does NOT write to the
+      // CampaignRecipientList junction table. We must do that explicitly here.
+      if (state.currentStep === 2) {
+        try {
+          console.log("💾 SAVING RECIPIENTS TO DATABASE:", {
+            campaignId: state.campaignId,
+            selectedRecipients: state.selectedRecipients,
+            excludedRecipients: state.excludedRecipients
+          })
+
+          const recipResponse = await fetch(`/api/campaigns/${state.campaignId}/recipients`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipientListIds: state.selectedRecipients,
+              recipientSegmentIds: state.selectedSegments || [],
+              excludedListIds: state.excludedRecipients || []
+            })
+          })
+
+          if (!recipResponse.ok) {
+            const errData = await recipResponse.json().catch(() => ({}))
+            console.error("❌ Failed to save recipients:", recipResponse.status, errData)
+          } else {
+            console.log("✅ Recipients saved to database successfully")
+          }
+        } catch (error) {
+          console.error("❌ Error saving recipients to database:", error)
+          // Don't block navigation if recipient save fails
+        }
+      }
+
+      // Persist current step to database
       try {
         console.log("💾 SAVING STEP TO DATABASE:", { step, campaignId: state.campaignId })
         
         const response = await fetch(`/api/campaigns/${state.campaignId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            currentStep: step
-          })
+          body: JSON.stringify({ currentStep: step })
         })
 
         if (!response.ok) {
@@ -613,7 +725,7 @@ export function useCampaignWizard() {
         // Don't fail the navigation if database save fails
       }
     }
-  }, [validateCurrentStepErrors, state.campaignId, session])
+  }, [validateCurrentStepErrors, state.campaignId, state.currentStep, state.selectedRecipients, state.excludedRecipients, session])
 
   // Save recipients to campaign
   const saveRecipients = useCallback(async () => {
@@ -687,6 +799,7 @@ export function useCampaignWizard() {
     state,
     loading,
     contactLists,
+    segments,
     templates,
     recipientStats,
     canCreate,
@@ -697,12 +810,14 @@ export function useCampaignWizard() {
     updateTemplate,
     goToStep,
     saveRecipients,
+    updateStatus,
     
     // Computed
     validateCurrentStepErrors,
     validateCurrentStep,
     
-    // Autosave status (expose status but not the function itself)
+    // Autosave functionality
+    autosave,
     autosaveStatus: state.autosaveStatus,
     lastSavedAt: state.lastSavedAt,
     

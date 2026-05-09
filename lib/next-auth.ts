@@ -4,6 +4,8 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 import { Role } from "@prisma/client"
 import { prisma } from "@/app/lib/prisma"
+import { headers } from "next/headers"
+import { checkIpLock, recordFailedAttempt, resetAttempts } from "./auth-security"
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -19,20 +21,36 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
+        // Get client IP
+        const headersList = await headers()
+        const ip = (headersList as any).get?.("x-forwarded-for") || "127.0.0.1"
+
+        // Check if IP is locked
+        const { isLocked, remainingTime } = await checkIpLock(ip)
+        if (isLocked) {
+          throw new Error(`Too many failed attempts. Try again in ${remainingTime} minutes.`)
+        }
+
         // Fetch actual user from Prisma database
-        const dbUser = await prisma.user.findUnique({
+        const dbUser = await (prisma as any).user.findUnique({
           where: { email: credentials.email }
         })
         
         if (!dbUser) {
+          await recordFailedAttempt(ip)
           return null
         }
         
-        const isPasswordValid = await bcrypt.compare(credentials.password, "$2b$12$NZY3ysMZN7duBuVUol7VFOB5GG/2sRY3iTYs7PUnPLwQ3SK5pd/l6")
+        // Verify password
+        const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.password)
         
         if (!isPasswordValid) {
+          await recordFailedAttempt(ip)
           return null
         }
+
+        // Success - reset attempts
+        await resetAttempts(ip)
 
         return {
           id: dbUser.id,
@@ -44,27 +62,28 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   session: {
-    strategy: "jwt"
+    strategy: "jwt",
+    maxAge: 15 * 60, // 15 minutes
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       try {
         if (user) {
           token.role = user.role
-          token.sub = user.id // Use sub field consistently for user ID
+          token.sub = user.id
           token.name = user.name
           token.email = user.email
         }
         return token
       } catch (error: any) {
         console.error("NextAuth JWT callback error:", error)
-        throw new Error(`Authentication failed: ${error instanceof Error ? error.message : String(error)}`)
+        return token
       }
     },
     async session({ session, token }) {
       try {
         if (token) {
-          session.user.id = token.sub as string // Use token.sub consistently
+          session.user.id = token.sub as string
           session.user.role = token.role as any
           session.user.name = token.name as string
           session.user.email = token.email as string
@@ -72,13 +91,14 @@ export const authOptions: NextAuthOptions = {
         return session
       } catch (error: any) {
         console.error("NextAuth session callback error:", error)
-        throw new Error(`Session creation failed: ${error instanceof Error ? error.message : String(error)}`)
+        return session
       }
     }
   },
   pages: {
     signIn: "/login",
-  }
+  },
+  debug: process.env.NODE_ENV === "development",
 }
 
 export const getAuthSession = () => getServerSession(authOptions)

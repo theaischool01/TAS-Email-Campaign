@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -14,10 +14,14 @@ import { Step2Recipients } from "@/components/campaigns/wizard/Step2Recipients"
 import { Step3Design } from "@/components/campaigns/wizard/Step3Design"
 import { Step4Review } from "@/components/campaigns/wizard/Step4Review"
 import { Loader2, ArrowLeft } from "lucide-react"
+import { SendProgress } from "@/components/campaigns/wizard/SendProgress"
 
 export default function EditCampaignPage() {
   const { data: session } = useSession()
   const router = useRouter()
+  const [isLaunching, setIsLaunching] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
+  const [campaignIdForProgress, setCampaignIdForProgress] = useState<string | null>(null)
 
   const wizard = useCampaignWizard()
 
@@ -36,9 +40,61 @@ export default function EditCampaignPage() {
   }, [session, wizard.canCreate, router])
 
   const handleFinish = async () => {
-    // TODO: Implement campaign launch logic
-    toast.success("Campaign launched successfully!")
-    router.push('/campaigns')
+    if (!wizard.state.campaignId) {
+      toast.error("Campaign must be saved before launching. Please wait for autosave.")
+      return
+    }
+
+    setIsLaunching(true)
+    try {
+      console.log("🚀 LAUNCH: Sending launch request for campaign:", wizard.state.campaignId)
+
+      const response = await fetch(`/api/campaigns/${wizard.state.campaignId}/launch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      })
+
+      console.log("📡 LAUNCH: Response status:", response.status, response.statusText)
+
+      // Safely parse JSON — server might return HTML (e.g. 404 page) if route not found
+      let payload: any = {}
+      try {
+        payload = await response.json()
+      } catch (parseErr) {
+        console.error("❌ LAUNCH: Response was not valid JSON. Route may not exist yet. Status:", response.status)
+        toast.error(`Launch failed (${response.status}): Route not found. Ensure the dev server has restarted to pick up new routes.`)
+        return
+      }
+
+      console.log("📡 LAUNCH: Response payload:", payload)
+
+      if (!response.ok) {
+        const errMsg = payload?.error || `Launch failed with status ${response.status}`
+        console.error("❌ LAUNCH: Failed:", { status: response.status, payload })
+        toast.error(errMsg)
+        return
+      }
+
+      console.log("✅ LAUNCH: Campaign launched successfully:", payload)
+      toast.success("Campaign launched successfully! 🎉")
+      
+      const newStatus = payload.data?.status || 'SENDING'
+      wizard.updateStatus(newStatus)
+      
+      if (newStatus === 'SENDING') {
+        setCampaignIdForProgress(wizard.state.campaignId)
+        setShowProgress(true)
+      } else if (newStatus === 'SCHEDULED') {
+        router.push("/campaigns")
+      } else {
+        router.push("/campaigns")
+      }
+    } catch (error) {
+      console.error("❌ LAUNCH: Unexpected error:", error)
+      toast.error("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsLaunching(false)
+    }
   }
 
   const handleBack = () => {
@@ -95,6 +151,7 @@ export default function EditCampaignPage() {
                   isDirty={wizard.state.isDirty}
                   mode={wizard.state.mode}
                   campaignId={wizard.state.campaignId}
+                  onSave={wizard.autosave}
                 />
               </div>
             </div>
@@ -102,46 +159,60 @@ export default function EditCampaignPage() {
 
           {/* Step Content */}
           <div className="flex-1 overflow-auto p-6">
-            {wizard.state.currentStep === 1 && (
-              <Step1Details
-                data={wizard.state.campaignDetails}
-                onChange={wizard.updateCampaignDetails}
-                validationErrors={wizard.state.validationErrors}
-                onValidationChange={(isValid, errors) => {
-                  // Validation is handled by the wizard hook
-                }}
-              />
-            )}
-            {wizard.state.currentStep === 2 && (
-              <Step2Recipients
-                contactLists={wizard.contactLists}
-                selectedRecipients={wizard.state.selectedRecipients}
-                excludedRecipients={wizard.state.excludedRecipients}
-                onChange={wizard.updateRecipients}
-                validationErrors={wizard.state.validationErrors}
-                onValidationChange={(isValid, errors) => {
-                  // Validation is handled by the wizard hook
-                }}
-              />
-            )}
-            {wizard.state.currentStep === 3 && (
-              <Step3Design
-                selectedTemplate={wizard.state.selectedTemplate}
-                templates={wizard.templates}
-                onUpdate={wizard.updateTemplate}
-                validationErrors={wizard.state.validationErrors}
-              />
-            )}
-            {wizard.state.currentStep === 4 && (
-              <Step4Review
-                campaignDetails={wizard.state.campaignDetails}
-                selectedRecipients={wizard.state.selectedRecipients}
-                selectedTemplate={wizard.state.selectedTemplate}
-                contactLists={wizard.contactLists}
-                templates={wizard.templates}
-                campaignId={wizard.state.campaignId}
-                onFinish={handleFinish}
-              />
+            {showProgress && campaignIdForProgress ? (
+              <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <SendProgress 
+                  campaignId={campaignIdForProgress} 
+                  onComplete={() => {
+                    setTimeout(() => router.push("/campaigns"), 3000)
+                  }}
+                />
+              </div>
+            ) : (
+              <>
+                {wizard.state.currentStep === 1 && (
+                  <Step1Details
+                    data={wizard.state.campaignDetails}
+                    onChange={wizard.updateCampaignDetails}
+                    validationErrors={wizard.state.validationErrors}
+                    onValidationChange={(isValid, errors) => {
+                      // Validation is handled by the wizard hook
+                    }}
+                  />
+                )}
+                {wizard.state.currentStep === 2 && (
+                  <Step2Recipients
+                    contactLists={wizard.contactLists}
+                    selectedRecipients={wizard.state.selectedRecipients}
+                    excludedRecipients={wizard.state.excludedRecipients}
+                    onChange={wizard.updateRecipients}
+                    validationErrors={wizard.state.validationErrors}
+                    onValidationChange={(isValid, errors) => {
+                      // Validation is handled by the wizard hook
+                    }}
+                  />
+                )}
+                {wizard.state.currentStep === 3 && (
+                  <Step3Design
+                    selectedTemplate={wizard.state.selectedTemplate}
+                    templates={wizard.templates}
+                    onUpdate={wizard.updateTemplate}
+                    validationErrors={wizard.state.validationErrors}
+                  />
+                )}
+                {wizard.state.currentStep === 4 && (
+                  <Step4Review
+                    campaignDetails={wizard.state.campaignDetails}
+                    selectedRecipients={wizard.state.selectedRecipients}
+                    selectedTemplate={wizard.state.selectedTemplate}
+                    contactLists={wizard.contactLists}
+                    templates={wizard.templates}
+                    campaignId={wizard.state.campaignId}
+                    onFinish={handleFinish}
+                    isLaunching={isLaunching}
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -155,6 +226,7 @@ export default function EditCampaignPage() {
               canGoPrevious={wizard.state.currentStep > 1}
               canGoNext={wizard.validateCurrentStep()}
               showFinish={wizard.state.currentStep === 4}
+              isFinishLoading={isLaunching}
               validationErrors={wizard.state.validationErrors}
               hasInteracted={wizard.hasInteracted}
               submitAttempted={wizard.submitAttempted}

@@ -99,14 +99,11 @@ export class TemplateService {
     })
     
     console.log("🔧 Template Service Debug:", {
-      filter: whereClause,
+      userId: session?.user?.id,
+      userRole: session?.user?.role,
+      filter: JSON.stringify(whereClause),
       count: templates.length,
-      firstTemplate: templates[0] ? {
-        id: templates[0].id,
-        name: templates[0].name,
-        isPublic: templates[0].isPublic,
-        ownerId: templates[0].createdBy
-      } : null
+      templateOwners: templates.map(t => t.createdBy)
     })
     
     return templates

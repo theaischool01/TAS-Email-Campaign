@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
-import { prisma } from "@/app/lib/prisma"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { z } from "zod"
+import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
+
+const prisma = prismaClient as any
 
 const recipientsSchema = z.object({
-  recipientListIds: z.array(z.string()).min(1, "Please select at least one contact list"),
+  recipientListIds: z.array(z.string()).optional(),
+  recipientSegmentIds: z.array(z.string()).optional(),
   excludedListIds: z.array(z.string()).optional()
+}).refine(data => (data.recipientListIds?.length || 0) + (data.recipientSegmentIds?.length || 0) >= 0, {
+  message: "Invalid recipient data"
 })
 
 // PUT /api/campaigns/[id]/recipients - Update campaign recipients
@@ -16,27 +22,14 @@ export async function PUT(
 ) {
   const { id: campaignId } = await params
   try {
-    console.log("🚀 PUT /api/campaigns/[id]/recipients - Starting request")
-    
     const session = await getServerSession(authOptions)
     if (!session?.user) {
-      console.log("❌ No session found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    console.log("✅ Session found:", { 
-      userId: session.user.id, 
-      role: session.user.role 
-    })
-
-    console.log("📋 Campaign ID:", campaignId)
-
+    
     // Parse and validate request body
     const body = await request.json()
-    console.log("📝 Request body:", body)
-
     const validatedData = recipientsSchema.parse(body)
-    console.log("✅ Validated data:", validatedData)
 
     // Check if campaign exists and user has permission
     const existingCampaign = await prisma.campaign.findUnique({
@@ -44,47 +37,95 @@ export async function PUT(
     })
 
     if (!existingCampaign) {
-      console.log("❌ Campaign not found")
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    // Check edit permissions
-    if (existingCampaign.createdBy !== session.user.id) {
-      console.log("❌ User cannot edit campaign:", campaignId)
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    // Check edit permissions using central RBAC
+    if (!CampaignAccessControl.canEditCampaign(session, existingCampaign)) {
+      console.log("ℹ️ Campaign is not in DRAFT status, skipping recipients update:", campaignId)
+      return NextResponse.json({ 
+        success: true, 
+        skipped: true,
+        message: "Recipients update skipped as campaign is no longer in draft mode" 
+      })
     }
 
-    // Delete existing recipient associations
-    await prisma.campaignRecipientList.deleteMany({
-      where: { campaignId }
+    // Verify that the provided IDs actually exist in the database to prevent foreign key errors (P2003)
+    let validListIds: string[] = []
+    let validSegmentIds: string[] = []
+    let validExcludedIds: string[] = []
+
+    if (validatedData.recipientListIds && validatedData.recipientListIds.length > 0) {
+      const existingLists = await prisma.contactList.findMany({
+        where: { id: { in: validatedData.recipientListIds } },
+        select: { id: true }
+      })
+      validListIds = existingLists.map((l: any) => l.id)
+    }
+
+    if (validatedData.recipientSegmentIds && validatedData.recipientSegmentIds.length > 0) {
+      const existingSegments = await prisma.segment.findMany({
+        where: { id: { in: validatedData.recipientSegmentIds } },
+        select: { id: true }
+      })
+      validSegmentIds = existingSegments.map((s: any) => s.id)
+    }
+
+    if (validatedData.excludedListIds && validatedData.excludedListIds.length > 0) {
+      const existingExcluded = await prisma.contactList.findMany({
+        where: { id: { in: validatedData.excludedListIds } },
+        select: { id: true }
+      })
+      validExcludedIds = existingExcluded.map((l: any) => l.id)
+    }
+
+    // Update campaign relations using a single update operation
+    // This is more atomic and handles the join tables through the Campaign model's relations
+    await (prisma as any).campaign.update({
+      where: { id: campaignId },
+      data: {
+        recipientLists: {
+          deleteMany: {},
+          create: validListIds.map(listId => ({
+            contactListId: listId
+          }))
+        },
+        recipientSegments: {
+          deleteMany: {},
+          create: validSegmentIds.map(segmentId => ({
+            segmentId: segmentId
+          }))
+        },
+        excludedLists: {
+          deleteMany: {},
+          create: validExcludedIds.map(listId => ({
+            contactListId: listId
+          }))
+        }
+      }
     })
 
-    // Create new recipient associations
-    const recipientData = validatedData.recipientListIds.map(listId => ({
-      campaignId,
-      contactListId: listId
-    }))
-
-    await prisma.campaignRecipientList.createMany({
-      data: recipientData
-    })
-
-    console.log("✅ Recipients saved successfully:", {
-      campaignId,
-      recipientCount: recipientData.length,
-      excludedCount: validatedData.excludedListIds?.length || 0
-    })
+    console.log("✅ Recipients saved successfully for campaign:", campaignId)
 
     return NextResponse.json({ 
       success: true,
       data: {
         message: "Recipients saved successfully",
-        recipientCount: recipientData.length
+        listCount: validatedData.recipientListIds?.length || 0,
+        segmentCount: validatedData.recipientSegmentIds?.length || 0
       }
     })
 
   } catch (error) {
     console.error("❌ PUT /api/campaigns/[id]/recipients error:", error)
+    if (error instanceof Error) {
+      console.error("Error message:", error.message)
+      console.error("Error stack:", error.stack)
+      try {
+        const fs = require('fs')
+        fs.writeFileSync('last_error_recipients.txt', error.stack || error.message)
+      } catch (e) {}
+    }
     
     if (error instanceof z.ZodError) {
       return NextResponse.json(

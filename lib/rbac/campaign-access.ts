@@ -64,6 +64,11 @@ export class CampaignAccessControl {
     const isSuperAdmin = session.user.role === "SUPER_ADMIN"
     const isOwner = campaign.createdBy === session.user.id
     
+    // Only draft campaigns can be edited
+    if (campaign.status !== 'DRAFT') {
+      return false
+    }
+    
     return isSuperAdmin || isOwner
   }
 
@@ -194,18 +199,10 @@ export class CampaignAccessControl {
   }
 
   /**
-   * Creates filter for DRAFT campaigns (exclude from dashboard count)
+   * Creates filter for campaigns on dashboard (includes all statuses)
    */
   static getDashboardCampaignFilter(session: Session | null): CampaignDashboardFilter {
-    const baseFilter = this.getCampaignVisibilityFilter(session)
-    
-    // Exclude DRAFT campaigns from dashboard count
-    return {
-      ...baseFilter,
-      status: {
-        not: 'DRAFT'
-      }
-    }
+    return this.getCampaignVisibilityFilter(session)
   }
 
   /**

@@ -51,6 +51,32 @@ export class ContactAccessControl {
   }
 
   /**
+   * Creates filter for individual contacts based on user role
+   */
+  static getContactVisibilityFilter(session: Session | null) {
+    if (!session?.user) {
+      throw new Error("No session found")
+    }
+
+    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
+    
+    // SUPER_ADMIN can see all contacts, others only those in their lists
+    if (isSuperAdmin) {
+      return {}
+    }
+
+    return {
+      lists: {
+        some: {
+          contactList: {
+            ownerId: session.user.id
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Validates if user can access contact list members
    */
   static canAccessContactListMembers(session: Session | null, contactListOwnerId: string) {

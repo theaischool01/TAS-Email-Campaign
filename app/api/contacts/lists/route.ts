@@ -37,9 +37,14 @@ export async function GET(request: NextRequest) {
     })
 
     // Standardize response format for frontend compatibility
+    const standardizedLists = contactLists.map(list => ({
+      ...list,
+      memberCount: list._count?.members || 0
+    }))
+
     return NextResponse.json({
       success: true,
-      contactLists
+      contactLists: standardizedLists
     })
   } catch (error) {
     console.error("Error fetching contact lists:", error)

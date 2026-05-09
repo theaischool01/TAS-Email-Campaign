@@ -136,6 +136,9 @@ model Segment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  // Relations
+  recipientCampaigns CampaignRecipientSegment[]
+
   @@map("segments")
 }
 
@@ -212,6 +215,7 @@ model Campaign {
   user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   template EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   recipientLists CampaignRecipientList[]
+  recipientSegments CampaignRecipientSegment[]
   excludedLists CampaignExcludedList[]
   testSends CampaignTestSend[]
   activityLogs CampaignActivityLog[]
@@ -219,6 +223,18 @@ model Campaign {
   // Prevent duplicate campaign names per user
   @@unique([createdBy, name])
   @@map("campaigns")
+}
+
+model CampaignRecipientSegment {
+  id           String   @id @default(cuid())
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String
+  segment      Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  segmentId    String
+  createdAt    DateTime @default(now())
+
+  @@unique([campaignId, segmentId])
+  @@map("campaign_recipient_segments")
 }
 
 model CampaignRecipientList {

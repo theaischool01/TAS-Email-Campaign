@@ -163,6 +163,76 @@ export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
           </div>
         )
 
+      case 'html':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="htmlContent" className="text-sm font-medium">Raw HTML</Label>
+              <textarea
+                id="htmlContent"
+                value={localContent.html || ''}
+                onChange={(e) => handleContentChange('html', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono"
+                rows={10}
+                placeholder="Paste your custom HTML here..."
+              />
+            </div>
+            <p className="text-xs text-gray-500 italic">
+              Note: CSS must be inline. External styles will be stripped by most email clients.
+            </p>
+          </div>
+        )
+
+      case 'social':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Social Links</Label>
+              <div className="space-y-2 mt-2">
+                {['facebook', 'twitter', 'linkedin', 'instagram', 'youtube'].map((platform) => (
+                  <div key={platform}>
+                    <Label htmlFor={platform} className="text-xs text-gray-500 capitalize">{platform}</Label>
+                    <Input
+                      id={platform}
+                      value={localContent[platform] || ''}
+                      onChange={(e) => handleContentChange(platform, e.target.value)}
+                      placeholder={`https://${platform}.com/yourprofile`}
+                      className="text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+
+      case '2column':
+      case '3column':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Column Settings</Label>
+              <p className="text-xs text-gray-500 mt-1">
+                Column blocks currently support individual text content per column.
+              </p>
+              <div className="space-y-3 mt-3">
+                {[1, 2, block.type === '3column' ? 3 : null].filter(Boolean).map((i) => (
+                  <div key={i}>
+                    <Label htmlFor={`col-${i}`} className="text-xs text-gray-500">Column {i} Text</Label>
+                    <textarea
+                      id={`col-${i}`}
+                      value={localContent[`text${i}`] || ''}
+                      onChange={(e) => handleContentChange(`text${i}`, e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs"
+                      rows={2}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+
       default:
         return (
           <div className="text-center text-gray-500 py-4">
