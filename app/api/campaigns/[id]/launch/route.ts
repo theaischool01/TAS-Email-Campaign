@@ -78,6 +78,7 @@ export async function POST(
 
     // Validate minimum required fields
     if (!existingCampaign.name || !existingCampaign.subject) {
+      console.log("❌ LAUNCH: Missing name or subject", { name: existingCampaign.name, subject: existingCampaign.subject })
       return NextResponse.json(
         { error: "Campaign must have a name and subject before launching" },
         { status: 422 }
@@ -88,6 +89,7 @@ export async function POST(
       (!existingCampaign.recipientLists || existingCampaign.recipientLists.length === 0) &&
       (!existingCampaign.recipientSegments || existingCampaign.recipientSegments.length === 0)
     ) {
+      console.log("❌ LAUNCH: No recipients selected")
       return NextResponse.json(
         { error: "Campaign must have at least one recipient list or segment before launching" },
         { status: 422 }
@@ -96,8 +98,9 @@ export async function POST(
 
     // Validate template HTML exists
     if (!existingCampaign.template?.html) {
+      console.log("❌ LAUNCH: Template missing or has no HTML", { templateId: existingCampaign.templateId })
       return NextResponse.json(
-        { error: "Campaign template has no HTML content" },
+        { error: "Campaign template has no HTML content. Please select/save a template in Step 3." },
         { status: 422 }
       )
     }
@@ -147,6 +150,7 @@ export async function POST(
     console.log(`📊 LAUNCH: Found ${recipientCount} eligible recipients for campaign: ${campaignId}`)
 
     if (recipientCount === 0) {
+      console.log("❌ LAUNCH: No active recipients found")
       return NextResponse.json(
         { error: "No active recipients found in the selected lists (all contacts may be unsubscribed or excluded)" },
         { status: 422 }

@@ -707,18 +707,24 @@ export function useCampaignWizard() {
 
       // Persist current step to database
       try {
-        console.log("💾 SAVING STEP TO DATABASE:", { step, campaignId: state.campaignId })
+        console.log("💾 SAVING ALL DATA TO DATABASE:", { step, campaignId: state.campaignId, template: state.selectedTemplate })
         
         const response = await fetch(`/api/campaigns/${state.campaignId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentStep: step })
+          body: JSON.stringify({ 
+            ...state.campaignDetails,
+            currentStep: step,
+            templateId: state.selectedTemplate,
+            status: state.status
+          })
         })
 
         if (!response.ok) {
-          console.error("❌ Failed to save step to database:", response.status)
+          console.error("❌ Failed to save campaign data to database:", response.status)
         } else {
-          console.log("✅ Step saved to database successfully:", step)
+          console.log("✅ Campaign data saved to database successfully:", step)
+          setState(prev => ({ ...prev, isDirty: false, autosaveStatus: 'saved' }))
         }
       } catch (error) {
         console.error("❌ Error saving step to database:", error)
