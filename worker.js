@@ -1,8 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { SESv2Client } = require('@aws-sdk/client-sesv2');
-const nodemailer = require('nodemailer');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -42,10 +41,7 @@ const awsConfig = {
 };
 
 const sqsClient = new SQSClient(awsConfig);
-const ses = new SESv2Client(awsConfig);
-const transporter = nodemailer.createTransport({
-  SES: { ses, aws: require('@aws-sdk/client-sesv2') }
-});
+const sesClient = new SESv2Client(awsConfig);
 
 const QUEUE_NAME = "EmailDispatchQueue";
 let queueUrl = null;
@@ -143,7 +139,6 @@ async function processQueue() {
             continue;
           }
 
-          // FIX: Ensure we use a verified sender email
           let fromEmail = campaign.senderEmail || process.env.SES_FROM_EMAIL;
           if (fromEmail.includes('example.com')) {
             fromEmail = process.env.SES_FROM_EMAIL;
@@ -165,19 +160,27 @@ async function processQueue() {
             ? html.replace('</body>', `${trackingPixel}</body>`) 
             : `${html}${trackingPixel}`;
 
-          await transporter.sendMail({
-            from: `"${fromName}" <${fromEmail}>`,
-            to: recipient.email,
-            subject: campaign.subject,
-            html: fullHtml,
-            list: {
-              unsubscribe: { url: unsubscribeUrl, comment: 'One-Click Unsubscribe' }
+          // DIRECT AWS SEND (Bypass Nodemailer wrapper bugs)
+          const sendCommand = new SendEmailCommand({
+            FromEmailAddress: `"${fromName}" <${fromEmail}>`,
+            Destination: { ToAddresses: [recipient.email] },
+            Content: {
+              Simple: {
+                Subject: { Data: campaign.subject },
+                Body: { Html: { Data: fullHtml } }
+              }
             },
-            headers: {
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-              'X-SES-MESSAGE-TAGS': `campaignId=${campaignId}, contactId=${contactId}`
-            }
+            ListManagementOptions: {
+              ContactListName: 'GlobalUnsubscribe', // SES managed list name (optional)
+              TopicName: 'Campaign'
+            },
+            EmailAttributes: [
+              { Name: 'campaignId', Value: campaignId },
+              { Name: 'contactId', Value: contactId }
+            ]
           });
+
+          await sesClient.send(sendCommand);
 
           const updated = await prisma.campaign.update({
             where: { id: campaignId },
@@ -195,16 +198,12 @@ async function processQueue() {
           console.error(`❌ Error sending to ${recipient.email}:`, error);
           await prisma.campaign.update({ where: { id: campaignId }, data: { totalFailed: { increment: 1 } } });
           
-          // Log specific error in activity log
           await prisma.campaignActivityLog.create({
             data: {
               campaignId,
               action: 'SEND_FAILED',
               actorId: 'system-worker',
-              metadata: { 
-                email: recipient.email, 
-                error: error.message 
-              }
+              metadata: { email: recipient.email, error: error.message }
             }
           });
 
