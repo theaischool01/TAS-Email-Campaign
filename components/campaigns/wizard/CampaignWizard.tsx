@@ -731,7 +731,7 @@ export function useCampaignWizard() {
         // Don't fail the navigation if database save fails
       }
     }
-  }, [validateCurrentStepErrors, state.campaignId, state.currentStep, state.selectedRecipients, state.excludedRecipients, session])
+  }, [validateCurrentStepErrors, state.campaignId, state.currentStep, state.selectedRecipients, state.excludedRecipients, state.selectedTemplate, state.campaignDetails, state.status, session])
 
   // Save recipients to campaign
   const saveRecipients = useCallback(async () => {
