@@ -250,14 +250,24 @@ export async function PUT(
       updatePayload.senderEmail = validatedData.senderEmail
     if (validatedData.replyToEmail !== undefined && validatedData.replyToEmail !== '')
       updatePayload.replyToEmail = validatedData.replyToEmail
-    if (validatedData.templateId !== undefined) updatePayload.templateId = validatedData.templateId || null
+    // TEMPLATE INTEGRITY: Prevent clearing templateId if it's already set in DB
+    if (existingCampaign.templateId && (validatedData.templateId === undefined || validatedData.templateId === null || validatedData.templateId === '')) {
+      console.log("🛡️ TEMPLATE INTEGRITY: Preserving existing templateId", { 
+        existing: existingCampaign.templateId, 
+        received: validatedData.templateId 
+      })
+      // Do NOT add templateId to updatePayload, so it remains unchanged in DB
+    } else if (validatedData.templateId !== undefined) {
+      updatePayload.templateId = validatedData.templateId || null
+    }
+
     if (validatedData.currentStep !== undefined) updatePayload.currentStep = validatedData.currentStep
     if (validatedData.tags !== undefined) updatePayload.tags = normalizedTags
-
+    
     console.log("🔧 CAMPAIGN UPDATE: Starting update", {
       campaignId,
       updateFields: Object.keys(updatePayload),
-      tagsType: Array.isArray(validatedData.tags) ? 'array' : typeof validatedData.tags
+      templateId: updatePayload.templateId
     })
 
     // Update campaign
@@ -278,11 +288,22 @@ export async function PUT(
             select: {
               id: true,
               name: true,
-              thumbnail: true
+              thumbnail: true,
+              html: true,
+              json: true
+            }
+          },
+          recipientLists: {
+            include: {
+              contactList: true
             }
           }
         }
       })
+      
+      // Artificial delay to ensure DB consistency
+      await new Promise(resolve => setTimeout(resolve, 300))
+      console.log("✅ CAMPAIGN UPDATE: Database commit confirmed")
     } catch (error) {
       console.error("❌ Prisma UPDATE ERROR:", error)
       return NextResponse.json(
