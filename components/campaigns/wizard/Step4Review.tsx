@@ -465,9 +465,19 @@ export function Step4Review({
             </>
           )}
 
+          {!selectedTemplate && (
+            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-md flex items-center gap-3 mb-6 animate-pulse">
+              <XCircle className="h-5 w-5" />
+              <div>
+                <p className="font-bold">Template Missing!</p>
+                <p className="text-sm">You must go back to Step 3 and select an email template before you can launch this campaign.</p>
+              </div>
+            </div>
+          )}
+
           <Button
             onClick={onFinish}
-            disabled={isLaunching || isScheduling}
+            disabled={isLaunching || isScheduling || !selectedTemplate}
             size="lg"
             className="flex items-center gap-2 sm:ml-4 bg-primary hover:bg-primary/90 text-primary-foreground"
           >

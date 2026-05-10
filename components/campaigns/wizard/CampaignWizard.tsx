@@ -641,14 +641,36 @@ export function useCampaignWizard() {
   }, [])
 
   // Update template
-  const updateTemplate = useCallback((templateId: string) => {
+  const updateTemplate = useCallback(async (templateId: string) => {
+    // Update local state for immediate feedback
     setState(prev => ({
       ...prev,
       selectedTemplate: templateId,
       isDirty: true,
-      hasInteracted: true // Mark as interacted
+      hasInteracted: true
     }))
-  }, [])
+
+    // FORCE SAVE to database immediately to prevent race conditions
+    if (state.campaignId && session) {
+      try {
+        console.log("🎯 FORCE SAVING TEMPLATE SELECTION:", templateId)
+        const response = await fetch(`/api/campaigns/${state.campaignId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            templateId,
+            currentStep: state.currentStep
+          })
+        })
+        
+        if (!response.ok) throw new Error("Failed to persist template selection")
+        console.log("✅ Template selection saved successfully")
+      } catch (error) {
+        console.error("❌ Error force-saving template:", error)
+        toast.error("Failed to save template selection. Please try selecting it again.")
+      }
+    }
+  }, [state.campaignId, state.currentStep, session])
 
   // Update status
   const updateStatus = useCallback((status: CampaignStatus) => {
@@ -705,20 +727,27 @@ export function useCampaignWizard() {
         }
       }
 
-      // Persist current step to database
-      try {
-        console.log("💾 SAVING ALL DATA TO DATABASE:", { step, campaignId: state.campaignId, template: state.selectedTemplate })
-        
-        const response = await fetch(`/api/campaigns/${state.campaignId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            ...state.campaignDetails,
+        // Persist current step to database
+        try {
+          console.log("💾 SAVING PROGRESS TO DATABASE:", { step, campaignId: state.campaignId, templateId: state.selectedTemplate })
+          
+          // CRITICAL: Only send what's necessary for step navigation.
+          // Spreading ...state.campaignDetails can cause race conditions with autosave.
+          const saveBody: any = { 
             currentStep: step,
-            templateId: state.selectedTemplate,
             status: state.status
+          }
+          
+          // Only include templateId if it's set in state to avoid overwriting with null
+          if (state.selectedTemplate) {
+            saveBody.templateId = state.selectedTemplate
+          }
+
+          const response = await fetch(`/api/campaigns/${state.campaignId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(saveBody)
           })
-        })
 
         if (!response.ok) {
           console.error("❌ Failed to save campaign data to database:", response.status)
