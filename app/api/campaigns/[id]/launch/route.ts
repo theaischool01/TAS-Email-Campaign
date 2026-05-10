@@ -114,6 +114,16 @@ export async function POST(
       }
     }
 
+    // DEBUG: Log campaign state
+    console.log("🔍 LAUNCH DIAGNOSTIC:", {
+      campaignId,
+      status: existingCampaign.status,
+      templateId: existingCampaign.templateId,
+      hasTemplateRelation: !!existingCampaign.template,
+      hasTemplateHtml: !!existingCampaign.template?.html,
+      recipientCount: existingCampaign.recipientLists?.length || 0
+    })
+
     // Validate template HTML exists
     let templateHtml = existingCampaign.template?.html
     
@@ -122,8 +132,15 @@ export async function POST(
       console.log("🔍 LAUNCH: Template HTML missing from relation, attempting self-healing...", { templateId: existingCampaign.templateId })
       const directTemplate = await prisma.emailTemplate.findUnique({
         where: { id: existingCampaign.templateId },
-        select: { html: true }
+        select: { id: true, html: true, name: true }
       })
+      
+      console.log("🔍 LAUNCH: Direct template fetch result:", {
+        found: !!directTemplate,
+        templateId: directTemplate?.id,
+        htmlLength: directTemplate?.html?.length || 0
+      })
+
       if (directTemplate?.html) {
         templateHtml = directTemplate.html
         console.log("✅ LAUNCH: Successfully recovered template HTML via self-healing")
@@ -131,9 +148,18 @@ export async function POST(
     }
 
     if (!templateHtml) {
-      console.log("❌ LAUNCH: Template missing or has no HTML content", { templateId: existingCampaign.templateId })
+      console.log("❌ LAUNCH: Template missing or has no HTML content", { 
+        templateId: existingCampaign.templateId,
+        relationFound: !!existingCampaign.template
+      })
       return NextResponse.json(
-        { error: "Campaign template has no HTML content. Please select/save a template in Step 3." },
+        { 
+          error: "Campaign template has no HTML content",
+          debug: {
+            templateId: existingCampaign.templateId,
+            relationFound: !!existingCampaign.template
+          }
+        },
         { status: 422 }
       )
     }

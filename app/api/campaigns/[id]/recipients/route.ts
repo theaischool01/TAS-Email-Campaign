@@ -117,16 +117,19 @@ export async function PUT(
       }
     })
 
-  } catch (error) {
-    console.error("❌ PUT /api/campaigns/[id]/recipients error:", error)
-    if (error instanceof Error) {
-      console.error("Error message:", error.message)
-      console.error("Error stack:", error.stack)
-      try {
-        const fs = require('fs')
-        fs.writeFileSync('last_error_recipients.txt', error.stack || error.message)
-      } catch (e) {}
-    }
+  } catch (error: any) {
+    console.error("❌ PUT /api/campaigns/[id]/recipients error:", {
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack
+    })
+    
+    // Attempt to log full error for debugging
+    try {
+      const fs = require('fs')
+      fs.appendFileSync('recipients_error_log.txt', `\n--- ${new Date().toISOString()} ---\n${JSON.stringify(error, null, 2)}\n`)
+    } catch (e) {}
     
     if (error instanceof z.ZodError) {
       return NextResponse.json(
