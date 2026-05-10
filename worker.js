@@ -3,8 +3,25 @@ const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { SES, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 const http = require('http');
+
+// EMERGENCY LOGGING: Catch any crash and write it to a file
+const logPath = path.join(process.cwd(), 'worker-error.log');
+function logError(err) {
+  const timestamp = new Date().toISOString();
+  const message = `[${timestamp}] CRASH: ${err.stack || err}\n`;
+  fs.appendFileSync(logPath, message);
+  console.error(message);
+}
+
+process.on('uncaughtException', logError);
+process.on('unhandledRejection', logError);
+
+console.log('🚀 Worker is initializing...');
+fs.appendFileSync(logPath, `\n--- Worker Started at ${new Date().toISOString()} ---\n`);
 
 // Render requires a web server to stay alive on the free tier
 const PORT = process.env.PORT || 3001;
