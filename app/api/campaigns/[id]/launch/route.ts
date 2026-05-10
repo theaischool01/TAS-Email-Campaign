@@ -96,6 +96,24 @@ export async function POST(
       )
     }
 
+    // Double-check template existence (Race condition protection)
+    if (!existingCampaign.templateId || !existingCampaign.template?.html) {
+      console.log("🔄 LAUNCH: Template missing, refetching with delay to prevent race condition...")
+      await new Promise(resolve => setTimeout(resolve, 800)) // Wait 800ms
+      const refreshedCampaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        include: { 
+          template: true,
+          recipientLists: true,
+          recipientSegments: true,
+          excludedLists: true
+        }
+      })
+      if (refreshedCampaign) {
+        existingCampaign = refreshedCampaign
+      }
+    }
+
     // Validate template HTML exists
     let templateHtml = existingCampaign.template?.html
     
