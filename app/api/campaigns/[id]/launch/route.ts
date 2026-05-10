@@ -225,24 +225,27 @@ export async function POST(
         }
       }))
 
-      // Import dynamic to avoid issues in some environments
       const { QueueService } = await import("@/lib/services/queue.service")
       await QueueService.enqueueBatch(messages)
-
       console.log(`✅ LAUNCH: All recipients enqueued successfully`)
 
-      await prisma.campaignActivityLog.create({
-        data: {
-          campaignId,
-          actorId: session.user.id,
-          action: "CAMPAIGN_LAUNCHED",
-          metadata: {
-            sentAt: new Date().toISOString(),
-            recipientCount,
-            launchedBy: session.user.id,
+      // Separate activity logging so it doesn't break the launch if it fails
+      try {
+        await prisma.campaignActivityLog.create({
+          data: {
+            campaignId,
+            actorId: session.user.id,
+            action: "CAMPAIGN_LAUNCHED",
+            metadata: {
+              sentAt: new Date().toISOString(),
+              recipientCount,
+              launchedBy: session.user.id,
+            },
           },
-        },
-      })
+        })
+      } catch (logError) {
+        console.error("⚠️ LAUNCH: Activity logging failed (non-critical):", logError)
+      }
 
       return NextResponse.json({
         success: true,
@@ -254,23 +257,19 @@ export async function POST(
 
     } catch (enqueueError: any) {
       console.error("❌ LAUNCH: Enqueueing failed:", enqueueError)
-      // Revert status to DRAFT if queueing fails
+      // Only revert if we haven't successfully started the process
       await prisma.campaign.update({
         where: { id: campaignId },
         data: { status: "DRAFT" },
       })
-      throw enqueueError
+      return NextResponse.json(
+        { error: "Failed to queue emails for delivery", details: enqueueError.message },
+        { status: 500 }
+      )
     }
 
   } catch (error) {
-    console.error("❌ POST /api/campaigns/[id]/launch error:", error)
-    // Attempt to revert campaign to DRAFT if sending fails
-    try {
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { status: "DRAFT" },
-      })
-    } catch (_) {}
+    console.error("❌ POST /api/campaigns/[id]/launch - CRITICAL ERROR:", error)
     return NextResponse.json(
       { error: "Failed to launch campaign", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
