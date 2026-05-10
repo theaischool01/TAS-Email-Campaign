@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 
-const prisma = new PrismaClient() as any
+const prisma = prismaClient as any
 
 // GET /api/segments - List all segments
 export async function GET(request: NextRequest) {

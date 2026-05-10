@@ -79,33 +79,32 @@ export async function PUT(
       validExcludedIds = Array.from(new Set(existingExcluded.map((l: any) => l.id)))
     }
 
-    // Update campaign relations using a transaction to prevent unique constraint violations
-    await (prisma as any).$transaction([
-      // 1. Delete all existing relations for this campaign
-      (prisma as any).campaignRecipientList.deleteMany({ where: { campaignId } }),
-      (prisma as any).campaignRecipientSegment.deleteMany({ where: { campaignId } }),
-      (prisma as any).campaignExcludedList.deleteMany({ where: { campaignId } }),
-      
-      // 2. Create the new relations
-      (prisma as any).campaignRecipientList.createMany({
-        data: validListIds.map(listId => ({
-          campaignId,
-          contactListId: listId
-        }))
-      }),
-      (prisma as any).campaignRecipientSegment.createMany({
-        data: validSegmentIds.map(segmentId => ({
-          campaignId,
-          segmentId: segmentId
-        }))
-      }),
-      (prisma as any).campaignExcludedList.createMany({
-        data: validExcludedIds.map(listId => ({
-          campaignId,
-          contactListId: listId
-        }))
-      })
-    ])
+    // Update campaign relations using an atomic nested update
+    // This is more robust than a separate delete/create transaction
+    await (prisma as any).campaign.update({
+      where: { id: campaignId },
+      data: {
+        recipientLists: {
+          deleteMany: {},
+          create: validListIds.map(listId => ({
+            contactListId: listId
+          }))
+        },
+        recipientSegments: {
+          deleteMany: {},
+          create: validSegmentIds.map(segmentId => ({
+            segmentId: segmentId
+          }))
+        },
+        excludedLists: {
+          deleteMany: {},
+          create: validExcludedIds.map(listId => ({
+            contactListId: listId
+          }))
+        },
+        updatedAt: new Date()
+      }
+    })
 
     console.log("✅ Recipients saved successfully for campaign:", campaignId)
 

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
 import { z } from "zod"
 
-const prisma = new PrismaClient() as any // Temporary workaround for Windows permission issues preventing proper Prisma generation
+const prisma = prismaClient as any
 
 // Validation schemas
 const updateCampaignSchema = z.object({
