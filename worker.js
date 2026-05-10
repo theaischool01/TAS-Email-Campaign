@@ -179,6 +179,21 @@ async function processQueue() {
 
         // Send Email
         try {
+          // Check contact status again before sending
+          const contact = await prisma.contact.findUnique({
+            where: { id: recipient.contactId || '' }
+          });
+          
+          if (contact && contact.status !== 'ACTIVE') {
+            console.log(`⏩ Skipping ${recipient.email} (Status: ${contact.status})`);
+            // Mark message as processed and continue
+            await sqsClient.send(new DeleteMessageCommand({
+              QueueUrl: qUrl,
+              ReceiptHandle: message.ReceiptHandle
+            }));
+            continue;
+          }
+
           console.log(`✉️ Sending to ${recipient.email} for campaign ${campaignId}`);
           
           const fromEmail = campaign.senderEmail || process.env.SES_FROM_EMAIL;
@@ -200,6 +215,16 @@ async function processQueue() {
             }
             return match;
           });
+
+          // M8: Inject Unsubscribe Link
+          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}`;
+          const unsubscribeHtml = `
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-family: sans-serif; font-size: 12px;">
+              <p>You received this because you're subscribed to our newsletter.</p>
+              <p><a href="${unsubscribeUrl}" style="color: #0066cc; text-decoration: underline;">Unsubscribe</a></p>
+            </div>
+          `;
+          html = html.includes('</body>') ? html.replace('</body>', `${unsubscribeHtml}</body>`) : html + unsubscribeHtml;
 
           try {
             await sesClient.send(new SendEmailCommand({

@@ -75,10 +75,86 @@ export async function POST(request: NextRequest) {
         })
       }
       
-      // Handle Bounces/Complaints if needed
-      if (eventType === 'Bounce' || eventType === 'Complaint') {
-        console.error(`❌ SES delivery issue: ${eventType}`)
-        // Update contact status to BOUNCED or unsubscribed here
+      // M7: Handle Bounces
+      if (eventType === 'Bounce') {
+        const bounce = message.bounce;
+        const recipients = bounce.bouncedRecipients || [];
+        
+        for (const recipient of recipients) {
+          const email = recipient.emailAddress;
+          console.log(`🚫 Bounced: ${email}`);
+          
+          await prisma.contact.updateMany({
+            where: { email },
+            data: { status: 'BOUNCED' }
+          });
+
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { totalBounced: { increment: 1 } }
+          });
+
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId,
+              action: 'EMAIL_BOUNCED',
+              actorId: contactId || 'ses-native',
+              metadata: { 
+                email, 
+                bounceType: bounce.bounceType,
+                bounceSubType: bounce.bounceSubType 
+              }
+            }
+          });
+        }
+      }
+
+      // M7: Handle Complaints
+      if (eventType === 'Complaint') {
+        const complaint = message.complaint;
+        const recipients = complaint.complainedRecipients || [];
+        
+        for (const recipient of recipients) {
+          const email = recipient.emailAddress;
+          console.log(`⚠️ Complaint: ${email}`);
+          
+          await prisma.contact.updateMany({
+            where: { email },
+            data: { status: 'COMPLAINED' }
+          });
+
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { totalComplained: { increment: 1 } }
+          });
+
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId,
+              action: 'EMAIL_COMPLAINED',
+              actorId: contactId || 'ses-native',
+              metadata: { email, complaintFeedbackType: complaint.complaintFeedbackType }
+            }
+          });
+        }
+      }
+
+      // M8: Handle Subscriptions (Unsubscribes via List-Unsubscribe header)
+      if (eventType === 'Subscription') {
+        console.log(`🔕 Unsubscribe event received for Campaign: ${campaignId}`);
+        // SES 'Subscription' event usually contains the email
+        // We'll update the specific contact if contactId is present
+        if (contactId) {
+          await prisma.contact.update({
+            where: { id: contactId },
+            data: { status: 'UNSUBSCRIBED' }
+          });
+
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { totalUnsubscribed: { increment: 1 } }
+          });
+        }
       }
     }
 

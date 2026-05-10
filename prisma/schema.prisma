@@ -207,6 +207,9 @@ model Campaign {
   totalSent             Int             @default(0)
   totalOpened           Int             @default(0)
   totalClicked          Int             @default(0)
+  totalBounced          Int             @default(0)
+  totalComplained       Int             @default(0)
+  totalUnsubscribed     Int             @default(0)
   totalFailed           Int             @default(0)
   tags                  String?         // JSON array of tags
   currentStep           Int             @default(1)  // Wizard progress tracking
