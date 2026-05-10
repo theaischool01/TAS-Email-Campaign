@@ -196,7 +196,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
     }
   }
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (isRetry = false) => {
     console.log("🔍 Save Debug:", {
       mode,
       canEdit,
@@ -254,16 +254,18 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
         setSaveStatus("saved")
         setTimeout(() => setSaveStatus("idle"), 2000)
         
-        if (mode === "create" || mode === "duplicate") {
-          const savedTemplate = await response.json()
-          if (onSaved) {
-            onSaved(savedTemplate.id)
-          } else {
-            router.push(`/templates/editor/${savedTemplate.id}`)
-          }
-        } else if (mode === "edit" && templateId && onSaved) {
-          onSaved(templateId)
+        const savedTemplate = await response.json()
+        if (onSaved) {
+          onSaved(savedTemplate.id)
+        } else if (mode === "create" || mode === "duplicate") {
+          router.push(`/templates/editor/${savedTemplate.id}`)
         }
+      } else if (response?.status === 409 && !isRetry) {
+        // Handle name conflict by auto-renaming and retrying once
+        const uniqueName = `${templateName} (${new Date().toLocaleTimeString()})`
+        setTemplateName(uniqueName)
+        setErrorMessage(`Name conflict! Auto-renamed to: ${uniqueName}. Retrying save...`)
+        handleSave(true)
       } else {
         const errorData = await response?.json().catch(() => ({}))
         setErrorMessage(errorData?.error || "Failed to save template")

@@ -256,23 +256,22 @@ async function processQueue() {
           console.log(`📦 PREPARING: HTML Size ${Math.round(html.length / 1024)}KB for ${recipient.email}`);
 
           try {
-            await sesClient.send(new SendEmailCommand({
-              Source: `"${campaign.senderName || 'Email Campaign'}" <${campaign.senderEmail || process.env.SES_FROM_EMAIL}>`,
-              Destination: { ToAddresses: [recipient.email] },
-              Message: {
-                Subject: { Data: campaign.subject, Charset: 'UTF-8' },
-                Body: { 
-                  Html: { 
-                    Data: html,
-                    Charset: 'UTF-8'
-                  } 
+            // M8: RFC 8058 One-Click Unsubscribe headers using SendRawEmailCommand
+            const mailOptions = {
+              from: `"${campaign.senderName || 'Email Campaign'}" <${campaign.senderEmail || process.env.SES_FROM_EMAIL}>`,
+              to: recipient.email,
+              subject: campaign.subject,
+              html: html,
+              list: {
+                unsubscribe: {
+                  url: unsubscribeUrl,
+                  comment: 'One-Click Unsubscribe'
                 }
               },
-              ConfigurationSetName: process.env.SES_CONFIG_SET || "CampaignTracking",
-              Tags: [
-                { Name: "campaignId", Value: campaignId },
-                { Name: "contactId", Value: contactId }
-              ]
+              Headers: {
+                'List-Unsubscribe': `<${unsubscribeUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+              }
             }));
 
             // Respect SES rate limits (approx 5/sec)

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
 import { sendSingleEmail } from "@/lib/services/email.service"
 import { z } from "zod"
 
-const prisma = new PrismaClient() as any
+const prisma = prismaClient as any
 
 const testSendSchema = z.object({
   emails: z

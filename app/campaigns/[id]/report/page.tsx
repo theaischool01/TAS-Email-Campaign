@@ -40,6 +40,15 @@ async function ReportContent({ id }: { id: string }) {
     )
   }
 
+  // Fetch contact details for the actorIds found in logs
+  const contactIds = Array.from(new Set(campaign.activityLogs.map((log: any) => log.actorId).filter((id: string) => id !== 'ses-native' && id.length > 5)))
+  const contacts = await (prisma as any).contact.findMany({
+    where: { id: { in: contactIds } },
+    select: { id: true, firstName: true, lastName: true, email: true }
+  })
+
+  const contactMap = new Map(contacts.map((c: any) => [c.id, c]))
+
   const openRate = campaign.totalSent > 0 ? (campaign.totalOpened / campaign.totalSent) * 100 : 0
   const clickRate = campaign.totalSent > 0 ? (campaign.totalClicked / campaign.totalSent) * 100 : 0
   const bounceRate = campaign.totalSent > 0 ? (campaign.totalBounced / campaign.totalSent) * 100 : 0
@@ -131,34 +140,48 @@ async function ReportContent({ id }: { id: string }) {
                   No activity recorded yet.
                 </div>
               ) : (
-                campaign.activityLogs.map((log: any, i: number) => (
-                  <div key={i} className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold
-                      ${log.action.includes('OPEN') ? 'bg-purple-100 text-purple-700' : 
-                        log.action.includes('CLICK') ? 'bg-green-100 text-green-700' : 
-                        log.action.includes('BOUNCE') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}
-                    `}>
-                      {log.action.split('_')[1]?.[0] || 'A'}
+                campaign.activityLogs.map((log: any, i: number) => {
+                  const contact = contactMap.get(log.actorId) as any
+                  const displayName = contact ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.email : null
+                  const initials = contact ? (contact.firstName?.[0] || contact.email?.[0] || 'A').toUpperCase() : (log.action.split('_')[1]?.[0] || 'A')
+                  
+                  return (
+                    <div key={i} className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold
+                        ${log.action.includes('OPEN') ? 'bg-purple-100 text-purple-700' : 
+                          log.action.includes('CLICK') ? 'bg-green-100 text-green-700' : 
+                          log.action.includes('BOUNCE') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}
+                      `}>
+                        {initials}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-gray-900">
+                            {displayName || 'System Notification'}
+                          </p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase
+                            ${log.action.includes('OPEN') ? 'bg-purple-100 text-purple-600' : 
+                              log.action.includes('CLICK') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}
+                          `}>
+                            {log.action.replace('EMAIL_', '').replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {contact?.email || (log.metadata as any)?.email || (log.metadata as any)?.ipAddress || 'Anonymous'} 
+                          { (log.metadata as any)?.url && ` • clicked: ${(log.metadata as any).url}` }
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">
+                          {format(new Date(log.createdAt), 'HH:mm')}
+                        </p>
+                        <p className="text-[10px] text-gray-300 italic">
+                          {format(new Date(log.createdAt), 'MMM d')}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {log.action.replace('EMAIL_', '').replace('_', ' ')}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {(log.metadata as any)?.email || (log.metadata as any)?.ipAddress || 'Anonymous'} 
-                        { (log.metadata as any)?.url && ` clicked: ${(log.metadata as any).url}` }
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">
-                        {format(new Date(log.createdAt), 'HH:mm')}
-                      </p>
-                      <p className="text-[10px] text-gray-300 italic">
-                        {format(new Date(log.createdAt), 'MMM d')}
-                      </p>
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </CardContent>

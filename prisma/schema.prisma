@@ -112,6 +112,7 @@ model Contact {
   // Relations
   lists       ContactListMember[]
   contactLists ContactList[]
+  activityLogs CampaignActivityLog[]
   
   @@map("contacts")
 }
@@ -288,5 +289,8 @@ model CampaignActivityLog {
   metadata  Json?
   createdAt DateTime @default(now())
 
+  // Relations
+  contact   Contact? @relation(fields: [actorId], references: [id], map: "campaign_activity_logs_contact_fkey")
+  
   @@map("campaign_activity_logs")
 }
