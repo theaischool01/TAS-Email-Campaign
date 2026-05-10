@@ -171,6 +171,7 @@ async function processQueue() {
                 Body: { Html: { Data: fullHtml } }
               }
             },
+            ConfigurationSetName: 'Default', // CRITICAL: This must match the name in your AWS SES Console
             // ListManagementOptions removed to avoid NotFoundException if list isn't created in AWS Console
 
           });
