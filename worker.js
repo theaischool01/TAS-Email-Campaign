@@ -255,10 +255,15 @@ async function processQueue() {
 
           console.log(`📦 PREPARING: HTML Size ${Math.round(html.length / 1024)}KB for ${recipient.email}`);
 
+          // M8: RFC 8058 One-Click Unsubscribe & M7: Tracking Tags
+          const nodemailer = require('nodemailer');
+          const transporter = nodemailer.createTransport({
+            SES: { ses: sesClient, aws: require('@aws-sdk/client-ses') }
+          });
+
           try {
-            // M8: RFC 8058 One-Click Unsubscribe headers using SendRawEmailCommand
-            const mailOptions = {
-              from: `"${campaign.senderName || 'Email Campaign'}" <${campaign.senderEmail || process.env.SES_FROM_EMAIL}>`,
+            await transporter.sendMail({
+              from: `"${fromName}" <${fromEmail}>`,
               to: recipient.email,
               subject: campaign.subject,
               html: html,
@@ -268,14 +273,11 @@ async function processQueue() {
                   comment: 'One-Click Unsubscribe'
                 }
               },
-              Headers: {
-                'List-Unsubscribe': `<${unsubscribeUrl}>`,
-                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+              headers: {
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                'X-SES-MESSAGE-TAGS': `campaignId=${campaignId}, contactId=${contactId}`
               }
-            }));
-
-            // Respect SES rate limits (approx 5/sec)
-            await new Promise(resolve => setTimeout(resolve, 200));
+            });
 
             // Update DB: Increment totalSent
             const updatedCampaign = await prisma.campaign.update({

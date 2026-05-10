@@ -14,13 +14,24 @@ async function UnsubscribeContent({
   let contactEmail = email
 
   try {
-    if (cid) {
-      const contact = await (prisma as any).contact.update({
-        where: { id: cid },
-        data: { status: 'UNSUBSCRIBED' }
-      })
-      contactEmail = contact.email
-      success = true
+    if (cid && cid !== 'unknown') {
+      try {
+        const contact = await (prisma as any).contact.update({
+          where: { id: cid },
+          data: { status: 'UNSUBSCRIBED' }
+        })
+        contactEmail = contact.email
+        success = true
+      } catch (e) {
+        // If ID update fails, fall back to email
+        if (email) {
+          await (prisma as any).contact.updateMany({
+            where: { email },
+            data: { status: 'UNSUBSCRIBED' }
+          })
+          success = true
+        }
+      }
     } else if (email) {
       await (prisma as any).contact.updateMany({
         where: { email },
@@ -28,7 +39,7 @@ async function UnsubscribeContent({
       })
       success = true
     } else {
-      error = "Missing unsubscribe information."
+      error = "We couldn't identify your subscription automatically. Please contact support or try again from the email link."
     }
 
     if (success && campaign) {
