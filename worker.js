@@ -1,7 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { SES } = require('@aws-sdk/client-ses');
+const { SES, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const http = require('http');
@@ -27,7 +27,7 @@ const awsConfig = {
 const sqsClient = new SQSClient(awsConfig);
 const ses = new SES(awsConfig);
 const transporter = nodemailer.createTransport({
-  SES: { ses, aws: require('@aws-sdk/client-ses') }
+  SES: { ses, aws: { SendRawEmailCommand } }
 });
 
 const QUEUE_NAME = "EmailDispatchQueue";
