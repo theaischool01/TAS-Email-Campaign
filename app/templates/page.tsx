@@ -34,28 +34,60 @@ const TemplateCard = React.memo<{
   session: any
 }>(({ template, viewMode, onDuplicate, onDelete, isAdmin, isManager, session }) => {
   return (
-    <Card key={template.id} className="hover:shadow-lg transition-all duration-200 cursor-pointer hover:scale-[1.02] border border-gray-200">
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
+    <Card key={template.id} className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 overflow-hidden flex flex-col h-full bg-white">
+      {/* Visual Preview Section - Increased height and improved scaling */}
+      <div className="relative h-64 w-full bg-slate-50 overflow-hidden border-b">
+        {/* Category Badge overlay */}
+        <div className="absolute top-3 left-3 z-10">
+          <Badge className="bg-white/90 text-blue-600 hover:bg-white backdrop-blur shadow-sm border-none font-bold text-[10px] uppercase">
+            {template.category || 'General'}
+          </Badge>
+        </div>
+        
+        {/* Miniature Live Preview via Iframe - Adjusted for full height visibility */}
+        <div className="absolute inset-0 pointer-events-none transform origin-top-left scale-[0.4] w-[250%] h-[250%] p-2">
+          <iframe 
+            srcDoc={`<style>body{zoom:0.8; overflow:hidden;}</style>${template.html}`} 
+            title={template.name}
+            className="w-full h-full border-none pointer-events-none bg-white shadow-sm"
+            scrolling="no"
+          />
+        </div>
+        
+        {/* Hover overlay with actions */}
+        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
+          <Link href={`/templates/preview/${template.id}`}>
+            <Button variant="secondary" size="sm" className="font-semibold">
+              <Eye className="h-4 w-4 mr-2" />
+              Preview
+            </Button>
+          </Link>
+          <Link href={`/templates/editor/${template.id}`}>
+            <Button size="sm" className="font-semibold">
+              <Edit className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      <CardHeader className="p-4 pb-2">
+        <div className="flex justify-between items-start gap-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-lg font-semibold truncate text-gray-900">{template.name}</CardTitle>
-            {template.description && (
-              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{template.description}</p>
-            )}
+            <CardTitle className="text-base font-bold truncate text-gray-900 group-hover:text-blue-600 transition-colors">
+              {template.name}
+            </CardTitle>
+            <p className="text-xs text-gray-500 mt-1">
+              Updated {new Date(template.updatedAt).toLocaleDateString()}
+            </p>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-gray-900">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <Link href={`/templates/editor/${template.id}`}>
-                <DropdownMenuItem>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-              </Link>
+            <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={() => onDuplicate(template.id)}>
                 <Copy className="h-4 w-4 mr-2" />
                 Duplicate
@@ -64,7 +96,7 @@ const TemplateCard = React.memo<{
               {(isAdmin || (isManager && template.createdBy === session?.user?.id)) && (
                 <DropdownMenuItem 
                   onClick={() => onDelete(template.id)}
-                  className="text-red-600"
+                  className="text-red-600 focus:text-red-700 focus:bg-red-50"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete
@@ -74,32 +106,11 @@ const TemplateCard = React.memo<{
           </DropdownMenu>
         </div>
       </CardHeader>
-      <CardContent>
-        {/* Template Preview */}
-        <div className="h-32 bg-gray-50 rounded-lg mb-3 flex items-center justify-center border">
-          <div className="text-gray-400 text-sm">Preview</div>
-        </div>
-        
-        {/* Template Info */}
-        <div className="space-y-2 text-sm text-gray-600">
-          <div>Created by: {template.user?.name || 'Unknown'}</div>
-          <div>Updated: {new Date(template.updatedAt).toLocaleDateString()}</div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 mt-4">
-          <Link href={`/templates/preview/${template.id}`}>
-            <Button variant="outline" size="sm" className="flex-1">
-              <Eye className="h-4 w-4 mr-2" />
-              Preview
-            </Button>
-          </Link>
-          <Link href={`/templates/editor/${template.id}`}>
-            <Button size="sm" className="flex-1">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-          </Link>
+      
+      <CardContent className="p-4 pt-0 mt-auto">
+        <div className="flex items-center gap-2 text-[11px] text-gray-400 font-medium">
+          <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+          Created by {template.user?.name || 'System'}
         </div>
       </CardContent>
     </Card>

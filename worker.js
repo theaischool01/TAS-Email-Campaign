@@ -210,39 +210,63 @@ async function processQueue() {
           const fromName = campaign.senderName || "Marketing Team";
           
           // Process HTML for tracking
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          // M8: Inject Tracking & Unsubscribe (Robust Version)
           const contactId = recipient.contactId || 'unknown';
           let html = campaign.template?.html || "No content";
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId || ''}&campaign=${campaignId}`;
+          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId || 'unknown'}" width="1" height="1" style="display:none !important;" />`;
           
-          // Inject Open Tracking Pixel
-          const pixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none" />`;
-          html = html.includes('</body>') ? html.replace('</body>', `${pixel}</body>`) : html + pixel;
+          // Replace placeholders
+          html = html.replace(/{{first_name}}/gi, recipient.firstName || 'Friend');
+          html = html.replace(/{{last_name}}/gi, recipient.lastName || '');
+          html = html.replace(/{{email}}/gi, recipient.email);
+          html = html.replace(/{{APP_URL}}/gi, appUrl);
+          html = html.replace(/{{UNSUBSCRIBE_URL}}/gi, unsubscribeUrl);
           
-          // Inject Click Tracking (Wrap links)
-          html = html.replace(/href="([^"]+)"/g, (match, url) => {
-            if (url.startsWith('http') && !url.includes(appUrl)) {
-              return `href="${appUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}"`;
-            }
-            return match;
-          });
-
-          // M8: Inject Unsubscribe Link
-          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}`;
           const unsubscribeHtml = `
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-family: sans-serif; font-size: 12px;">
-              <p>You received this because you're subscribed to our newsletter.</p>
-              <p><a href="${unsubscribeUrl}" style="color: #0066cc; text-decoration: underline;">Unsubscribe</a></p>
+            <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5;">
+              <p style="margin: 0 0 10px;">You're receiving this because you're part of the ${campaign.name || 'our'} community.</p>
+              <p style="margin: 0;"><a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe from these emails</a> | <a href="#" style="color: #64748b; text-decoration: underline;">Manage Preferences</a></p>
+              <p style="margin: 15px 0 0;">&copy; ${new Date().getFullYear()} ${process.env.COMPANY_NAME || 'Email Platform'}. All rights reserved.</p>
             </div>
           `;
-          html = html.includes('</body>') ? html.replace('</body>', `${unsubscribeHtml}</body>`) : html + unsubscribeHtml;
+
+          // Inject before last </body> or </html>, or just append
+          const bodyTagRegex = /<\/\s*body\s*>|<\/\s*html\s*>/gi;
+          const matches = [...html.matchAll(bodyTagRegex)];
+          
+          if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
+            const index = lastMatch.index;
+            html = html.substring(0, index) + trackingPixel + "\n" + unsubscribeHtml + "\n" + html.substring(index);
+          } else {
+            html = html + "\n" + trackingPixel + "\n" + unsubscribeHtml;
+          }
+
+          if (!html || html.trim() === "" || html === "No content") {
+            console.error(`❌ CANNOT SEND: Campaign ${campaignId} has no content.`);
+            await sqsClient.send(new DeleteMessageCommand({
+              QueueUrl: qUrl,
+              ReceiptHandle: message.ReceiptHandle
+            }));
+            continue;
+          }
+
+          console.log(`📦 PREPARING: HTML Size ${Math.round(html.length / 1024)}KB for ${recipient.email}`);
 
           try {
             await sesClient.send(new SendEmailCommand({
-              Source: `"${fromName}" <${fromEmail}>`,
+              Source: `"${campaign.senderName || 'Email Campaign'}" <${campaign.senderEmail || process.env.SES_FROM_EMAIL}>`,
               Destination: { ToAddresses: [recipient.email] },
               Message: {
-                Subject: { Data: campaign.subject },
-                Body: { Html: { Data: html } }
+                Subject: { Data: campaign.subject, Charset: 'UTF-8' },
+                Body: { 
+                  Html: { 
+                    Data: html,
+                    Charset: 'UTF-8'
+                  } 
+                }
               },
               ConfigurationSetName: process.env.SES_CONFIG_SET || "CampaignTracking",
               Tags: [

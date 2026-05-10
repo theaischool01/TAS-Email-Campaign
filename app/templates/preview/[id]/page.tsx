@@ -148,30 +148,52 @@ export default function TemplatePreviewPage() {
             </div>
           </div>
 
-          {/* Email Preview */}
+          {/* Email Preview Container */}
           <div 
-            className="bg-white"
+            className="bg-white p-4"
             style={{ 
-              width: getPreviewWidth(),
-              height: '600px',
+              width: '100%',
+              maxWidth: getPreviewWidth(),
               margin: '0 auto',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              overflow: 'hidden'
             }}
           >
-            <div 
-              dangerouslySetInnerHTML={{
-                __html: replaceMergeTags(template.html) 
-              }}
-              style={{
-                minHeight: '100%',
-                fontFamily: 'Arial, sans-serif',
-                fontSize: '14px',
-                lineHeight: '1.6',
-                color: '#333'
-              }}
-            />
+            <div className="border shadow-sm rounded-lg overflow-hidden bg-white">
+              <iframe 
+                srcDoc={`
+                  <!DOCTYPE html>
+                  <html>
+                    <head>
+                      <style>
+                        body { margin: 0; padding: 0; background-color: white; }
+                        /* Ensure full visibility */
+                        html, body { height: auto !important; min-height: 100%; }
+                      </style>
+                    </head>
+                    <body>
+                      ${replaceMergeTags(template.html)}
+                    </body>
+                  </html>
+                `}
+                title="Email Preview"
+                className="w-full"
+                style={{ 
+                  height: '1200px', // Large initial height
+                  border: 'none',
+                }}
+                onLoad={(e) => {
+                  // Auto-adjust height after load
+                  const iframe = e.currentTarget;
+                  if (iframe.contentWindow) {
+                    try {
+                      iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
+                    } catch (e) {
+                      // Fallback for cross-origin if any
+                      iframe.style.height = '2000px';
+                    }
+                  }
+                }}
+              />
+            </div>
           </div>
 
           {/* Sample Data Info */}
