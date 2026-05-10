@@ -171,7 +171,7 @@ async function processQueue() {
                 Body: { Html: { Data: fullHtml } }
               }
             },
-            ConfigurationSetName: 'Default', // CRITICAL: This must match the name in your AWS SES Console
+            ConfigurationSetName: 'CampaignTracking', // MATCHES: Your AWS SES Console name
             // ListManagementOptions removed to avoid NotFoundException if list isn't created in AWS Console
 
           });
