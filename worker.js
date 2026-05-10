@@ -3,6 +3,16 @@ const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 require('dotenv').config();
+const http = require('http');
+
+// Render requires a web server to stay alive on the free tier
+const PORT = process.env.PORT || 3001;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Worker is running and healthy!\n');
+}).listen(PORT, () => {
+  console.log(`🌐 Health check server listening on port ${PORT}`);
+});
 
 const prisma = new PrismaClient();
 console.log('🔗 DB Connection check:', process.env.DATABASE_URL ? 'URL Found' : 'URL Missing');
