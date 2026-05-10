@@ -59,6 +59,7 @@ async function ReportContent({ id }: { id: string }) {
     { label: "Clicked", value: campaign.totalClicked, icon: MousePointer2, color: "text-green-600", bg: "bg-green-50", rate: `${clickRate.toFixed(1)}%` },
     { label: "Bounced", value: campaign.totalBounced, icon: AlertOctagon, color: "text-red-600", bg: "bg-red-50", rate: `${bounceRate.toFixed(1)}%` },
     { label: "Unsubscribed", value: campaign.totalUnsubscribed, icon: UserX, color: "text-orange-600", bg: "bg-orange-50" },
+    { label: "Complaints", value: campaign.totalComplained, icon: AlertOctagon, color: "text-yellow-600", bg: "bg-yellow-50" },
   ]
 
   return (
@@ -74,7 +75,7 @@ async function ReportContent({ id }: { id: string }) {
       </div>
 
       {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-10">
         {stats.map((stat, i) => (
           <Card key={i} className="border-none shadow-md overflow-hidden">
             <div className={`h-1 ${stat.bg.replace('bg-', 'bg-')}`} />
