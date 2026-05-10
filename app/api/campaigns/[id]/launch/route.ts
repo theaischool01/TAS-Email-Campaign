@@ -22,7 +22,7 @@ export async function POST(
     }
 
     // Fetch campaign with full relations
-    const existingCampaign = await prisma.campaign.findUnique({
+    let existingCampaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
         recipientLists: {
@@ -51,7 +51,7 @@ export async function POST(
         },
         excludedLists: true,
         template: {
-          select: { id: true, name: true, html: true },
+          select: { id: true, name: true, html: true, json: true },
         },
         user: {
           select: { id: true, name: true, email: true },
@@ -98,7 +98,7 @@ export async function POST(
 
     // Double-check template existence (Race condition protection)
     if (!existingCampaign.templateId || !existingCampaign.template?.html) {
-      console.log("🔄 LAUNCH: Template missing, refetching with delay to prevent race condition...")
+      console.log("🔄 LAUNCH: Template missing or HTML empty, refetching with delay to prevent race condition...")
       await new Promise(resolve => setTimeout(resolve, 800)) // Wait 800ms
       const refreshedCampaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
@@ -110,8 +110,21 @@ export async function POST(
         }
       })
       if (refreshedCampaign) {
+        console.log("✅ LAUNCH: Campaign refreshed successfully")
         existingCampaign = refreshedCampaign
       }
+    }
+
+    // TARGETED BACKEND INVESTIGATION LOGS
+    const template = existingCampaign.template as any
+    console.log("🔍 [INVESTIGATION] TEMPLATE OBJECT:", JSON.stringify(template, null, 2))
+    if (template) {
+      console.log("🔍 [INVESTIGATION] TEMPLATE KEYS:", Object.keys(template))
+      console.log("🔍 [INVESTIGATION] HTML FIELD:", template.html)
+      console.log("🔍 [INVESTIGATION] CONTENT FIELD:", template.content)
+      console.log("🔍 [INVESTIGATION] BODY FIELD:", template.body)
+      console.log("🔍 [INVESTIGATION] JSON FIELD:", template.json)
+      console.log("🔍 [INVESTIGATION] HTML LENGTH:", template.html?.length || 0)
     }
 
     // DEBUG: Log campaign state
@@ -121,7 +134,7 @@ export async function POST(
       templateId: existingCampaign.templateId,
       hasTemplateRelation: !!existingCampaign.template,
       hasTemplateHtml: !!existingCampaign.template?.html,
-      recipientCount: existingCampaign.recipientLists?.length || 0
+      recipientCount: (existingCampaign as any).recipientLists?.length || 0
     })
 
     // Validate template HTML exists

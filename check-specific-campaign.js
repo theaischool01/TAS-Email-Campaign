@@ -1,50 +1,74 @@
-
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const campaignId = "cmp06qme30001l204jewmkm0y";
-
-async function checkSpecific() {
-  console.log(`🔍 SPECIFIC AUDIT: Fetching campaign ${campaignId}...`);
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    include: {
-      template: true
-    }
-  });
-
-  if (!campaign) {
-    console.log("❌ ERROR: Campaign not found!");
-    process.exit(1);
-  }
-
-  console.log("--- CAMPAIGN DATA ---");
-  console.log(`ID:           ${campaign.id}`);
-  console.log(`Name:         ${campaign.name}`);
-  console.log(`Status:       ${campaign.status}`);
-  console.log(`TemplateId:   ${campaign.templateId}`);
-  console.log(`Has Template: ${!!campaign.template}`);
+async function checkSpecificCampaign(campaignId) {
+  console.log(`🔍 AUDITING CAMPAIGN: ${campaignId}`);
   
-  if (campaign.template) {
-    console.log(`Template Name: ${campaign.template.name}`);
-    console.log(`Template HTML: ${campaign.template.html ? campaign.template.html.length : 0} chars`);
-    if (campaign.template.html) {
-      console.log(`Preview: ${campaign.template.html.substring(0, 100)}...`);
-    }
-  } else if (campaign.templateId) {
-    console.log("❌ CRITICAL: TemplateId is set but relation is NULL!");
-    
-    // Try to fetch template directly
-    const directTemplate = await prisma.emailTemplate.findUnique({
-      where: { id: campaign.templateId }
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        template: true
+      }
     });
-    console.log(`Direct Fetch Result: ${!!directTemplate}`);
-  }
 
-  process.exit(0);
+    if (!campaign) {
+      console.log("❌ Campaign not found");
+      return;
+    }
+
+    console.log("📋 CAMPAIGN DATA:");
+    console.log(`- Status: ${campaign.status}`);
+    console.log(`- TemplateID: ${campaign.templateId}`);
+    
+    if (campaign.template) {
+      const t = campaign.template;
+      console.log("📄 TEMPLATE DATA (EmailTemplate Table):");
+      console.log(`- ID: ${t.id}`);
+      console.log(`- Name: ${t.name}`);
+      console.log(`- HTML Field Length: ${t.html ? t.html.length : 'NULL/UNDEFINED'}`);
+      console.log(`- HTML Field Snippet: ${t.html ? t.html.substring(0, 50) + '...' : 'N/A'}`);
+      console.log(`- JSON Field Length: ${t.json ? t.json.length : 'NULL/UNDEFINED'}`);
+      
+      // Check for common alternative field names just in case Prisma/DB is out of sync
+      console.log("🧪 CHECKING ALTERNATIVE FIELDS:");
+      console.log(`- 'content' exists: ${'content' in t}`);
+      console.log(`- 'body' exists: ${'body' in t}`);
+      console.log(`- 'templateHtml' exists: ${'templateHtml' in t}`);
+      
+      if (t.html === "" || t.html === null) {
+        console.log("⚠️ WARNING: HTML field is EMPTY for this template ID in the database.");
+      } else {
+        console.log("✅ HTML content IS present in the database.");
+      }
+    } else {
+      console.log("❌ NO TEMPLATE RELATION found for this campaign.");
+      if (campaign.templateId) {
+        console.log(`🔍 Searching directly for template record with ID: ${campaign.templateId}...`);
+        const directT = await prisma.emailTemplate.findUnique({
+          where: { id: campaign.templateId }
+        });
+        if (directT) {
+          console.log("✅ Template record FOUND directly, but relation was broken.");
+          console.log(`- HTML Length: ${directT.html ? directT.html.length : 'EMPTY'}`);
+        } else {
+          console.log("❌ Template record DOES NOT EXIST in EmailTemplate table.");
+        }
+      }
+    }
+
+  } catch (err) {
+    console.error("❌ ERROR DURING AUDIT:", err);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-checkSpecific().catch(err => {
-  console.error(err);
+// Get campaign ID from command line
+const cid = process.argv[2];
+if (!cid) {
+  console.log("Usage: node check-specific-campaign.js <campaignId>");
   process.exit(1);
-});
+}
+
+checkSpecificCampaign(cid);
