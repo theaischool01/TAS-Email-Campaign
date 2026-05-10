@@ -60,7 +60,7 @@ export async function PUT(
         where: { id: { in: validatedData.recipientListIds } },
         select: { id: true }
       })
-      validListIds = existingLists.map((l: any) => l.id)
+      validListIds = Array.from(new Set(existingLists.map((l: any) => l.id)))
     }
 
     if (validatedData.recipientSegmentIds && validatedData.recipientSegmentIds.length > 0) {
@@ -68,7 +68,7 @@ export async function PUT(
         where: { id: { in: validatedData.recipientSegmentIds } },
         select: { id: true }
       })
-      validSegmentIds = existingSegments.map((s: any) => s.id)
+      validSegmentIds = Array.from(new Set(existingSegments.map((s: any) => s.id)))
     }
 
     if (validatedData.excludedListIds && validatedData.excludedListIds.length > 0) {
@@ -76,7 +76,7 @@ export async function PUT(
         where: { id: { in: validatedData.excludedListIds } },
         select: { id: true }
       })
-      validExcludedIds = existingExcluded.map((l: any) => l.id)
+      validExcludedIds = Array.from(new Set(existingExcluded.map((l: any) => l.id)))
     }
 
     // Update campaign relations using a transaction to prevent unique constraint violations
