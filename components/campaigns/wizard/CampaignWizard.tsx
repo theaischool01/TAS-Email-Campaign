@@ -66,7 +66,7 @@ export function useCampaignWizard() {
     isDirty: false,
     hasInteracted: false,
     submitAttempted: false,
-    status: 'DRAFT'
+    status: CampaignStatus.DRAFT,
   })
 
   const [loading, setLoading] = useState(true)
