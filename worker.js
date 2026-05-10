@@ -171,14 +171,8 @@ async function processQueue() {
                 Body: { Html: { Data: fullHtml } }
               }
             },
-            ListManagementOptions: {
-              ContactListName: 'GlobalUnsubscribe', // SES managed list name (optional)
-              TopicName: 'Campaign'
-            },
-            EmailAttributes: [
-              { Name: 'campaignId', Value: campaignId },
-              { Name: 'contactId', Value: contactId }
-            ]
+            // ListManagementOptions removed to avoid NotFoundException if list isn't created in AWS Console
+
           });
 
           await sesClient.send(sendCommand);
