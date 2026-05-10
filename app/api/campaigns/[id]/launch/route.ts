@@ -97,8 +97,23 @@ export async function POST(
     }
 
     // Validate template HTML exists
-    if (!existingCampaign.template?.html) {
-      console.log("❌ LAUNCH: Template missing or has no HTML", { templateId: existingCampaign.templateId })
+    let templateHtml = existingCampaign.template?.html
+    
+    // Self-healing: If HTML is missing from the relation, try to fetch the template record directly
+    if (!templateHtml && existingCampaign.templateId) {
+      console.log("🔍 LAUNCH: Template HTML missing from relation, attempting self-healing...", { templateId: existingCampaign.templateId })
+      const directTemplate = await prisma.emailTemplate.findUnique({
+        where: { id: existingCampaign.templateId },
+        select: { html: true }
+      })
+      if (directTemplate?.html) {
+        templateHtml = directTemplate.html
+        console.log("✅ LAUNCH: Successfully recovered template HTML via self-healing")
+      }
+    }
+
+    if (!templateHtml) {
+      console.log("❌ LAUNCH: Template missing or has no HTML content", { templateId: existingCampaign.templateId })
       return NextResponse.json(
         { error: "Campaign template has no HTML content. Please select/save a template in Step 3." },
         { status: 422 }
