@@ -217,8 +217,7 @@ export async function POST(
       const messages = recipients.map(r => ({
         campaignId,
         recipient: {
-          ...r,
-          contactId: undefined // Could add if needed
+          ...r
         }
       }))
 
