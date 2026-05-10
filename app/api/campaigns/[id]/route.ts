@@ -197,6 +197,15 @@ export async function PUT(
 
     // Parse and validate request body
     const body = await request.json()
+    // TRACE: Log every save to a file for forensic auditing
+    try {
+      const fs = require('fs')
+      const traceLog = `\n--- SAVE TRACE ${new Date().toISOString()} ---\nID: ${campaignId}\nBODY: ${JSON.stringify(body, null, 2)}\n`
+      fs.appendFileSync('save_trace.log', traceLog)
+    } catch (e) {
+      console.warn("⚠️ Failed to write to save_trace.log", e)
+    }
+
     console.log("📝 Request body:", body)
 
     const validatedData = updateCampaignSchema.parse(body)

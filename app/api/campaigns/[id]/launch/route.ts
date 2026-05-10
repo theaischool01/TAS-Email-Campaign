@@ -147,6 +147,11 @@ export async function POST(
       }
     }
 
+    if (templateHtml) {
+      console.log("📄 LAUNCH: Template HTML Preview (First 200 chars):", templateHtml.substring(0, 200).replace(/\n/g, ' '))
+      console.log("📄 LAUNCH: HTML total length:", templateHtml.length)
+    }
+
     if (!templateHtml) {
       console.log("❌ LAUNCH: Critical Failure - Template HTML is empty in DB", { 
         templateId: existingCampaign.templateId,
