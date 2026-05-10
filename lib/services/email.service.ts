@@ -16,6 +16,7 @@ export interface EmailRecipient {
   email: string
   firstName?: string | null
   lastName?: string | null
+  contactId?: string | null
 }
 
 export interface SendEmailParams {
