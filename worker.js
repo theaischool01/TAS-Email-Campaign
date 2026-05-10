@@ -1,7 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { SESClient } = require('@aws-sdk/client-ses');
+const { SES } = require('@aws-sdk/client-ses');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const http = require('http');
@@ -25,9 +25,9 @@ const awsConfig = {
 };
 
 const sqsClient = new SQSClient(awsConfig);
-const sesClient = new SESClient(awsConfig);
+const ses = new SES(awsConfig);
 const transporter = nodemailer.createTransport({
-  SES: { ses: sesClient, aws: require('@aws-sdk/client-ses') }
+  SES: { ses, aws: require('@aws-sdk/client-ses') }
 });
 
 const QUEUE_NAME = "EmailDispatchQueue";
@@ -109,7 +109,6 @@ async function processQueue() {
       }));
 
       if (!response.Messages || response.Messages.length === 0) {
-        // console.log('😴 Queue empty, waiting...');
         continue;
       }
 
@@ -127,7 +126,12 @@ async function processQueue() {
             continue;
           }
 
-          const fromEmail = campaign.senderEmail || process.env.SES_FROM_EMAIL;
+          // FIX: Ensure we use a verified sender email
+          let fromEmail = campaign.senderEmail || process.env.SES_FROM_EMAIL;
+          if (fromEmail.includes('example.com')) {
+            fromEmail = process.env.SES_FROM_EMAIL;
+          }
+          
           const fromName = campaign.senderName || "Marketing Team";
           const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           const contactId = recipient.contactId || 'unknown';
@@ -173,6 +177,20 @@ async function processQueue() {
         } catch (error) {
           console.error(`❌ Error sending to ${recipient.email}:`, error);
           await prisma.campaign.update({ where: { id: campaignId }, data: { totalFailed: { increment: 1 } } });
+          
+          // Log specific error in activity log
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId,
+              action: 'SEND_FAILED',
+              actorId: 'system-worker',
+              metadata: { 
+                email: recipient.email, 
+                error: error.message 
+              }
+            }
+          });
+
           await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
         }
       }
