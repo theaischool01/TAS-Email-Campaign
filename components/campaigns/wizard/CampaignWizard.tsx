@@ -789,6 +789,52 @@ export function useCampaignWizard() {
     }
   }, [state.campaignId, state.selectedRecipients, state.excludedRecipients, session])
 
+  const handleFinish = async () => {
+    try {
+      setLaunching(true)
+      
+      // FORCE-SYNC: Save current state one last time before launching to ensure DB is up to date
+      console.log("💾 LAUNCH: Performing pre-launch force-sync...")
+      const syncResponse = await fetch(`/api/campaigns/${state.campaignId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          templateId: state.selectedTemplate,
+          currentStep: state.currentStep,
+          status: 'DRAFT' // Ensure it stays in draft for the launch API
+        })
+      })
+      
+      if (!syncResponse.ok) {
+        console.warn("⚠️ LAUNCH: Pre-launch sync warning (non-fatal):", await syncResponse.text())
+      } else {
+        console.log("✅ LAUNCH: Pre-launch force-sync successful")
+      }
+
+      console.log("🚀 LAUNCH: Sending launch request for campaign:", state.campaignId)
+      const response = await fetch(`/api/campaigns/${state.campaignId}/launch`, {
+        method: 'POST',
+      })
+      
+      const payload = await response.json()
+      console.log("📡 LAUNCH: Response status:", response.status)
+      console.log("📡 LAUNCH: Response payload:", payload)
+
+      if (response.ok) {
+        toast.success('Campaign launched successfully!')
+        router.push(`/campaigns/${state.campaignId}/report`)
+      } else {
+        console.error("❌ LAUNCH: Failed:", payload)
+        toast.error(payload.error || 'Failed to launch campaign')
+      }
+    } catch (error) {
+      console.error("❌ LAUNCH: Critical error:", error)
+      toast.error('An unexpected error occurred while launching')
+    } finally {
+      setLaunching(false)
+    }
+  }
+
   // Calculate recipient statistics
   const recipientStats = useMemo(() => {
     if (state.selectedRecipients.length === 0) {
