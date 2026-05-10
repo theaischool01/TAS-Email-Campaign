@@ -148,20 +148,43 @@ export async function POST(
     }
 
     if (!templateHtml) {
-      console.log("❌ LAUNCH: Template missing or has no HTML content", { 
+      console.log("❌ LAUNCH: Critical Failure - Template HTML is empty in DB", { 
         templateId: existingCampaign.templateId,
-        relationFound: !!existingCampaign.template
+        relationFound: !!existingCampaign.template,
+        templateName: (existingCampaign as any).template?.name || "Unknown"
       })
-      return NextResponse.json(
-        { 
-          error: "Campaign template has no HTML content",
-          debug: {
-            templateId: existingCampaign.templateId,
-            relationFound: !!existingCampaign.template
-          }
-        },
-        { status: 422 }
-      )
+      
+      // One last try: if we have a template name, try to find another template with same name that HAS html
+      let fallbackHtml = null;
+      if ((existingCampaign as any).template?.name) {
+        const fallback = await prisma.emailTemplate.findFirst({
+          where: { 
+            name: (existingCampaign as any).template.name,
+            html: { not: "" }
+          },
+          select: { html: true }
+        });
+        if (fallback?.html) {
+          fallbackHtml = fallback.html;
+          templateHtml = fallback.html;
+          console.log("🩹 LAUNCH: Successfully applied emergency name-based fallback HTML");
+        }
+      }
+
+      if (!templateHtml) {
+        return NextResponse.json(
+          { 
+            error: "Campaign template has no HTML content",
+            details: "The selected template record exists in the database but its HTML content is empty. Please re-save the template or visit /api/templates/seed to restore defaults.",
+            debug: {
+              templateId: existingCampaign.templateId,
+              templateName: (existingCampaign as any).template?.name,
+              dbStatus: "Template record found but html column is empty"
+            }
+          },
+          { status: 422 }
+        )
+      }
     }
 
     // ─── Build recipient list ───────────────────────────────────────────────

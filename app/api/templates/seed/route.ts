@@ -103,6 +103,7 @@ export async function GET(request: NextRequest) {
       });
 
       if (!existing) {
+        console.log(`✨ SEED: Creating new template: ${tpl.name}`)
         await prisma.emailTemplate.create({
           data: {
             ...tpl,
@@ -111,6 +112,16 @@ export async function GET(request: NextRequest) {
           }
         });
         createdCount++;
+      } else if (!existing.html || existing.html.length < 10) {
+        // REPAIR: If template exists but has no HTML, restore it
+        console.log(`🩹 SEED: Repairing existing template (missing HTML): ${tpl.name}`)
+        await prisma.emailTemplate.update({
+          where: { id: existing.id },
+          data: { html: tpl.html }
+        });
+        createdCount++;
+      } else {
+        console.log(`✅ SEED: Template already healthy: ${tpl.name}`)
       }
     }
 
