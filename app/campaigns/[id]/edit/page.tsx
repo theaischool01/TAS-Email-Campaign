@@ -208,6 +208,7 @@ export default function EditCampaignPage() {
                     contactLists={wizard.contactLists}
                     templates={wizard.templates}
                     campaignId={wizard.state.campaignId}
+                    status={wizard.state.status}
                     onFinish={handleFinish}
                     isLaunching={isLaunching}
                   />

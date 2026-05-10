@@ -29,6 +29,7 @@ export async function GET(
         scheduledAt: true,
         sentAt: true,
         createdBy: true,
+        createdAt: true,
       }
     })
 

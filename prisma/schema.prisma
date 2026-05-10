@@ -162,6 +162,7 @@ enum CampaignStatus {
   SENT
   PAUSED
   CANCELLED
+  FAILED
 }
 
 model EmailTemplate {
@@ -193,6 +194,8 @@ model Campaign {
   senderName            String?
   senderEmail           String?
   replyToEmail           String?
+  isRecurring           Boolean         @default(false)
+  recurrenceInterval    String?         // DAILY, WEEKLY, MONTHLY
   status                CampaignStatus @default(DRAFT)
   scheduledAt           DateTime?
   sentAt                DateTime?
@@ -204,6 +207,7 @@ model Campaign {
   totalSent             Int             @default(0)
   totalOpened           Int             @default(0)
   totalClicked          Int             @default(0)
+  totalFailed           Int             @default(0)
   tags                  String?         // JSON array of tags
   currentStep           Int             @default(1)  // Wizard progress tracking
   templateId            String?

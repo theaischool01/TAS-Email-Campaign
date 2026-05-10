@@ -1,574 +1,364 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Search, Filter, MoreHorizontal, Edit, Copy, BarChart3, Trash2, Calendar, Send, Clock, CheckCircle, AlertCircle, PauseCircle, XCircle } from "lucide-react"
+import { useSession } from "next-auth/react"
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  MoreHorizontal, 
+  Edit, 
+  Trash2, 
+  Copy, 
+  Send, 
+  BarChart3, 
+  Clock,
+  Calendar as CalendarIcon,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  PauseCircle,
+  PlayCircle,
+  FileText
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "sonner"
-import { Campaign, CampaignStatus, CampaignFilters } from "@/types/campaign"
-import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
-
-// Status badge colors
-const statusColors = {
-  DRAFT: "bg-gray-100 text-gray-800 border-gray-200",
-  SCHEDULED: "bg-blue-100 text-blue-800 border-blue-200",
-  SENDING: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  SENT: "bg-green-100 text-green-800 border-green-200",
-  PAUSED: "bg-orange-100 text-orange-800 border-orange-200",
-  CANCELLED: "bg-red-100 text-red-800 border-red-200"
-}
-
-const statusIcons = {
-  DRAFT: Edit,
-  SCHEDULED: Calendar,
-  SENDING: Send,
-  SENT: CheckCircle,
-  PAUSED: PauseCircle,
-  CANCELLED: XCircle
-}
-
-interface CampaignListResponse {
-  campaigns: Campaign[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    pages: number
-  }
-}
+import { format } from "date-fns"
 
 export default function CampaignsPage() {
-  const { data: session, status } = useSession()
   const router = useRouter()
-  
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const { data: session } = useSession()
+  const [campaigns, setCampaigns] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState<CampaignFilters>({
-    page: 1,
-    limit: 20
+  const [pagination, setPagination] = useState({ total: 0, pages: 0 })
+  const [filters, setFilters] = useState({
+    search: "",
+    status: "ALL",
+    startDate: "",
+    endDate: "",
+    tags: "",
+    page: 1
   })
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    pages: 0
-  })
 
-  // Check if user can create campaigns
-  const canCreate = useMemo(() => {
-    return session ? CampaignAccessControl.canCreateCampaign(session) : false
-  }, [session])
-
-  // Fetch campaigns
-  const fetchCampaigns = useCallback(async () => {
-    if (!session) return
-
+  const fetchCampaigns = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const params = new URLSearchParams({
-        page: (filters.page || 1).toString(),
-        limit: (filters.limit || 20).toString(),
-        ...(filters.search && { search: filters.search }),
-        ...(filters.status && (filters.status as string) !== 'all' && { status: filters.status as CampaignStatus }),
-        ...(filters.dateRange && { 
-          dateRange: JSON.stringify(filters.dateRange) 
-        }),
-        ...(filters.tags && filters.tags.length > 0 && { 
-          tags: filters.tags.join(',') 
-        }),
-        ...(filters.creator && { creator: filters.creator })
-      })
-
-      const response = await fetch(`/api/campaigns?${params}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch campaigns')
+      const query = new URLSearchParams()
+      if (filters.search) query.append("search", filters.search)
+      if (filters.status !== "ALL") query.append("status", filters.status)
+      if (filters.startDate) {
+        const dateRange = { start: new Date(filters.startDate).toISOString(), end: new Date(filters.endDate || new Date()).toISOString() }
+        query.append("dateRange", JSON.stringify(dateRange))
       }
-
-      const payload = await response.json()
-      const data = payload.data || payload
-      setCampaigns(data.campaigns || [])
-      setPagination(data.pagination)
+      if (filters.tags) query.append("tags", filters.tags)
+      query.append("page", filters.page.toString())
+      
+      const response = await fetch(`/api/campaigns?${query.toString()}`)
+      if (response.ok) {
+        const payload = await response.json()
+        setCampaigns(payload.data.campaigns)
+        setPagination(payload.data.pagination)
+      }
     } catch (error) {
-      console.error('Error fetching campaigns:', error)
-      toast.error('Failed to load campaigns')
+      toast.error("Failed to load campaigns")
     } finally {
       setLoading(false)
     }
-  }, [session, filters])
+  }
 
-  // Initial load
   useEffect(() => {
-    if (status === 'authenticated') {
-      fetchCampaigns()
+    fetchCampaigns()
+  }, [filters])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this campaign?")) return
+    
+    try {
+      const response = await fetch(`/api/campaigns/${id}`, { method: "DELETE" })
+      if (response.ok) {
+        toast.success("Campaign deleted")
+        fetchCampaigns()
+      } else {
+        const err = await response.json()
+        toast.error(err.error || "Failed to delete")
+      }
+    } catch (error) {
+      toast.error("An error occurred")
     }
-  }, [status, fetchCampaigns])
-
-  // Handle filter changes with debouncing
-  const debouncedFetch = useMemo(() => {
-    const timer = setTimeout(() => {
-      fetchCampaigns()
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [fetchCampaigns])
-
-  useEffect(() => {
-    debouncedFetch()
-    return debouncedFetch
-  }, [debouncedFetch])
-
-  // Check permissions for individual campaigns
-  const canEditCampaign = useCallback((campaign: Campaign) => {
-    return session ? CampaignAccessControl.canEditCampaign(session, campaign) : false
-  }, [session])
-
-  const canDeleteCampaign = useCallback((campaign: Campaign) => {
-    return session ? CampaignAccessControl.canDeleteCampaign(session, campaign) : false
-  }, [session])
-
-  const canDuplicateCampaign = useCallback((campaign: Campaign) => {
-    return session ? CampaignAccessControl.canDuplicateCampaign(session, campaign) : false
-  }, [session])
-
-  const canViewAnalytics = useCallback((campaign: Campaign) => {
-    return session ? CampaignAccessControl.canViewAnalytics(session, campaign) : false
-  }, [session])
-
-  // Handle actions
-  const handleEdit = useCallback((campaignId: string) => {
-    router.push(`/campaigns/${campaignId}/edit`)
-  }, [router])
+  }
 
   const handleDuplicate = async (id: string) => {
     try {
-      const response = await fetch(`/api/campaigns/${id}/duplicate`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to duplicate campaign')
+      const response = await fetch(`/api/campaigns/${id}/duplicate`, { method: "POST" })
+      if (response.ok) {
+        toast.success("Campaign duplicated")
+        fetchCampaigns()
       }
-
-      const data = await response.json()
-      toast.success('Campaign duplicated successfully')
-      router.push(`/campaigns/wizard/${data.data.id}`)
-    } catch (error: any) {
-      console.error('Error duplicating campaign:', error)
-      toast.error(error.message)
-    }
-  }
-
-  const handleResend = async (id: string) => {
-    try {
-      const response = await fetch(`/api/campaigns/${id}/resend`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create re-send campaign')
-      }
-
-      const data = await response.json()
-      toast.success('Re-send campaign created as draft')
-      router.push(`/campaigns/wizard/${data.data.id}`)
-    } catch (error: any) {
-      console.error('Error creating re-send campaign:', error)
-      toast.error(error.message)
-    }
-  }
-
-  const handleDelete = useCallback(async (campaignId: string, campaignName: string) => {
-    if (!confirm(`Are you sure you want to delete "${campaignName}"? This action cannot be undone.`)) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'DELETE'
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete campaign')
-      }
-
-      toast.success('Campaign deleted successfully')
-      fetchCampaigns()
     } catch (error) {
-      console.error('Error deleting campaign:', error)
-      toast.error('Failed to delete campaign')
+      toast.error("Failed to duplicate")
     }
-  }, [fetchCampaigns])
-
-  const handleViewReport = useCallback((campaignId: string) => {
-    router.push(`/campaigns/${campaignId}/report`)
-  }, [router])
-
-  // Memoized campaign list
-  const campaignList = useMemo(() => {
-    if (!Array.isArray(campaigns)) return []
-    return campaigns
-  }, [campaigns])
-
-  if (status === 'loading' || loading) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="mb-8">
-          <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-4"></div>
-          <div className="h-10 w-full bg-gray-200 rounded animate-pulse"></div>
-        </div>
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-20 bg-gray-200 rounded animate-pulse"></div>
-          ))}
-        </div>
-      </div>
-    )
   }
 
-  if (status === 'unauthenticated') {
-    router.push('/auth/signin')
-    return null
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'DRAFT': return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'SCHEDULED': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'SENDING': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'SENT': return 'bg-green-100 text-green-800 border-green-200'
+      case 'PAUSED': return 'bg-orange-100 text-orange-800 border-orange-200'
+      case 'CANCELLED': return 'bg-red-100 text-red-800 border-red-200'
+      case 'FAILED': return 'bg-destructive/10 text-destructive border-destructive/20'
+      default: return 'bg-gray-100 text-gray-800'
+    }
   }
+
+  const canCreate = session?.user?.role !== 'VIEWER'
 
   return (
-    <div className="container mx-auto py-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+    <div className="container mx-auto py-8 px-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Campaigns</h1>
-          <p className="text-gray-600 mt-1">
-            Manage your email marketing campaigns
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
+          <p className="text-muted-foreground mt-1">Manage and track your email marketing campaigns</p>
         </div>
-        
         {canCreate && (
-          <Button
-            onClick={() => router.push('/campaigns/new')}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            New Campaign
+          <Button onClick={() => router.push('/campaigns/new')} className="w-full md:w-auto">
+            <Plus className="h-4 w-4 mr-2" /> New Campaign
           </Button>
         )}
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="p-6">
-          <div className="flex flex-col space-y-4">
-            <div className="flex flex-col lg:flex-row gap-4">
-              {/* Search */}
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search campaigns..."
-                    value={filters.search || ''}
-                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
-                    className="pl-10"
-                  />
-                </div>
+      <Card className="mb-8">
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="relative col-span-1 lg:col-span-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search campaigns by name or subject..."
+                  className="pl-9"
+                  value={filters.search}
+                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
+                />
               </div>
-
-              {/* Status Filter */}
-              <div className="w-full lg:w-48">
-                <Select
-                  value={filters.status || 'all'}
-                  onValueChange={(value) => setFilters(prev => ({ 
-                    ...prev, 
-                    status: value === 'all' ? undefined : value as CampaignStatus, 
-                    page: 1 
-                  }))}
+              <div>
+                <Select 
+                  value={filters.status} 
+                  onValueChange={(v) => setFilters(prev => ({ ...prev, status: v, page: 1 }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="ALL">All Status</SelectItem>
                     <SelectItem value="DRAFT">Draft</SelectItem>
                     <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                    <SelectItem value="SENDING">Sending</SelectItem>
                     <SelectItem value="SENT">Sent</SelectItem>
                     <SelectItem value="PAUSED">Paused</SelectItem>
                     <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    <SelectItem value="FAILED">Failed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-4">
-              {/* Date Range: From */}
-              <div className="w-full lg:w-48 flex items-center gap-2">
-                <span className="text-sm text-muted-foreground w-10">From:</span>
-                <Input
-                  type="date"
-                  value={filters.dateRange?.start?.toISOString().split('T')[0] || ''}
-                  onChange={(e) => {
-                    const start = e.target.value ? new Date(e.target.value) : undefined
-                    setFilters(prev => ({ 
-                      ...prev, 
-                      dateRange: { start, end: prev.dateRange?.end },
-                      page: 1 
-                    }))
-                  }}
-                  className="flex-1"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">From</label>
+                <div className="relative">
+                  <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    className="pl-9"
+                    value={filters.startDate}
+                    onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value, page: 1 }))}
+                  />
+                </div>
               </div>
-
-              {/* Date Range: To */}
-              <div className="w-full lg:w-48 flex items-center gap-2">
-                <span className="text-sm text-muted-foreground w-10">To:</span>
-                <Input
-                  type="date"
-                  value={filters.dateRange?.end?.toISOString().split('T')[0] || ''}
-                  onChange={(e) => {
-                    const end = e.target.value ? new Date(e.target.value) : undefined
-                    setFilters(prev => ({ 
-                      ...prev, 
-                      dateRange: { start: prev.dateRange?.start, end },
-                      page: 1 
-                    }))
-                  }}
-                  className="flex-1"
-                />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">To</label>
+                <div className="relative">
+                  <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    className="pl-9"
+                    value={filters.endDate}
+                    onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value, page: 1 }))}
+                  />
+                </div>
               </div>
-
-              {/* Tags Filter */}
-              <div className="w-full lg:w-64">
-                <Input
-                  placeholder="Filter by tags (comma separated)"
-                  value={filters.tags?.join(', ') || ''}
-                  onChange={(e) => {
-                    const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t)
-                    setFilters(prev => ({ 
-                      ...prev, 
-                      tags: tags.length > 0 ? tags : undefined, 
-                      page: 1 
-                    }))
-                  }}
-                />
+              <div className="space-y-1.5 col-span-1 lg:col-span-2">
+                <label className="text-xs font-medium text-muted-foreground">Tags</label>
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter by tags (comma separated)"
+                    className="pl-9"
+                    value={filters.tags}
+                    onChange={(e) => setFilters(prev => ({ ...prev, tags: e.target.value, page: 1 }))}
+                  />
+                </div>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Campaigns Table */}
+      {/* Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>
-            Campaigns ({pagination.total})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {campaignList.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="mx-auto h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <Send className="h-6 w-6 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No campaigns found
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {filters.search || filters.status 
-                  ? 'Try adjusting your filters to see more campaigns.'
-                  : 'Get started by creating your first email campaign.'
-                }
-              </p>
-              {canCreate && !filters.search && !filters.status && (
-                <Button onClick={() => router.push('/campaigns/new')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Campaign
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Campaign Name
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Status
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Recipients
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Send Date
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Open Rate
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Click Rate
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Created By
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-900">
-                      Updated
-                    </th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-900">
-                      Actions
-                    </th>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="py-4 px-4 font-semibold text-sm">Campaign Name</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center">Status</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center">Recipients</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center">Date</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center">Open Rate</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center">Click Rate</th>
+                  <th className="py-4 px-4 font-semibold text-sm">Created By</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <Clock className="h-6 w-6 animate-spin mx-auto mb-2" />
+                      Loading campaigns...
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {campaignList.map((campaign) => {
-                    const StatusIcon = statusIcons[campaign.status]
+                ) : campaigns.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                      No campaigns found matching your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  campaigns.map((campaign) => {
+                    const openRate = campaign.recipientCount > 0 
+                      ? (campaign.totalOpened / campaign.recipientCount) * 100 
+                      : 0;
+                    const clickRate = campaign.recipientCount > 0 
+                      ? (campaign.totalClicked / campaign.recipientCount) * 100 
+                      : 0;
+                      
                     return (
-                      <tr key={campaign.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <div>
-                            <div className="font-medium text-gray-900">
-                              {campaign.name}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              {campaign.subject}
-                            </div>
+                      <tr key={campaign.id} className="border-b hover:bg-muted/10 transition-colors">
+                        <td className="py-4 px-4">
+                          <div className="font-bold text-sm">{campaign.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">{campaign.subject}</div>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <Badge className={`text-[10px] uppercase font-bold px-2 py-0 h-5 ${getStatusBadgeColor(campaign.status)}`}>
+                              {campaign.status}
+                            </Badge>
+                            {campaign.totalFailed > 0 && (
+                              <span className="text-[9px] text-red-600 font-bold flex items-center gap-1">
+                                <AlertCircle className="h-2 w-2" />
+                                {campaign.totalFailed} Failed
+                              </span>
+                            )}
                           </div>
                         </td>
-                        <td className="py-3 px-4">
-                          <Badge 
-                            className={`flex items-center gap-1 w-fit ${statusColors[campaign.status]}`}
-                          >
-                            <StatusIcon className="h-3 w-3" />
-                            {campaign.status}
-                          </Badge>
+                        <td className="py-4 px-4 text-center text-sm">
+                          {campaign.recipientCount?.toLocaleString() || '0'}
                         </td>
-                        <td className="py-3 px-4 text-gray-900">
-                          {campaign.recipientCount.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-gray-900">
+                        <td className="py-4 px-4 text-center text-sm whitespace-nowrap">
                           {campaign.sentAt 
-                            ? new Date(campaign.sentAt).toLocaleDateString()
+                            ? format(new Date(campaign.sentAt), 'PP')
                             : campaign.scheduledAt
-                            ? new Date(campaign.scheduledAt).toLocaleDateString()
+                            ? format(new Date(campaign.scheduledAt), 'Pp')
                             : '-'
                           }
                         </td>
-                        <td className="py-3 px-4 text-gray-900">
-                          {campaign.openRate ? `${(campaign.openRate * 100).toFixed(1)}%` : '-'}
+                        <td className="py-4 px-4 text-center text-sm font-medium">
+                          {campaign.status === 'SENT' || campaign.totalOpened > 0 ? (
+                            <span className={openRate > 0 ? 'text-blue-600' : 'text-muted-foreground'}>
+                              {openRate.toFixed(1)}%
+                            </span>
+                          ) : '-'}
                         </td>
-                        <td className="py-3 px-4 text-gray-900">
-                          {campaign.clickRate ? `${(campaign.clickRate * 100).toFixed(1)}%` : '-'}
+                        <td className="py-4 px-4 text-center text-sm font-medium">
+                          {campaign.status === 'SENT' || campaign.totalClicked > 0 ? (
+                            <span className={clickRate > 0 ? 'text-green-600' : 'text-muted-foreground'}>
+                              {clickRate.toFixed(1)}%
+                            </span>
+                          ) : '-'}
                         </td>
-                        <td className="py-3 px-4 text-gray-900">
-                          {campaign.user?.name || '-'}
+                        <td className="py-4 px-4">
+                          <div className="text-xs font-medium">{campaign.user?.name || 'Unknown'}</div>
                         </td>
-                        <td className="py-3 px-4 text-gray-900">
-                          {new Date(campaign.updatedAt).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center justify-end gap-2">
-                            {canViewAnalytics(campaign) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewReport(campaign.id)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <BarChart3 className="h-4 w-4" />
-                              </Button>
-                            )}
+                        <td className="py-4 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 w-8 p-0"
+                              onClick={() => router.push(`/campaigns/${campaign.id}/report`)}
+                              disabled={campaign.status === 'DRAFT'}
+                            >
+                              <BarChart3 className="h-4 w-4" />
+                            </Button>
                             
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                >
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                {canEditCampaign(campaign) && (
-                                  <DropdownMenuItem onClick={() => handleEdit(campaign.id)}>
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
+                                {['SCHEDULED', 'SENDING', 'PAUSED'].includes(campaign.status) && (
+                                  <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/status`)}>
+                                    <Clock className="h-4 w-4 mr-2 text-blue-600" />
+                                    Manage Status
                                   </DropdownMenuItem>
                                 )}
-                                
-                                {canDuplicateCampaign(campaign) && (
-                                  <DropdownMenuItem onClick={() => handleDuplicate(campaign.id)}>
-                                    <Copy className="h-4 w-4 mr-2" />
-                                    Duplicate
-                                  </DropdownMenuItem>
-                                )}
-
-                                {campaign.status === 'SENT' && canDuplicateCampaign(campaign) && (
-                                  <DropdownMenuItem onClick={() => handleResend(campaign.id)}>
-                                    <Send className="h-4 w-4 mr-2" />
-                                    Re-send to Non-Openers
-                                  </DropdownMenuItem>
-                                )}
-                                
-                                {canDeleteCampaign(campaign) && (
-                                  <DropdownMenuItem 
-                                    onClick={() => handleDelete(campaign.id, campaign.name)}
-                                    className="text-red-600"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                )}
+                                <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/edit`)}>
+                                  <Edit className="h-4 w-4 mr-2" /> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDuplicate(campaign.id)}>
+                                  <Copy className="h-4 w-4 mr-2" /> Duplicate
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => handleDelete(campaign.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
                         </td>
                       </tr>
                     )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between mt-6 pt-6 border-t">
-              <div className="text-sm text-gray-600">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} campaigns
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) - 1 }))}
-                  disabled={pagination.page === 1}
-                >
-                  Previous
-                </Button>
-                
-                <span className="text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.pages}
-                </span>
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFilters(prev => ({ ...prev, page: (prev.page || 1) + 1 }))}
-                  disabled={pagination.page === pagination.pages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

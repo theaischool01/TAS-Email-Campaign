@@ -363,10 +363,13 @@ export async function DELETE(
     }
 
     // Check if campaign can be deleted
-    if (existingCampaign.status === 'SENDING') {
-      console.log("❌ Campaign cannot be deleted while sending")
+    const isSuperAdmin = session.user.role === 'SUPER_ADMIN'
+    const isFinished = existingCampaign.totalSent >= existingCampaign.recipientCount
+    
+    if (existingCampaign.status === 'SENDING' && !isFinished && !isSuperAdmin) {
+      console.log("❌ Campaign cannot be deleted while active sending")
       return NextResponse.json(
-        { error: "Cannot delete campaign while it is being sent" },
+        { error: "Cannot delete campaign while it is actively being sent. Please pause or cancel it first, or wait for it to finish." },
         { status: 409 }
       )
     }
@@ -454,7 +457,6 @@ export async function POST(
     await prisma.campaignActivityLog.create({
       data: {
         campaignId,
-        userId: session.user.id,
         action: 'CAMPAIGN_SCHEDULED',
         actorId: session.user.id,
         metadata: {

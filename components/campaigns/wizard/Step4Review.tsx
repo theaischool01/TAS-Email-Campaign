@@ -10,6 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useState } from "react"
 import { format } from "date-fns"
 import { toast } from "sonner"
@@ -29,6 +37,7 @@ interface Step4ReviewProps {
   contactLists: any[]
   templates: any[]
   campaignId?: string
+  status?: string
   onFinish: () => void
   isLaunching?: boolean
 }
@@ -40,6 +49,7 @@ export function Step4Review({
   contactLists,
   templates,
   campaignId,
+  status = 'DRAFT',
   onFinish,
   isLaunching = false
 }: Step4ReviewProps) {
@@ -61,6 +71,8 @@ export function Step4Review({
   const [scheduleTime, setScheduleTime] = useState("12:00")
   const [isScheduling, setIsScheduling] = useState(false)
   const [schedulePopoverOpen, setSchedulePopoverOpen] = useState(false)
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrenceInterval, setRecurrenceInterval] = useState("DAILY")
 
   const handleTestSend = async () => {
     if (!campaignId) return
@@ -129,7 +141,9 @@ export function Step4Review({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           scheduledAt: scheduledAt.toISOString(),
-          timezone: tz
+          timezone: tz,
+          isRecurring,
+          recurrenceInterval
         })
       })
       
@@ -152,6 +166,45 @@ export function Step4Review({
       toast.error(error.message || "An unexpected error occurred")
     } finally {
       setIsScheduling(false)
+    }
+  }
+
+  const [isPausing, setIsPausing] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  const handlePause = async () => {
+    if (!campaignId) return
+    setIsPausing(true)
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/pause`, { method: "POST" })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to pause campaign")
+      }
+      toast.success("Campaign paused successfully")
+      router.refresh()
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsPausing(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!campaignId) return
+    setIsCancelling(true)
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/cancel`, { method: "POST" })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to cancel campaign")
+      }
+      toast.success("Campaign cancelled successfully")
+      router.push("/campaigns")
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsCancelling(false)
     }
   }
 
@@ -341,6 +394,31 @@ export function Step4Review({
                     onChange={(e) => setScheduleTime(e.target.value)}
                   />
                 </div>
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox 
+                    id="recurring" 
+                    checked={isRecurring} 
+                    onCheckedChange={(checked) => setIsRecurring(checked === true)}
+                  />
+                  <Label htmlFor="recurring" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Recurring Campaign
+                  </Label>
+                </div>
+                {isRecurring && (
+                  <div className="space-y-2 pt-1">
+                    <Label>Repeat Interval</Label>
+                    <Select value={recurrenceInterval} onValueChange={setRecurrenceInterval}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select interval" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAILY">Daily</SelectItem>
+                        <SelectItem value="WEEKLY">Weekly</SelectItem>
+                        <SelectItem value="MONTHLY">Monthly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <Button 
                   className="w-full flex items-center justify-center gap-2" 
                   onClick={handleSchedule} 
@@ -359,25 +437,33 @@ export function Step4Review({
             </PopoverContent>
           </Popover>
           
-          <Button
-            variant="outline"
-            className="flex items-center gap-2"
-            disabled={isLaunching}
-            onClick={() => alert("Pause functionality will be available in a future update")}
-          >
-            <Pause className="h-4 w-4" />
-            Pause
-          </Button>
+          {status !== 'DRAFT' && status !== 'SENT' && (
+            <>
+              {status === 'SENDING' && (
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  disabled={isLaunching || isPausing || isCancelling}
+                  onClick={handlePause}
+                >
+                  {isPausing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
+                  Pause
+                </Button>
+              )}
 
-          <Button
-            variant="destructive"
-            className="flex items-center gap-2"
-            disabled={isLaunching}
-            onClick={() => alert("Cancel functionality will be available in a future update")}
-          >
-            <XCircle className="h-4 w-4" />
-            Cancel
-          </Button>
+              {(['SCHEDULED', 'PAUSED', 'FAILED', 'SENDING'].includes(status)) && (
+                <Button
+                  variant="destructive"
+                  className="flex items-center gap-2"
+                  disabled={isLaunching || isPausing || isCancelling}
+                  onClick={handleCancel}
+                >
+                  {isCancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  Cancel
+                </Button>
+              )}
+            </>
+          )}
 
           <Button
             onClick={onFinish}

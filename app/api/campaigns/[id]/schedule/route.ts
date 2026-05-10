@@ -23,6 +23,8 @@ export async function POST(
     }
 
     const { id: campaignId } = await params
+    const now = new Date()
+    
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
@@ -45,12 +47,25 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    // Must be draft to schedule
-    if (campaign.status !== 'DRAFT') {
+    // Must be draft or scheduled to schedule/reschedule
+    if (campaign.status !== 'DRAFT' && campaign.status !== 'SCHEDULED') {
       return NextResponse.json(
-        { error: "Only draft campaigns can be scheduled" },
+        { error: `Campaign in ${campaign.status} status cannot be scheduled. Only DRAFT and SCHEDULED campaigns can be scheduled.` },
         { status: 400 }
       )
+    }
+
+    // If rescheduling, check if it's too close to the current schedule (15 mins)
+    if (campaign.status === 'SCHEDULED' && campaign.scheduledAt) {
+      const currentSchedule = new Date(campaign.scheduledAt)
+      const diffInMinutes = (currentSchedule.getTime() - now.getTime()) / (1000 * 60)
+      
+      if (diffInMinutes > 0 && diffInMinutes < 15) {
+        return NextResponse.json(
+          { error: "Campaign schedule cannot be modified within 15 minutes of dispatch." },
+          { status: 400 }
+        )
+      }
     }
 
     // Must have at least one recipient list or segment
@@ -71,7 +86,6 @@ export async function POST(
     console.log("🕒 SCHEDULE API: Validated data:", validatedData)
     
     const scheduleDate = new Date(validatedData.scheduledAt)
-    const now = new Date()
     
     console.log("🕒 SCHEDULE API: Comparing times", { 
       scheduled: scheduleDate.toISOString(), 
@@ -139,6 +153,8 @@ export async function POST(
         status: 'SCHEDULED',
         scheduledAt: scheduleDate,
         timezone: validatedData.timezone,
+        isRecurring: body.isRecurring || false,
+        recurrenceInterval: body.recurrenceInterval || null,
         recipientCount: totalContacts
       }
     })

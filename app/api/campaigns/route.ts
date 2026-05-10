@@ -22,7 +22,7 @@ const createCampaignSchema = z.object({
 
 const campaignFiltersSchema = z.object({
   search: z.string().optional(),
-  status: z.enum(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'PAUSED', 'CANCELLED']).optional(),
+  status: z.enum(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'PAUSED', 'CANCELLED', 'FAILED']).optional(),
   dateRange: z.object({
     start: z.string().datetime(),
     end: z.string().datetime()

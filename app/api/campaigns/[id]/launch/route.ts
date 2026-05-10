@@ -135,6 +135,7 @@ export async function POST(
             email: contact.email,
             firstName: contact.firstName,
             lastName: contact.lastName,
+            contactId: contact.id
           })
         }
       }
@@ -164,6 +165,9 @@ export async function POST(
         data: {
           status: "SCHEDULED",
           scheduledAt: scheduledAt,
+          timezone: body.timezone || "UTC",
+          isRecurring: body.isRecurring || false,
+          recurrenceInterval: body.recurrenceInterval || null,
           recipientCount,
           updatedAt: new Date(),
         },
