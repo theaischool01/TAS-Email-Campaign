@@ -15,6 +15,15 @@ async function PreferencesContent({
   orgName: string
 }) {
   const { uid } = searchParams
+  if (!uid) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-xl font-bold text-gray-900">Invalid Preferences Link</h2>
+        <p className="text-gray-500 mt-2">This link is invalid or has expired.</p>
+      </div>
+    )
+  }
+
   const contactData = await UnsubscribeService.getContactLists(uid)
   if (!contactData) {
     return (
