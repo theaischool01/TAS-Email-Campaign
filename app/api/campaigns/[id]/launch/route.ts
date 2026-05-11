@@ -321,7 +321,10 @@ export async function POST(
       const messages = recipients.map(r => ({
         campaignId,
         recipient: {
-          ...r
+          email: r.email,
+          firstName: r.firstName || undefined,
+          lastName: r.lastName || undefined,
+          contactId: r.contactId || undefined
         }
       }))
 
