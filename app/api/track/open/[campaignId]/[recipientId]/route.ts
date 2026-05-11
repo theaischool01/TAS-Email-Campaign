@@ -49,19 +49,22 @@ export async function GET(
         data: { totalOpened: { increment: 1 } }
       })
     }
+    } catch (error) {
+      console.error("Open Tracking Error:", error)
+    }
 
-  // Return a 1x1 transparent GIF
-  const transparentGif = Buffer.from(
-    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-    "base64"
-  )
+    // Return a 1x1 transparent GIF
+    const transparentGif = Buffer.from(
+      "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      "base64"
+    )
 
-  return new NextResponse(transparentGif, {
-    headers: {
-      "Content-Type": "image/gif",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0",
-    },
-  })
+    return new NextResponse(transparentGif, {
+      headers: {
+        "Content-Type": "image/gif",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    })
 }

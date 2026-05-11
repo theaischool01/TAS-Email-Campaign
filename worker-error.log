@@ -1,0 +1,21 @@
+
+--- Worker Started at 2026-05-11T06:10:59.614Z ---
+
+--- Worker Started at 2026-05-11T07:11:19.629Z ---
+
+--- Worker Started at 2026-05-11T07:20:51.735Z ---
+
+--- Worker Started at 2026-05-11T07:24:47.726Z ---
+
+--- Worker Started at 2026-05-11T09:00:27.482Z ---
+[2026-05-11T09:00:27.643Z] CRASH: Error: Using legacy SES configuration, expecting @aws-sdk/client-sesv2, see https://nodemailer.com/transports/ses/
+    at module.exports.createTransport (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\node_modules\nodemailer\lib\nodemailer.js:49:29)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:47:32)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:170:5)
+    at node:internal/main/run_main_module:36:49
