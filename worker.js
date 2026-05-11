@@ -8,7 +8,7 @@ const path = require('path');
 require('dotenv').config();
 const http = require('http');
 
-const { UnsubscribeService } = require('./lib/services/unsubscribe');
+const UnsubscribeTokenService = require('./lib/services/unsubscribe-token');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
 const logPath = path.join(process.cwd(), 'worker-error.log');
@@ -30,9 +30,7 @@ const PORT = process.env.PORT || 3001;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Worker is running and healthy!\n');
-}).listen(PORT, () => {
-  console.log(`🌐 Health check server listening on port ${PORT}`);
-});
+}).listen(PORT);
 
 const prisma = new PrismaClient();
 const awsConfig = {
@@ -152,39 +150,56 @@ async function processQueue() {
           }
           
           const fromName = campaign.senderName || "Marketing Team";
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          const contactId = recipient.contactId || 'unknown';
-          const encodedEmail = encodeURIComponent(recipient.email);
-          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}&email=${encodedEmail}`;
-          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none !important;" />`;
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL;
           
-          let html = campaign.template?.html || "No content";
-          html = html.replace(/{{first_name}}/gi, recipient.firstName || 'Friend')
-                     .replace(/{{last_name}}/gi, recipient.lastName || '')
-                     .replace(/{{email}}/gi, recipient.email)
-                     .replace(/{{UNSUBSCRIBE_URL}}/gi, unsubscribeUrl);
+          if (!appUrl) {
+            throw new Error("CRITICAL: NEXT_PUBLIC_APP_URL is missing in environment variables.");
+          }
 
-          // Click Tracking: wrap links
-          html = html.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
-            if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || url === unsubscribeUrl) return match;
-            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`;
-            return match.replace(url, trackingUrl);
-          });
-
-          const fullHtml = html.includes('</body>') 
-            ? html.replace('</body>', `${trackingPixel}</body>`) 
-            : `${html}${trackingPixel}`;
-
+          const contactId = recipient.contactId || 'unknown';
+          
           // Secure Unsubscribe Token (uid)
-          const uid = UnsubscribeService.encodeToken({
+          const uid = UnsubscribeTokenService.encodeToken({
             cid: contactId,
             cam: campaignId,
             em: recipient.email
           });
 
+          const footerUnsubscribeUrl = `${appUrl}/unsubscribe?uid=${uid}`;
+          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none !important;visibility:hidden;" />`;
+          
+          let emailHtml = campaign.template?.html || "No content";
+          
+          // 1. Core replacements
+          emailHtml = emailHtml.replace(/{{first_name}}/gi, recipient.firstName || 'Friend');
+          emailHtml = emailHtml.replace(/{{last_name}}/gi, recipient.lastName || '');
+          emailHtml = emailHtml.replace(/{{email}}/gi, recipient.email);
+          emailHtml = emailHtml.replace(/{{UNSUBSCRIBE_URL}}/gi, footerUnsubscribeUrl);
+
+          // 2. Click Tracking (Safe wrap)
+          // Restore manual wrapping only for normal external links
+          emailHtml = emailHtml.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
+            if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || 
+                url === footerUnsubscribeUrl || url.includes('/unsubscribe')) {
+              return match;
+            }
+            if (!url.startsWith('http')) return match;
+            
+            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`;
+            return match.replace(url, trackingUrl);
+          });
+
+          // 3. Final Injection (Append tracking pixel at end of body if exists)
+          if (emailHtml.includes('</body>')) {
+            emailHtml = emailHtml.replace('</body>', `${trackingPixel}</body>`);
+          } else {
+            emailHtml = emailHtml + trackingPixel;
+          }
+          
+          const fullHtml = emailHtml;
+
           // List-Unsubscribe Header implementation
           const listUnsubscribeUrl = `${appUrl}/api/unsubscribe?uid=${uid}`;
-          const footerUnsubscribeUrl = `${appUrl}/unsubscribe?uid=${uid}`;
           
           // Inject unsubscribe footer securely
           const unsubscribeBar = `
@@ -210,7 +225,15 @@ async function processQueue() {
             html: finalHtml,
             headers: {
               'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              'X-Campaign-ID': campaignId,
+              'X-Contact-ID': contactId
+            },
+            ses: {
+              Tags: [
+                { Name: 'campaignId', Value: campaignId },
+                { Name: 'contactId', Value: contactId }
+              ]
             }
           });
 
@@ -224,8 +247,6 @@ async function processQueue() {
           }
 
           await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
-          console.log(`✅ Sent to ${recipient.email}`);
-
         } catch (error) {
           console.error(`❌ Error sending to ${recipient.email}:`, error);
           await prisma.campaign.update({ where: { id: campaignId }, data: { totalFailed: { increment: 1 } } });

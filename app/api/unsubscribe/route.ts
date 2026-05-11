@@ -39,7 +39,9 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const uid = url.searchParams.get('uid')
   
-  // Redirect to the unsubscribe page
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  return NextResponse.redirect(`${baseUrl}/unsubscribe?uid=${uid}`)
+  // Redirect to the unsubscribe page using the same origin
+  const redirectUrl = new URL('/unsubscribe', request.url)
+  if (uid) redirectUrl.searchParams.set('uid', uid)
+  
+  return NextResponse.redirect(redirectUrl)
 }

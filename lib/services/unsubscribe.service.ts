@@ -2,6 +2,9 @@ import { prisma as prismaClient } from "@/app/lib/prisma"
 
 const prisma = prismaClient as any
 
+// @ts-ignore - CommonJS import in TS
+const UnsubscribeTokenService = require('./unsubscribe-token');
+
 export interface UnsubscribeTokenData {
   cid: string       // contactId
   cam: string       // campaignId
@@ -11,23 +14,16 @@ export interface UnsubscribeTokenData {
 export class UnsubscribeService {
   /**
    * Encodes unsubscription data into a simple Base64 token
-   * (In a real production app, this would be signed/encrypted)
    */
   static encodeToken(data: UnsubscribeTokenData): string {
-    const json = JSON.stringify(data)
-    return Buffer.from(json).toString('base64url')
+    return UnsubscribeTokenService.encodeToken(data)
   }
 
   /**
    * Decodes a token back into its data
    */
   static decodeToken(token: string): UnsubscribeTokenData | null {
-    try {
-      const json = Buffer.from(token, 'base64url').toString('utf8')
-      return JSON.parse(json) as UnsubscribeTokenData
-    } catch (e) {
-      return null
-    }
+    return UnsubscribeTokenService.decodeToken(token)
   }
 
   /**
@@ -44,6 +40,14 @@ export class UnsubscribeService {
     const { cid, cam, em } = data
 
     try {
+      // 0. Check if already unsubscribed for this campaign to prevent double-counting
+      let existingUnsub = null
+      if (cam) {
+        existingUnsub = await prisma.campaignActivityLog.findFirst({
+          where: { campaignId: cam, contactId: cid || undefined, action: 'EMAIL_UNSUBSCRIBED' }
+        })
+      }
+
       // 1. Update contact status
       if (cid && cid !== 'unknown') {
         await prisma.contact.update({
@@ -57,13 +61,14 @@ export class UnsubscribeService {
         })
       }
 
-      // 2. Log activity
-      if (cam) {
+      // 2. Log activity and increment metrics (only if first time)
+      if (cam && !existingUnsub) {
         await prisma.campaignActivityLog.create({
           data: {
             campaignId: cam,
             action: 'EMAIL_UNSUBSCRIBED',
             actorId: cid || 'anonymous',
+            contactId: cid || undefined,
             metadata: { 
               source,
               email: em,
@@ -73,11 +78,106 @@ export class UnsubscribeService {
             }
           }
         })
+
+        // Increment campaign metric
+        await prisma.campaign.update({
+          where: { id: cam },
+          data: { totalUnsubscribed: { increment: 1 } }
+        })
       }
 
       return { success: true, email: em }
     } catch (error) {
       console.error("Unsubscribe Action Error:", error)
+      return { success: false, error: "Database error" }
+    }
+  }
+
+  /**
+   * Gets all lists the contact belongs to
+   */
+  static async getContactLists(token: string) {
+    const data = this.decodeToken(token)
+    if (!data) return null
+
+    const { cid, em } = data
+
+    try {
+      // Find contact by ID or email
+      const contact = await prisma.contact.findFirst({
+        where: cid && cid !== 'unknown' ? { id: cid } : { email: em },
+        include: {
+          lists: {
+            include: {
+              contactList: true
+            }
+          }
+        }
+      })
+
+      if (!contact) return null
+
+      return {
+        email: contact.email,
+        status: contact.status,
+        lists: contact.lists.map((l: any) => ({
+          id: l.contactList.id,
+          name: l.contactList.name,
+          description: l.contactList.description,
+          subscribedAt: l.createdAt
+        }))
+      }
+    } catch (error) {
+      console.error("Get Contact Lists Error:", error)
+      return null
+    }
+  }
+
+  /**
+   * Toggles subscription for a specific list
+   */
+  static async toggleListSubscription(token: string, listId: string, subscribe: boolean) {
+    const data = this.decodeToken(token)
+    if (!data) return { success: false, error: "Invalid token" }
+
+    const { cid, em } = data
+
+    try {
+      // Find contact
+      const contact = await prisma.contact.findFirst({
+        where: cid && cid !== 'unknown' ? { id: cid } : { email: em }
+      })
+
+      if (!contact) return { success: false, error: "Contact not found" }
+
+      if (subscribe) {
+        // Add to list if not already there
+        await prisma.contactListMember.upsert({
+          where: {
+            contactListId_contactId: {
+              contactListId: listId,
+              contactId: contact.id
+            }
+          },
+          update: {},
+          create: {
+            contactListId: listId,
+            contactId: contact.id
+          }
+        })
+      } else {
+        // Remove from list
+        await prisma.contactListMember.deleteMany({
+          where: {
+            contactListId: listId,
+            contactId: contact.id
+          }
+        })
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error("Toggle List Error:", error)
       return { success: false, error: "Database error" }
     }
   }

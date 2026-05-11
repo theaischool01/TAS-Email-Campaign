@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma as prismaClient } from "@/app/lib/prisma"
+import { isBotUserAgent } from "@/lib/utils/bot-detection"
 
 const prisma = prismaClient as any
 
@@ -8,54 +9,49 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     
     // SNS Message handling
-    // SNS sends a 'SubscriptionConfirmation' first
     if (body.Type === 'SubscriptionConfirmation') {
-      console.log('📬 SES Webhook: Received SNS Subscription Confirmation')
-      console.log('🔗 URL:', body.SubscribeURL)
-      // In a real app, you would auto-confirm by fetching this URL
       return NextResponse.json({ message: "Subscription confirmation received" })
     }
 
     if (body.Type === 'Notification') {
       const message = JSON.parse(body.Message)
       const eventType = message.eventType
-      const mail = message.mail
-      
-      // SES includes 'headers' or 'tags' where we can find campaignId and contactId
-      // We should have sent these as Message Tags or Headers
-      const tags = mail.tags || {}
-      const campaignId = tags['campaignId']?.[0]
-      const contactId = tags['contactId']?.[0]
+      const campaignId = message.mail.tags?.['campaignId']?.[0] || message.mail.headers?.find((h: any) => h.name === 'X-Campaign-ID')?.value
+      const contactId = message.mail.tags?.['contactId']?.[0] || message.mail.headers?.find((h: any) => h.name === 'X-Contact-ID')?.value
 
+      console.log(`[SES WEBHOOK] Event: ${eventType}, Campaign: ${campaignId}, Contact: ${contactId}`);
       if (!campaignId) {
-        console.warn('⚠️ SES Webhook: Missing campaignId in event tags')
+        console.log('[SES WEBHOOK] Missing campaignId. Full mail object:', JSON.stringify(message.mail, null, 2));
         return NextResponse.json({ message: "Missing campaignId" })
       }
 
-      console.log(`📊 SES Event: ${eventType} for Campaign: ${campaignId}`)
-
       if (eventType === 'Open') {
-        await prisma.campaignActivityLog.create({
-          data: {
-            campaignId,
-            action: 'EMAIL_OPENED',
-            actorId: contactId || 'ses-native',
-            contactId: contactId,
-            metadata: {
-              timestamp: message.open.timestamp,
-              userAgent: message.open.userAgent,
-              ipAddress: message.open.ipAddress
-            }
-          }
+        const ua = message.open?.userAgent || ''
+        const ip = message.open?.ipAddress || ''
+        const isBot = isBotUserAgent(ua, ip)
+
+        const existingOpen = await prisma.campaignActivityLog.findFirst({
+          where: { campaignId, contactId, action: 'EMAIL_OPENED', metadata: { path: ['isBot'], equals: false } }
         })
 
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { totalOpened: { increment: 1 } }
-        })
+        if (!existingOpen && !isBot) {
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { totalOpened: { increment: 1 } }
+          })
+        }
       }
 
       if (eventType === 'Click') {
+        const ua = message.click?.userAgent || ''
+        const ip = message.click?.ipAddress || ''
+        const isBot = isBotUserAgent(ua, ip)
+
+        // Check if already counted
+        const existingClick = await prisma.campaignActivityLog.findFirst({
+          where: { campaignId, contactId, action: 'EMAIL_CLICKED', metadata: { path: ['isBot'], equals: false } }
+        })
+
         await prisma.campaignActivityLog.create({
           data: {
             campaignId,
@@ -63,18 +59,22 @@ export async function POST(request: NextRequest) {
             actorId: contactId || 'ses-native',
             contactId: contactId,
             metadata: {
+              source: 'ses-native',
+              isBot,
               timestamp: message.click.timestamp,
               url: message.click.link,
-              userAgent: message.click.userAgent,
+              userAgent: ua,
               ipAddress: message.click.ipAddress
             }
           }
         })
 
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { totalClicked: { increment: 1 } }
-        })
+        if (!existingClick && !isBot) {
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { totalClicked: { increment: 1 } }
+          })
+        }
       }
       
       // M7: Handle Bounces
@@ -84,31 +84,38 @@ export async function POST(request: NextRequest) {
         
         for (const recipient of recipients) {
           const email = recipient.emailAddress;
-          console.log(`🚫 Bounced: ${email}`);
           
-          await prisma.contact.updateMany({
-            where: { email },
-            data: { status: 'BOUNCED' }
-          });
+          // Check if this bounce was already recorded for this campaign
+          const existingBounce = await prisma.campaignActivityLog.findFirst({
+            where: { campaignId, action: 'EMAIL_BOUNCED', metadata: { path: ['email'], equals: email } }
+          })
 
-          await prisma.campaign.update({
-            where: { id: campaignId },
-            data: { totalBounced: { increment: 1 } }
-          });
+          if (!existingBounce) {
+            await prisma.contact.updateMany({
+              where: { email },
+              data: { status: 'BOUNCED' }
+            });
 
-          await prisma.campaignActivityLog.create({
-            data: {
-              campaignId,
-              action: 'EMAIL_BOUNCED',
-              actorId: contactId || 'ses-native',
-              contactId: contactId,
-              metadata: { 
-                email, 
-                bounceType: bounce.bounceType,
-                bounceSubType: bounce.bounceSubType 
+            await prisma.campaign.update({
+              where: { id: campaignId },
+              data: { totalBounced: { increment: 1 } }
+            });
+
+            await prisma.campaignActivityLog.create({
+              data: {
+                campaignId,
+                action: 'EMAIL_BOUNCED',
+                actorId: contactId || 'ses-native',
+                contactId: contactId,
+                metadata: { 
+                  email, 
+                  source: 'ses-native',
+                  bounceType: bounce.bounceType,
+                  bounceSubType: bounce.bounceSubType 
+                }
               }
-            }
-          });
+            });
+          }
         }
       }
 
@@ -119,36 +126,48 @@ export async function POST(request: NextRequest) {
         
         for (const recipient of recipients) {
           const email = recipient.emailAddress;
-          console.log(`⚠️ Complaint: ${email}`);
-          
-          await prisma.contact.updateMany({
-            where: { email },
-            data: { status: 'COMPLAINED' }
-          });
 
-          await prisma.campaign.update({
-            where: { id: campaignId },
-            data: { totalComplained: { increment: 1 } }
-          });
+          // Check if already recorded
+          const existingComplaint = await prisma.campaignActivityLog.findFirst({
+            where: { campaignId, action: 'EMAIL_COMPLAINED', metadata: { path: ['email'], equals: email } }
+          })
 
-          await prisma.campaignActivityLog.create({
-            data: {
-              campaignId,
-              action: 'EMAIL_COMPLAINED',
-              actorId: contactId || 'ses-native',
-              contactId: contactId,
-              metadata: { email, complaintFeedbackType: complaint.complaintFeedbackType }
-            }
-          });
+          if (!existingComplaint) {
+            await prisma.contact.updateMany({
+              where: { email },
+              data: { status: 'COMPLAINED' }
+            });
+
+            await prisma.campaign.update({
+              where: { id: campaignId },
+              data: { totalComplained: { increment: 1 } }
+            });
+
+            await prisma.campaignActivityLog.create({
+              data: {
+                campaignId,
+                action: 'EMAIL_COMPLAINED',
+                actorId: contactId || 'ses-native',
+                contactId: contactId,
+                metadata: { 
+                  email, 
+                  source: 'ses-native',
+                  complaintFeedbackType: complaint.complaintFeedbackType 
+                }
+              }
+            });
+          }
         }
       }
 
-      // M8: Handle Subscriptions (Unsubscribes via List-Unsubscribe header)
+      // M8: Handle Subscriptions
       if (eventType === 'Subscription') {
-        console.log(`🔕 Unsubscribe event received for Campaign: ${campaignId}`);
-        // SES 'Subscription' event usually contains the email
-        // We'll update the specific contact if contactId is present
-        if (contactId) {
+        // Check if already recorded
+        const existingUnsub = await prisma.campaignActivityLog.findFirst({
+          where: { campaignId, contactId, action: 'EMAIL_UNSUBSCRIBED' }
+        })
+
+        if (contactId && !existingUnsub) {
           await prisma.contact.update({
             where: { id: contactId },
             data: { status: 'UNSUBSCRIBED' }
@@ -158,6 +177,16 @@ export async function POST(request: NextRequest) {
             where: { id: campaignId },
             data: { totalUnsubscribed: { increment: 1 } }
           });
+
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId,
+              action: 'EMAIL_UNSUBSCRIBED',
+              actorId: contactId,
+              contactId: contactId,
+              metadata: { source: 'ses-native' }
+            }
+          })
         }
       }
     }

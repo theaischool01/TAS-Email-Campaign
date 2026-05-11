@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma as prismaClient } from "@/app/lib/prisma"
+import { isBotUserAgent } from "@/lib/utils/bot-detection"
 const prisma = prismaClient as any
 
 export async function GET(
@@ -10,48 +11,54 @@ export async function GET(
   const userAgent = request.headers.get('user-agent') || ''
   const ip = request.headers.get('x-forwarded-for') || 'unknown'
   
-  console.log(`[TRACK_OPEN] Hit! Campaign: ${campaignId}, Recipient: ${recipientId}`)
-  console.log(`[TRACK_OPEN] UA: ${userAgent}`)
-  console.log(`[TRACK_OPEN] IP: ${ip}`)
-
-  const isBot = /bot|google|proxy|scanner|crawl|facebook|whatsapp|preview/i.test(userAgent) || userAgent.includes('GoogleImageProxy')
+  const isBot = isBotUserAgent(userAgent, ip)
+  console.log(`[OPEN-TRACK] Hit! Campaign: ${campaignId}, isBot: ${isBot}`);
   
   try {
-    // 1. Check if this recipient has ALREADY opened this campaign
-    const existingOpen = await (prisma as any).campaignActivityLog.findFirst({
-      where: {
-        campaignId,
-        contactId: recipientId,
-        action: 'EMAIL_OPENED'
-      }
-    })
-
-    // 2. Record the activity
-    await (prisma as any).campaignActivityLog.create({
-      data: {
-        campaignId,
-        action: 'EMAIL_OPENED',
-        actorId: recipientId,
-        contactId: recipientId,
-        metadata: {
-          userAgent,
-          ip: request.headers.get('x-forwarded-for') || 'unknown',
-          isBot,
-          isPrefetch: userAgent.includes('GoogleImageProxy')
+    // Use a transaction to prevent race conditions
+    await prisma.$transaction(async (tx: any) => {
+      // 1. Check if a HUMAN (non-bot) has already opened this campaign
+      // Note: We use a more direct check for isBot in metadata
+      const existingHumanOpen = await tx.campaignActivityLog.findFirst({
+        where: {
+          campaignId,
+          contactId: recipientId,
+          action: 'EMAIL_OPENED',
+          metadata: {
+            path: ['isBot'],
+            equals: false
+          }
         }
+      })
+
+      // 2. Record the activity (Always record, even if it's a bot or repeated)
+      await tx.campaignActivityLog.create({
+        data: {
+          campaignId,
+          action: 'EMAIL_OPENED',
+          actorId: recipientId,
+          contactId: recipientId,
+          metadata: {
+            userAgent,
+            ip,
+            isBot,
+            isPrefetch: userAgent.includes('GoogleImageProxy'),
+            timestamp: new Date().toISOString()
+          }
+        }
+      })
+
+      // 3. Only increment the main counter if it's the FIRST HUMAN open
+      if (!isBot && !existingHumanOpen) {
+        await tx.campaign.update({
+          where: { id: campaignId },
+          data: { totalOpened: { increment: 1 } }
+        })
       }
     })
-
-    // 3. Only increment the main counter if it's a NEW, UNIQUE open and NOT a bot/proxy
-    if (!existingOpen && !isBot) {
-      await (prisma as any).campaign.update({
-        where: { id: campaignId },
-        data: { totalOpened: { increment: 1 } }
-      })
-    }
-    } catch (error) {
-      console.error("Open Tracking Error:", error)
-    }
+  } catch (error) {
+    console.error("Open Tracking Error:", error)
+  }
 
     // Return a 1x1 transparent GIF
     const transparentGif = Buffer.from(
