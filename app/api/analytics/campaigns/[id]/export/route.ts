@@ -34,7 +34,7 @@ export async function GET(
       return new Response("Campaign not found", { status: 404 })
     }
 
-    if (!CampaignAccessControl.canViewCampaign(session, campaign)) {
+    if (!CampaignAccessControl.canViewAnalytics(session, campaign)) {
       return new Response("Forbidden", { status: 403 })
     }
 

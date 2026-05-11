@@ -52,6 +52,16 @@ export class ContactService {
             members: true
           }
         },
+        members: {
+          where: {
+            contact: {
+              status: 'ACTIVE'
+            }
+          },
+          select: {
+            id: true
+          }
+        },
         owner: {
           select: {
             id: true,
@@ -66,17 +76,26 @@ export class ContactService {
       }
     })
     
+    // Transform to include activeCount
+    const transformedLists = contactLists.map(list => ({
+      ...list,
+      memberCount: list._count?.members || 0,
+      activeCount: list.members.length,
+      members: undefined // Remove members array to keep response light
+    }))
+    
     console.log("🔧 Contact Lists Service Debug:", {
       filter: whereClause,
-      count: contactLists.length,
-      firstList: contactLists[0] ? {
-        id: contactLists[0].id,
-        name: contactLists[0].name,
-        memberCount: contactLists[0]._count?.members,
-        ownerId: contactLists[0].ownerId
+      count: transformedLists.length,
+      firstList: transformedLists[0] ? {
+        id: transformedLists[0].id,
+        name: transformedLists[0].name,
+        memberCount: transformedLists[0].memberCount,
+        activeCount: transformedLists[0].activeCount,
+        ownerId: transformedLists[0].ownerId
       } : null
     })
     
-    return contactLists
+    return transformedLists
   }
 }

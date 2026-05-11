@@ -22,7 +22,7 @@ const navigation = [
   { name: "Contacts", href: "/contacts", icon: Users, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER"] },
   { name: "Templates", href: "/templates", icon: FileText, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER"] },
   { name: "Admin", href: "/admin", icon: Shield, roles: ["SUPER_ADMIN"] },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Settings", href: "/settings/org", icon: Settings, roles: ["SUPER_ADMIN"] },
 ]
 
 export function Sidebar() {

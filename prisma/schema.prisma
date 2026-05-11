@@ -284,13 +284,31 @@ model CampaignActivityLog {
   id        String   @id @default(cuid())
   campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   campaignId String
-  actorId   String
+  actorId   String   // Can be User ID or Contact ID
   action    String
   metadata  Json?
   createdAt DateTime @default(now())
 
   // Relations
-  contact   Contact? @relation(fields: [actorId], references: [id], map: "campaign_activity_logs_contact_fkey")
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
   
   @@map("campaign_activity_logs")
+}
+
+model Settings {
+  id                String   @id @default("system")
+  orgName           String   @default("My Organisation")
+  orgLogo           String?
+  defaultFromEmail  String?
+  defaultFromName   String?
+  
+  // AWS SES Config
+  awsAccessKey      String?
+  awsSecretKey      String?
+  awsRegion         String?  @default("us-east-1")
+  
+  updatedAt         DateTime @updatedAt
+
+  @@map("settings")
 }

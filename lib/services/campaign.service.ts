@@ -232,83 +232,114 @@ export class CampaignService {
     if (!campaign) throw new Error("Campaign not found")
 
     // RBAC: Check if user can view this campaign
-    if (!CampaignAccessControl.canViewCampaign(session, campaign)) {
+    if (!CampaignAccessControl.canViewAnalytics(session, campaign)) {
       throw new Error("Forbidden")
     }
 
     // 2. Fetch all activity logs for this campaign for processing
-    const logs = await prisma.campaignActivityLog.findMany({
-      where: { campaignId },
-      include: { contact: true },
-      orderBy: { createdAt: 'asc' }
-    })
+    console.log(`📊 Report: Fetching logs for campaign ${campaignId}...`)
+    let logs = []
+    try {
+      logs = await prisma.campaignActivityLog.findMany({
+        where: { campaignId },
+        include: { contact: true },
+        orderBy: { createdAt: 'asc' }
+      })
+      console.log(`📊 Report: Found ${logs.length} activity logs`)
+    } catch (dbError: any) {
+      console.error(`❌ Report DB Error:`, dbError)
+      throw new Error(`Database error: ${dbError.message}`)
+    }
 
     // 3. Process Summary Stats
+    console.log(`📊 Report: Processing summary stats...`)
     const summary = {
-      sent: campaign.totalSent,
-      opened: campaign.totalOpened,
-      clicked: campaign.totalClicked,
-      bounced: campaign.totalBounced,
-      complained: campaign.totalComplained,
-      unsubscribed: campaign.totalUnsubscribed,
-      delivered: campaign.totalSent - campaign.totalBounced,
+      sent: campaign.totalSent || 0,
+      opened: campaign.totalOpened || 0,
+      clicked: campaign.totalClicked || 0,
+      bounced: campaign.totalBounced || 0,
+      complained: campaign.totalComplained || 0,
+      unsubscribed: logs.filter(l => l.action === 'EMAIL_UNSUBSCRIBED').length || campaign.totalUnsubscribed || 0,
+      delivered: (campaign.totalSent || 0) - (campaign.totalBounced || 0),
       uniqueOpens: new Set(logs.filter(l => l.action === 'EMAIL_OPENED').map(l => l.actorId)).size,
       uniqueClicks: new Set(logs.filter(l => l.action === 'EMAIL_CLICKED').map(l => l.actorId)).size,
     }
+    console.log(`📊 Report: Summary stats processed`, summary)
 
     // 4. Process Open Rate Over Time (Hourly for 48h, then daily)
+    console.log(`📊 Report: Processing timeline...`)
     const openTimeline: Record<string, number> = {}
-    const startAt = campaign.sentAt || campaign.createdAt
-    const now = new Date()
-    const diffHours = Math.floor((now.getTime() - startAt.getTime()) / (1000 * 60 * 60))
+    try {
+      const startAt = new Date(campaign.sentAt || campaign.createdAt)
+      const now = new Date()
+      const diffHours = Math.floor((now.getTime() - startAt.getTime()) / (1000 * 60 * 60))
 
-    logs.filter(l => l.action === 'EMAIL_OPENED').forEach(log => {
-      const logDate = new Date(log.createdAt)
-      let key: string
-      
-      if (diffHours <= 48) {
-        // Hourly: "YYYY-MM-DD HH:00"
-        key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')} ${logDate.getHours().toString().padStart(2,'0')}:00`
-      } else {
-        // Daily: "YYYY-MM-DD"
-        key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')}`
-      }
-      
-      openTimeline[key] = (openTimeline[key] || 0) + 1
-    })
+      logs.filter(l => l.action === 'EMAIL_OPENED').forEach(log => {
+        const logDate = new Date(log.createdAt)
+        let key: string
+        
+        if (diffHours <= 48) {
+          key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')} ${logDate.getHours().toString().padStart(2,'0')}:00`
+        } else {
+          key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')}`
+        }
+        
+        openTimeline[key] = (openTimeline[key] || 0) + 1
+      })
+      console.log(`📊 Report: Timeline processed (${Object.keys(openTimeline).length} data points)`)
+    } catch (timelineError: any) {
+      console.error("❌ Report Timeline Error:", timelineError)
+      // Non-blocking but logged
+    }
 
     // 5. Process Link Click Breakdown
+    console.log(`📊 Report: Processing link clicks...`)
     const linkStats: Record<string, { clicks: number, unique: number, users: Set<string> }> = {}
-    logs.filter(l => l.action === 'EMAIL_CLICKED').forEach(log => {
-      const metadata = log.metadata as any
-      const url = metadata?.url || 'Unknown'
-      
-      if (!linkStats[url]) {
-        linkStats[url] = { clicks: 0, unique: 0, users: new Set() }
-      }
-      
-      linkStats[url].clicks++
-      linkStats[url].users.add(log.actorId)
-    })
+    try {
+      logs.filter(l => l.action === 'EMAIL_CLICKED').forEach(log => {
+        const metadata = log.metadata as any
+        const url = metadata?.url || 'Unknown'
+        
+        if (!linkStats[url]) {
+          linkStats[url] = { clicks: 0, unique: 0, users: new Set() }
+        }
+        
+        linkStats[url].clicks++
+        if (log.actorId) linkStats[url].users.add(log.actorId)
+      })
+      console.log(`📊 Report: Link clicks processed (${Object.keys(linkStats).length} unique URLs)`)
+    } catch (linkError: any) {
+      console.error("❌ Report Link Error:", linkError)
+    }
     
     const links = Object.entries(linkStats).map(([url, stats]) => ({
       url,
       clicks: stats.clicks,
       uniqueClicks: stats.users.size,
-      percent: summary.delivered > 0 ? (stats.users.size / summary.delivered) * 100 : 0
+      percent: (summary.delivered || 0) > 0 ? (stats.users.size / (summary.delivered || 1)) * 100 : 0
     })).sort((a, b) => b.clicks - a.clicks)
 
     // 6. Device Breakdown (parsing User-Agent)
+    console.log(`📊 Report: Processing device stats...`)
     const deviceStats = { desktop: 0, mobile: 0, tablet: 0, unknown: 0 }
-    logs.filter(l => l.action === 'EMAIL_OPENED' || l.action === 'EMAIL_CLICKED').forEach(log => {
-      const ua = ((log.metadata as any)?.userAgent || "").toLowerCase()
-      if (!ua) { deviceStats.unknown++; return }
-      
-      if (ua.includes('tablet') || ua.includes('ipad')) deviceStats.tablet++
-      else if (ua.includes('mobile') || ua.includes('iphone') || ua.includes('android')) deviceStats.mobile++
-      else deviceStats.desktop++
-    })
+    try {
+      logs.filter(l => l.action === 'EMAIL_OPENED' || l.action === 'EMAIL_CLICKED').forEach(log => {
+        const metadata = log.metadata as any
+        if (metadata?.isBot || metadata?.isPrefetch) return // Skip bots/proxies for device stats
+        
+        const ua = (metadata?.userAgent || "").toLowerCase()
+        if (!ua) { deviceStats.unknown++; return }
+        
+        if (ua.includes('tablet') || ua.includes('ipad')) deviceStats.tablet++
+        else if (ua.includes('mobile') || ua.includes('iphone') || ua.includes('android')) deviceStats.mobile++
+        else deviceStats.desktop++
+      })
+      console.log(`📊 Report: Device stats processed`, deviceStats)
+    } catch (deviceError: any) {
+      console.error("❌ Report Device Error:", deviceError)
+    }
 
+    console.log(`📊 Report: Finalizing payload...`)
     return {
       campaign,
       summary,
@@ -316,9 +347,17 @@ export class CampaignService {
       links,
       deviceStats,
       activityCount: logs.length,
-      recentActivity: logs.slice(-100).reverse().map(l => ({
-        ...l,
-        contact: (l as any).contact || { email: 'Unknown' } // Ensure contact info is present if joined
+      recentActivity: (logs || []).slice(-100).reverse().map(l => ({
+        id: l.id,
+        action: l.action,
+        createdAt: l.createdAt,
+        actorId: l.actorId,
+        metadata: l.metadata,
+        contact: (l as any).contact ? {
+          email: (l as any).contact.email,
+          firstName: (l as any).contact.firstName,
+          lastName: (l as any).contact.lastName
+        } : { email: 'Unknown / Admin' }
       }))
     }
   }

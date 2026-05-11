@@ -97,10 +97,10 @@ export default async function ProfilePage() {
                           </div>
                           <Badge variant="default">Active</Badge>
                         </div>
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                           <div>
-                            <p className="font-medium">User Management</p>
-                            <p className="text-sm text-gray-600">Create, edit, and delete user accounts</p>
+                            <p className="font-medium text-green-900">User Management</p>
+                            <p className="text-sm text-green-700">Create, edit, and delete user accounts</p>
                           </div>
                           <Badge variant="default">Active</Badge>
                         </div>

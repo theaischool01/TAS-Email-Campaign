@@ -2,11 +2,11 @@ import React from 'react'
 import { StatCard } from '@/components/dashboard/StatCard'
 import { 
   PaperAirplaneIcon, 
-  CheckBadgeIcon, 
   EnvelopeOpenIcon, 
   CursorArrowRippleIcon,
   NoSymbolIcon,
-  HandRaisedIcon
+  HandRaisedIcon,
+  UserMinusIcon
 } from '@heroicons/react/24/outline'
 
 interface SummaryProps {
@@ -24,11 +24,10 @@ interface SummaryProps {
 }
 
 export const ReportSummaryCards: React.FC<SummaryProps> = ({ data }) => {
-  const openRate = data.delivered > 0 ? (data.uniqueOpens / data.delivered) * 100 : 0
-  const clickRate = data.delivered > 0 ? (data.uniqueClicks / data.delivered) * 100 : 0
-
+  const total = data.sent || 0
+  
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <StatCard 
         title="Sent" 
         value={data.sent.toLocaleString()} 
@@ -36,27 +35,33 @@ export const ReportSummaryCards: React.FC<SummaryProps> = ({ data }) => {
       />
       <StatCard 
         title="Open Rate" 
-        value={`${openRate.toFixed(1)}%`} 
+        value={`${data.uniqueOpens} / ${total}`} 
         icon={<EnvelopeOpenIcon className="w-6 h-6" />}
-        status={openRate >= 20 ? 'success' : 'warning'}
+        status={(data.uniqueOpens / (total || 1)) >= 0.2 ? 'success' : 'warning'}
       />
       <StatCard 
         title="Click Rate" 
-        value={`${clickRate.toFixed(1)}%`} 
+        value={`${data.uniqueClicks} / ${total}`} 
         icon={<CursorArrowRippleIcon className="w-6 h-6" />}
-        status={clickRate >= 2 ? 'success' : 'warning'}
+        status={(data.uniqueClicks / (total || 1)) >= 0.02 ? 'success' : 'warning'}
       />
       <StatCard 
         title="Bounces" 
-        value={data.bounced.toLocaleString()} 
+        value={`${data.bounced} / ${total}`} 
         icon={<NoSymbolIcon className="w-6 h-6" />}
         status={data.bounced > 0 ? 'danger' : 'success'}
       />
       <StatCard 
         title="Complaints" 
-        value={data.complained.toLocaleString()} 
+        value={`${data.complained} / ${total}`} 
         icon={<HandRaisedIcon className="w-6 h-6" />}
         status={data.complained > 0 ? 'danger' : 'success'}
+      />
+      <StatCard 
+        title="Unsubscribed" 
+        value={`${data.unsubscribed || 0} / ${total}`} 
+        icon={<UserMinusIcon className="w-6 h-6" />}
+        status={data.unsubscribed > 0 ? 'warning' : 'success'}
       />
     </div>
   )

@@ -8,35 +8,43 @@ export async function GET(
 ) {
   const { campaignId, recipientId } = await params
   const userAgent = request.headers.get('user-agent') || ''
-  const isBot = /bot|google|proxy|scanner|crawl/i.test(userAgent)
+  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  
+  console.log(`[TRACK_OPEN] Hit! Campaign: ${campaignId}, Recipient: ${recipientId}`)
+  console.log(`[TRACK_OPEN] UA: ${userAgent}`)
+  console.log(`[TRACK_OPEN] IP: ${ip}`)
+
+  const isBot = /bot|google|proxy|scanner|crawl|facebook|whatsapp|preview/i.test(userAgent) || userAgent.includes('GoogleImageProxy')
   
   try {
     // 1. Check if this recipient has ALREADY opened this campaign
-    const existingOpen = await prisma.campaignActivityLog.findFirst({
+    const existingOpen = await (prisma as any).campaignActivityLog.findFirst({
       where: {
         campaignId,
-        actorId: recipientId,
+        contactId: recipientId,
         action: 'EMAIL_OPENED'
       }
     })
 
-    // 2. Record the activity (always, so we see the history)
-    await prisma.campaignActivityLog.create({
+    // 2. Record the activity
+    await (prisma as any).campaignActivityLog.create({
       data: {
         campaignId,
         action: 'EMAIL_OPENED',
         actorId: recipientId,
+        contactId: recipientId,
         metadata: {
           userAgent,
           ip: request.headers.get('x-forwarded-for') || 'unknown',
-          isBot
+          isBot,
+          isPrefetch: userAgent.includes('GoogleImageProxy')
         }
       }
     })
 
-    // 3. Only increment the main counter if it's a NEW, UNIQUE open and NOT a known bot
+    // 3. Only increment the main counter if it's a NEW, UNIQUE open and NOT a bot/proxy
     if (!existingOpen && !isBot) {
-      await prisma.campaign.update({
+      await (prisma as any).campaign.update({
         where: { id: campaignId },
         data: { totalOpened: { increment: 1 } }
       })

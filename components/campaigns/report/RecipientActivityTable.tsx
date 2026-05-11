@@ -40,7 +40,9 @@ export const RecipientActivityTable: React.FC<{ activities: RecipientActivity[] 
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="font-semibold text-slate-900 dark:text-white">
-                        {activity.contact?.firstName ? `${activity.contact.firstName} ${activity.contact.lastName || ''}` : activity.contact?.email}
+                        {activity.contact?.firstName 
+                          ? `${activity.contact.firstName} ${activity.contact.lastName || ''}` 
+                          : activity.contact?.email || 'System / Admin'}
                       </span>
                       {activity.contact?.firstName && (
                         <span className="text-xs text-slate-500">{activity.contact.email}</span>
@@ -52,8 +54,9 @@ export const RecipientActivityTable: React.FC<{ activities: RecipientActivity[] 
                       ${activity.action === 'EMAIL_OPENED' ? 'bg-emerald-50 text-emerald-700' : 
                         activity.action === 'EMAIL_CLICKED' ? 'bg-blue-50 text-blue-700' : 
                         activity.action === 'EMAIL_BOUNCED' ? 'bg-rose-50 text-rose-700' :
+                        activity.action === 'CAMPAIGN_LAUNCHED' ? 'bg-purple-50 text-purple-700' :
                         'bg-slate-50 text-slate-700'}`}>
-                      {activity.action.replace('EMAIL_', '')}
+                      {activity.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).replace('Email ', '')}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-500">

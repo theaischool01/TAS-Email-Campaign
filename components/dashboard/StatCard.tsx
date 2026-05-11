@@ -9,7 +9,7 @@ interface StatCardProps {
     label: string
     isUp: boolean
   }
-  status?: 'success' | 'warning' | 'danger' | 'neutral'
+  status?: 'success' | 'warning' | 'danger' | 'info' | 'neutral'
   icon?: React.ReactNode
 }
 
@@ -19,7 +19,9 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, trend, status 
       case 'success': return 'text-emerald-500 bg-emerald-500/10'
       case 'warning': return 'text-amber-500 bg-amber-500/10'
       case 'danger': return 'text-rose-500 bg-rose-500/10'
-      default: return 'text-blue-500 bg-blue-500/10'
+      case 'info': return 'text-blue-500 bg-blue-500/10'
+      case 'neutral': return 'text-slate-500 bg-slate-500/10'
+      default: return 'text-slate-500 bg-slate-500/10'
     }
   }
 

@@ -3,7 +3,10 @@ import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 import { Role } from "@prisma/client"
-import { prisma } from "@/app/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+import { prisma as importedPrisma } from "../app/lib/prisma"
+
+const prisma = importedPrisma || new PrismaClient()
 import { headers } from "next/headers"
 import { checkIpLock, recordFailedAttempt, resetAttempts } from "./auth-security"
 

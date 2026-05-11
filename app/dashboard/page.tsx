@@ -91,7 +91,7 @@ export default async function DashboardPage() {
               value={growthTrend.currentCount.toLocaleString()}
               trend={{
                 value: growthTrend.growth,
-                label: 'vs last month',
+                label: 'Growth (30d)',
                 isUp: growthTrend.growth >= 0
               }}
               icon={<Users className="w-6 h-6" />}
@@ -99,22 +99,29 @@ export default async function DashboardPage() {
             />
             
             <StatCard 
+              title="Emails Sent" 
+              value={summary.totalSent.toLocaleString()}
+              icon={<Mail className="w-6 h-6" />}
+              status="info"
+            />
+            
+            <StatCard 
               title="Avg. Open Rate" 
-              value={`${summary.openRate.toFixed(1)}%`}
+              value={`${(summary.openRate || 0).toFixed(1)}%`}
               trend={{
                 value: 21,
-                label: 'Industry Avg',
-                isUp: summary.openRate >= 21
+                label: 'vs Industry',
+                isUp: (summary.openRate || 0) >= 21
               }}
               icon={<TrendingUp className="w-6 h-6" />}
-              status={summary.openRate >= 21 ? 'success' : 'warning'}
+              status={(summary.openRate || 0) >= 21 ? 'success' : 'warning'}
             />
 
             <StatCard 
               title="Bounce Rate" 
-              value={`${summary.bounceRate.toFixed(1)}%`}
+              value={`${(summary.bounceRate || 0).toFixed(1)}%`}
               icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-              status={summary.bounceRate > 2 ? 'danger' : summary.bounceRate > 1 ? 'warning' : 'success'}
+              status={(summary.bounceRate || 0) > 2 ? 'danger' : (summary.bounceRate || 0) > 1 ? 'warning' : 'success'}
             />
 
             <StatCard 
@@ -157,9 +164,9 @@ export default async function DashboardPage() {
                           <td className="px-6 py-4">
                             <div className="flex items-center space-x-2">
                               <div className="w-16 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500" style={{ width: `${Math.min(c.openRate, 100)}%` }} />
+                                <div className="h-full bg-blue-500" style={{ width: `${Math.min(c.openRate || 0, 100)}%` }} />
                               </div>
-                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{c.openRate.toFixed(1)}%</span>
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{(c.openRate || 0).toFixed(1)}%</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -204,14 +211,16 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-500 mt-1">Design beautiful campaign emails.</p>
             </Link>
 
-            <Link
-              href="/settings"
-              className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl hover:shadow-lg transition-all group"
-            >
-              <TrendingUp className="w-8 h-8 text-slate-600 mb-3 group-hover:scale-110 transition-transform" />
-              <h4 className="font-bold text-slate-900 dark:text-white">Global Settings</h4>
-              <p className="text-sm text-slate-500 mt-1">Configure AWS SES and platform defaults.</p>
-            </Link>
+            {session.user.role === "SUPER_ADMIN" && (
+              <Link
+                href="/settings/org"
+                className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl hover:shadow-lg transition-all group"
+              >
+                <TrendingUp className="w-8 h-8 text-slate-600 mb-3 group-hover:scale-110 transition-transform" />
+                <h4 className="font-bold text-slate-900 dark:text-white">Global Settings</h4>
+                <p className="text-sm text-slate-500 mt-1">Configure AWS SES and platform defaults.</p>
+              </Link>
+            )}
           </div>
         </div>
       </DashboardLayout>

@@ -18,6 +18,7 @@ interface ContactList {
   name: string
   description?: string
   memberCount: number
+  activeCount: number
   createdAt: string
 }
 
@@ -153,39 +154,57 @@ export function Step2Recipients({
               <h3 className="text-lg font-medium">No lists found</h3>
             </Card>
           ) : (
-            filteredLists.map((list) => (
-              <Card key={list.id} className={cn(
-                "transition-all",
-                isListSelected(list.id) && "border-blue-500 bg-blue-50/50",
-                isListExcluded(list.id) && "opacity-60 bg-gray-50"
-              )}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4 flex-1">
-                    <Checkbox
-                      checked={isListSelected(list.id)}
-                      onCheckedChange={(checked: boolean) => handleListToggle(list.id, checked)}
-                      disabled={isListExcluded(list.id)}
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{list.name}</span>
-                        <Badge variant="secondary">{list.memberCount || 0} contacts</Badge>
-                        {isListExcluded(list.id) && <Badge variant="destructive">Excluded</Badge>}
+            filteredLists.map((list) => {
+              const isInactive = (list.activeCount || 0) === 0 && (list.memberCount || 0) > 0
+              const isEmpty = (list.memberCount || 0) === 0
+              
+              return (
+                <Card key={list.id} className={cn(
+                  "transition-all",
+                  isListSelected(list.id) && "border-blue-500 bg-blue-50/50",
+                  (isListExcluded(list.id) || isInactive || isEmpty) && "opacity-60 bg-gray-50"
+                )}>
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      <Checkbox
+                        checked={isListSelected(list.id)}
+                        onCheckedChange={(checked: boolean) => handleListToggle(list.id, checked)}
+                        disabled={isListExcluded(list.id) || isInactive || isEmpty}
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn("font-medium", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
+                          <Badge variant={isInactive ? "destructive" : "secondary"}>
+                            {list.activeCount || 0} / {list.memberCount || 0} active
+                          </Badge>
+                          {isListExcluded(list.id) && <Badge variant="destructive">Excluded</Badge>}
+                          {isInactive && (
+                            <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
+                              <AlertCircle className="h-3 w-3 mr-1" /> No active members
+                            </Badge>
+                          )}
+                          {isEmpty && (
+                            <Badge variant="outline" className="text-gray-400 border-gray-200">
+                              Empty
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500">{list.description}</p>
                       </div>
-                      <p className="text-sm text-gray-500">{list.description}</p>
                     </div>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => handleExclusionToggle(list.id, !isListExcluded(list.id))}
-                    className={isListExcluded(list.id) ? "text-blue-600" : "text-orange-600"}
-                  >
-                    {isListExcluded(list.id) ? "Include" : "Exclude"}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleExclusionToggle(list.id, !isListExcluded(list.id))}
+                      className={isListExcluded(list.id) ? "text-blue-600" : "text-orange-600"}
+                      disabled={isInactive || isEmpty}
+                    >
+                      {isListExcluded(list.id) ? "Include" : "Exclude"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })
           )
         ) : (
           filteredSegments.length === 0 ? (

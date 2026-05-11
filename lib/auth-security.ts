@@ -1,4 +1,8 @@
-import { prisma } from "@/app/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+import { prisma as importedPrisma } from "../app/lib/prisma"
+
+// Defensive prisma instance for auth-security to avoid circular dependency issues
+const prisma = importedPrisma || new PrismaClient()
 
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION = 15 * 60 * 1000 // 15 minutes in milliseconds

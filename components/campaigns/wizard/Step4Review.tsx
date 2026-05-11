@@ -60,6 +60,10 @@ export function Step4Review({
   )
 
   const totalRecipients = selectedContactLists.reduce((sum, list) => 
+    sum + (list.activeCount || 0), 0
+  )
+
+  const totalMembers = selectedContactLists.reduce((sum, list) => 
     sum + (list.memberCount || 0), 0
   )
 
@@ -270,9 +274,9 @@ export function Step4Review({
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium">{totalRecipients.toLocaleString()} Total Recipients</p>
+                  <p className="font-medium">{totalRecipients.toLocaleString()} Eligible Recipients</p>
                   <p className="text-sm text-muted-foreground">
-                    Across {selectedContactLists.length} contact list{selectedContactLists.length !== 1 ? 's' : ''}
+                    ({totalMembers.toLocaleString()} total members across {selectedContactLists.length} lists)
                   </p>
                 </div>
                 <Badge variant="secondary">
@@ -286,10 +290,14 @@ export function Step4Review({
                     <div>
                       <p className="font-medium">{list.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {list.memberCount || 0} contacts
+                        {list.activeCount || 0} / {list.memberCount || 0} active
                       </p>
                     </div>
-                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    {(list.activeCount || 0) > 0 ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-orange-600" />
+                    )}
                   </div>
                 ))}
               </div>

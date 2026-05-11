@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
             campaignId,
             action: 'EMAIL_OPENED',
             actorId: contactId || 'ses-native',
+            contactId: contactId,
             metadata: {
               timestamp: message.open.timestamp,
               userAgent: message.open.userAgent,
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
             campaignId,
             action: 'EMAIL_CLICKED',
             actorId: contactId || 'ses-native',
+            contactId: contactId,
             metadata: {
               timestamp: message.click.timestamp,
               url: message.click.link,
@@ -99,6 +101,7 @@ export async function POST(request: NextRequest) {
               campaignId,
               action: 'EMAIL_BOUNCED',
               actorId: contactId || 'ses-native',
+              contactId: contactId,
               metadata: { 
                 email, 
                 bounceType: bounce.bounceType,
@@ -133,6 +136,7 @@ export async function POST(request: NextRequest) {
               campaignId,
               action: 'EMAIL_COMPLAINED',
               actorId: contactId || 'ses-native',
+              contactId: contactId,
               metadata: { email, complaintFeedbackType: complaint.complaintFeedbackType }
             }
           });

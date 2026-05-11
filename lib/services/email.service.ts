@@ -1,4 +1,4 @@
-import { SESClient, SendEmailCommand, SendBulkTemplatedEmailCommand } from "@aws-sdk/client-ses"
+import { SESClient } from "@aws-sdk/client-ses"
 
 // ─── SES Client ──────────────────────────────────────────────────────────────
 
@@ -55,12 +55,29 @@ function personalize(html: string, recipient: EmailRecipient): string {
 function injectTrackingAndUnsubscribe(
   html: string,
   campaignId: string,
-  recipientEmail: string,
+  recipient: EmailRecipient,
   baseUrl: string
 ): string {
-  const encodedEmail = encodeURIComponent(recipientEmail)
-  const unsubscribeUrl = `${baseUrl}/api/unsubscribe?email=${encodedEmail}&campaign=${campaignId}`
-  const trackingPixel = `<img src="${baseUrl}/api/track/open?c=${campaignId}&e=${encodedEmail}" width="1" height="1" style="display:none;" alt="" />`
+  const contactId = recipient.contactId || 'unknown'
+  const encodedEmail = encodeURIComponent(recipient.email)
+  
+  // 1. Unsubscribe URL
+  const unsubscribeUrl = `${baseUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}&email=${encodedEmail}`
+  
+  // 2. Open Tracking Pixel (Path parameters as defined in API)
+  const trackingPixel = `<img src="${baseUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none;" alt="" />`
+  
+  // 3. Link Wrapping (Click Tracking)
+  // This regex finds all href="..." in <a> tags
+  let processedHtml = html.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
+    // Skip anchor links, tel, mailto, and the unsubscribe link itself
+    if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || url === unsubscribeUrl) {
+      return match
+    }
+    const trackingUrl = `${baseUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`
+    return match.replace(url, trackingUrl)
+  })
+
   const unsubscribeBar = `
     <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:20px;">
       <tr>
@@ -73,22 +90,30 @@ function injectTrackingAndUnsubscribe(
   `
 
   // Inject before </body> if present, otherwise append
-  if (html.includes("</body>")) {
-    return html.replace("</body>", `${trackingPixel}${unsubscribeBar}</body>`)
+  if (processedHtml.includes("</body>")) {
+    return processedHtml.replace("</body>", `${trackingPixel}${unsubscribeBar}</body>`)
   }
-  return html + trackingPixel + unsubscribeBar
+  return processedHtml + trackingPixel + unsubscribeBar
 }
 
 // ─── Core Send Functions ──────────────────────────────────────────────────────
 
+import nodemailer from "nodemailer"
+import { UnsubscribeService } from "./unsubscribe.service"
+
+const transporter = nodemailer.createTransport({
+  SES: { ses: sesClient, aws: { SESClient } }
+})
+
 /**
- * Send a single email via AWS SES
+ * Send a single email via AWS SES with tracking and List-Unsubscribe
  */
 export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000"
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000"
   const fromEmail = params.fromEmail || process.env.SES_FROM_EMAIL || "noreply@example.com"
   const fromName = params.fromName || "Email Campaign Platform"
-  const source = `"${fromName}" <${fromEmail}>`
+  const contactId = params.to.contactId || params.contactId || 'unknown'
+  const encodedEmail = encodeURIComponent(params.to.email)
 
   let processedHtml = personalize(params.html, params.to)
 
@@ -96,34 +121,33 @@ export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
     processedHtml = injectTrackingAndUnsubscribe(
       processedHtml,
       params.campaignId,
-      params.to.email,
+      params.to,
       baseUrl
     )
   }
 
-  const command = new SendEmailCommand({
-    Source: source,
-    Destination: {
-      ToAddresses: [params.to.email],
-    },
-    Message: {
-      Subject: {
-        Data: personalize(params.subject, params.to),
-        Charset: "UTF-8",
-      },
-      Body: {
-        Html: {
-          Data: processedHtml,
-          Charset: "UTF-8",
-        },
-      },
-    },
-    ...(params.replyTo && {
-      ReplyToAddresses: [params.replyTo],
-    }),
+  // Secure Unsubscribe Token (uid)
+  const uid = UnsubscribeService.encodeToken({
+    cid: contactId,
+    cam: params.campaignId || 'unknown',
+    em: params.to.email
   })
 
-  await sesClient.send(command)
+  // Headers for RFC 8058 One-Click Unsubscribe
+  const listUnsubscribeUrl = `${baseUrl}/api/unsubscribe?uid=${uid}`
+  const footerUnsubscribeUrl = `${baseUrl}/unsubscribe?uid=${uid}`
+  
+  await transporter.sendMail({
+    from: `"${fromName}" <${fromEmail}>`,
+    to: params.to.email,
+    subject: personalize(params.subject, params.to),
+    html: processedHtml,
+    replyTo: params.replyTo,
+    headers: {
+      'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+    }
+  })
 }
 
 /**

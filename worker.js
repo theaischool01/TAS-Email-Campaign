@@ -2,11 +2,13 @@ const { PrismaClient } = require('@prisma/client');
 // FORCE DEPLOY TIMESTAMP: 2026-05-11 00:39 AM
 const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
+const { SESClient } = require('@aws-sdk/client-ses');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const http = require('http');
+
+const { UnsubscribeService } = require('./lib/services/unsubscribe.service');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
 const logPath = path.join(process.cwd(), 'worker-error.log');
@@ -42,7 +44,11 @@ const awsConfig = {
 };
 
 const sqsClient = new SQSClient(awsConfig);
-const sesClient = new SESv2Client(awsConfig);
+const sesClient = new SESClient(awsConfig);
+const nodemailer = require('nodemailer');
+const transporter = nodemailer.createTransport({
+  SES: { ses: sesClient, aws: { SESClient } }
+});
 
 const QUEUE_NAME = "EmailDispatchQueue";
 let queueUrl = null;
@@ -148,7 +154,8 @@ async function processQueue() {
           const fromName = campaign.senderName || "Marketing Team";
           const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           const contactId = recipient.contactId || 'unknown';
-          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}`;
+          const encodedEmail = encodeURIComponent(recipient.email);
+          const unsubscribeUrl = `${appUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}&email=${encodedEmail}`;
           const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none !important;" />`;
           
           let html = campaign.template?.html || "No content";
@@ -157,26 +164,55 @@ async function processQueue() {
                      .replace(/{{email}}/gi, recipient.email)
                      .replace(/{{UNSUBSCRIBE_URL}}/gi, unsubscribeUrl);
 
+          // Click Tracking: wrap links
+          html = html.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
+            if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || url === unsubscribeUrl) return match;
+            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`;
+            return match.replace(url, trackingUrl);
+          });
+
           const fullHtml = html.includes('</body>') 
             ? html.replace('</body>', `${trackingPixel}</body>`) 
             : `${html}${trackingPixel}`;
 
-          // DIRECT AWS SEND (Bypass Nodemailer wrapper bugs)
-          const sendCommand = new SendEmailCommand({
-            FromEmailAddress: `"${fromName}" <${fromEmail}>`,
-            Destination: { ToAddresses: [recipient.email] },
-            Content: {
-              Simple: {
-                Subject: { Data: campaign.subject },
-                Body: { Html: { Data: fullHtml } }
-              }
-            },
-            ConfigurationSetName: 'CampaignTracking', // MATCHES: Your AWS SES Console name
-            // ListManagementOptions removed to avoid NotFoundException if list isn't created in AWS Console
-
+          // Secure Unsubscribe Token (uid)
+          const uid = UnsubscribeService.encodeToken({
+            cid: contactId,
+            cam: campaignId,
+            em: recipient.email
           });
 
-          await sesClient.send(sendCommand);
+          // List-Unsubscribe Header implementation
+          const listUnsubscribeUrl = `${appUrl}/api/unsubscribe?uid=${uid}`;
+          const footerUnsubscribeUrl = `${appUrl}/unsubscribe?uid=${uid}`;
+          
+          // Inject unsubscribe footer securely
+          const unsubscribeBar = `
+            <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:20px;">
+              <tr>
+                <td style="padding:15px;text-align:center;font-family:Arial,sans-serif;font-size:11px;color:#888888;border-top:1px solid #e5e7eb;">
+                  You received this email because you are subscribed to our mailing list.<br/>
+                  <a href="${footerUnsubscribeUrl}" style="color:#888888;text-decoration:underline;">Unsubscribe</a> | 
+                  <a href="${appUrl}/preferences?uid=${uid}" style="color:#888888;text-decoration:underline;">Manage Preferences</a>
+                </td>
+              </tr>
+            </table>
+          `;
+
+          const finalHtml = fullHtml.includes('</body>') 
+            ? fullHtml.replace('</body>', `${unsubscribeBar}</body>`) 
+            : `${fullHtml}${unsubscribeBar}`;
+
+          await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: recipient.email,
+            subject: campaign.subject,
+            html: finalHtml,
+            headers: {
+              'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+            }
+          });
 
           const updated = await prisma.campaign.update({
             where: { id: campaignId },
