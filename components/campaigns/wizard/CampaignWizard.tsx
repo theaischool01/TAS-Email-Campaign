@@ -73,6 +73,7 @@ export function useCampaignWizard() {
   const [contactLists, setContactLists] = useState<any[]>([])
   const [segments, setSegments] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
+  const [launching, setLaunching] = useState(false)
 
   // Create stable autosave payload - only includes data that needs to be saved
   const autosavePayload = useMemo(() => ({
