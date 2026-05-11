@@ -6,7 +6,9 @@ import {
   NoSymbolIcon, 
   ExclamationTriangleIcon,
   RocketLaunchIcon,
-  UserMinusIcon
+  UserMinusIcon,
+  UserPlusIcon,
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline'
 
 interface ActivityItem {
@@ -27,6 +29,8 @@ export const RecentActivity: React.FC<{ activities: ActivityItem[] }> = ({ activ
       case 'EMAIL_COMPLAINED': return <ExclamationTriangleIcon className="w-4 h-4 text-amber-500" />
       case 'CAMPAIGN_LAUNCHED': return <RocketLaunchIcon className="w-4 h-4 text-indigo-500" />
       case 'EMAIL_UNSUBSCRIBED': return <UserMinusIcon className="w-4 h-4 text-slate-500" />
+      case 'EMAIL_RESUBSCRIBED': return <UserPlusIcon className="w-4 h-4 text-blue-500" />
+      case 'PREFERENCES_UPDATED': return <Cog6ToothIcon className="w-4 h-4 text-slate-400" />
       default: return <EnvelopeIcon className="w-4 h-4 text-slate-400" />
     }
   }
@@ -39,6 +43,9 @@ export const RecentActivity: React.FC<{ activities: ActivityItem[] }> = ({ activ
       case 'EMAIL_BOUNCED': return <span><b>{contactName}</b> bounced for <b>{item.campaign.name}</b></span>
       case 'EMAIL_COMPLAINED': return <span><b>{contactName}</b> reported spam for <b>{item.campaign.name}</b></span>
       case 'CAMPAIGN_LAUNCHED': return <span><b>{item.campaign.name}</b> was launched</span>
+      case 'EMAIL_UNSUBSCRIBED': return <span><b>{contactName}</b> unsubscribed</span>
+      case 'EMAIL_RESUBSCRIBED': return <span><b>{contactName}</b> resubscribed</span>
+      case 'PREFERENCES_UPDATED': return <span>Preferences updated for <b>{contactName}</b></span>
       default: return <span>Activity on <b>{item.campaign.name}</b></span>
     }
   }

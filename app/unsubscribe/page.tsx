@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Suspense } from "react"
 import { revalidatePath } from "next/cache"
+import { ResubscribeButton } from "@/components/preferences/ResubscribeButton"
 
 async function UnsubscribeContent({
   searchParams,
@@ -66,11 +67,10 @@ async function UnsubscribeContent({
               "use server"
               await UnsubscribeService.resubscribe(uid)
               revalidatePath('/unsubscribe')
+              revalidatePath('/dashboard')
+              revalidatePath('/campaigns')
             }}>
-              <Button variant="outline" className="w-full flex items-center justify-center gap-2 py-6">
-                <RotateCcw className="h-4 w-4" />
-                Re-subscribe me
-              </Button>
+              <ResubscribeButton actionType="resubscribe" className="w-full py-6" />
             </form>
             <Button variant="ghost" className="w-full text-blue-600 hover:text-blue-700 flex items-center justify-center gap-2" asChild>
               <Link href={`/preferences?uid=${uid}`}>
@@ -93,6 +93,12 @@ async function UnsubscribeContent({
     const userAgent = headerList.get('user-agent') || 'unknown'
     
     await UnsubscribeService.unsubscribe(uid!, 'footer_link', { ip, userAgent })
+    
+    // Task 4: Realtime Refresh
+    revalidatePath('/unsubscribe')
+    revalidatePath('/dashboard')
+    revalidatePath('/campaigns')
+
     // Redirect to success state (self-page with param)
     const { redirect } = await import("next/navigation")
     redirect(`/unsubscribe?uid=${uid}&confirmed=true`)

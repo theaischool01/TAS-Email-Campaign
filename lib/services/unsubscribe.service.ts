@@ -135,6 +135,7 @@ export class UnsubscribeService {
 
   /**
    * Toggles subscription for a specific list
+   * (NO LOGGING HERE - handled by page for bulk updates)
    */
   static async toggleListSubscription(token: string, listId: string, subscribe: boolean) {
     const data = this.decodeToken(token)
@@ -183,28 +184,109 @@ export class UnsubscribeService {
   }
 
   /**
+   * Log a preference update event
+   */
+  static async logPreferenceUpdate(token: string, metadata: any = {}) {
+    const data = this.decodeToken(token)
+    if (!data) return
+
+    const { cid, cam, em } = data
+
+    try {
+      // Deduplication check
+      const recentUpdate = await prisma.campaignActivityLog.findFirst({
+        where: { 
+          campaignId: cam, 
+          contactId: cid || undefined, 
+          action: 'PREFERENCES_UPDATED',
+          createdAt: {
+            gte: new Date(Date.now() - 5000) // 5 seconds ago
+          }
+        }
+      })
+
+      if (recentUpdate) return
+
+      await prisma.campaignActivityLog.create({
+        data: {
+          campaignId: cam,
+          action: 'PREFERENCES_UPDATED',
+          actorId: cid || 'anonymous',
+          contactId: cid || undefined,
+          metadata: {
+            ...metadata,
+            email: em,
+            timestamp: new Date().toISOString()
+          }
+        }
+      })
+    } catch (error) {
+      console.error("Log Preference Update Error:", error)
+    }
+  }
+
+  /**
    * Performs the re-subscribe action
    */
   static async resubscribe(token: string) {
     const data = this.decodeToken(token)
     if (!data) return { success: false, error: "Invalid token" }
 
-    const { cid, em } = data
+    const { cid, em, cam } = data
 
     try {
+      let contactId = cid;
+      
+      // 1. Update contact status to ACTIVE
       if (cid && cid !== 'unknown') {
         await prisma.contact.update({
           where: { id: cid },
           data: { status: 'ACTIVE' }
         })
       } else if (em) {
-        await prisma.contact.updateMany({
-          where: { email: em },
-          data: { status: 'ACTIVE' }
-        })
+        const contact = await prisma.contact.findFirst({ where: { email: em } });
+        if (contact) {
+          contactId = contact.id;
+          await prisma.contact.update({
+            where: { id: contact.id },
+            data: { status: 'ACTIVE' }
+          })
+        }
       }
+
+      // 2. Log EMAIL_RESUBSCRIBED with deduplication
+      if (contactId && contactId !== 'unknown') {
+        const recentResub = await prisma.campaignActivityLog.findFirst({
+          where: { 
+            campaignId: cam, 
+            contactId: contactId, 
+            action: 'EMAIL_RESUBSCRIBED',
+            createdAt: {
+              gte: new Date(Date.now() - 10000) // 10 seconds ago
+            }
+          }
+        })
+
+        if (!recentResub) {
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId: cam,
+              action: 'EMAIL_RESUBSCRIBED',
+              actorId: contactId,
+              contactId: contactId,
+              metadata: {
+                source: 'preferences_center_resubscribe',
+                email: em,
+                timestamp: new Date().toISOString()
+              }
+            }
+          })
+        }
+      }
+
       return { success: true }
     } catch (error) {
+      console.error("Resubscribe Error:", error);
       return { success: false, error: "Database error" }
     }
   }

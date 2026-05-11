@@ -1,215 +1,152 @@
-# 📧 M9 Analytics – Email Campaign Platform
+# Email Campaign Platform 🚀
 
-A professional, high-performance email marketing and automation platform built for scale. Manage contacts, design beautiful templates, and launch tracked campaigns with real-time analytics.
+A high-performance, production-ready email marketing and automation platform built with **Next.js 15**, **TypeScript**, and **Prisma**. This platform integrates directly with **AWS SES** for reliable email delivery and features real-time tracking for opens, clicks, and recipient engagement.
 
----
-
-## 🌟 Project Overview
-**M9 Analytics** is a production-grade Email Service Provider (ESP) interface designed to bridge the gap between complex AWS infrastructure and user-friendly campaign management. It provides a robust suite of tools for businesses to reach their audience effectively while maintaining high deliverability and deep engagement insights.
-
-This platform handles everything from secure subscriber management to RFC 8058-compliant one-click unsubscriptions, ensuring your emails land in the inbox and stay compliant with modern global standards.
+Inspired by industry leaders like Mailchimp and Zoho Campaigns, this platform provides a complete suite for managing mailing lists, designing templates, and analyzing campaign performance through a sleek, modern dashboard.
 
 ---
 
-## 🚀 Features & Modules
+## 📸 Screenshots
 
-### 1. **Campaign Management Wizard**
-- Step-by-step creation flow (Details → Content → Recipients → Review).
-- Schedule campaigns for future delivery or send immediately.
-- Real-time sending progress monitoring.
+| Dashboard Overview | Campaign Reports |
+|:---:|:---:|
+| ![Dashboard](./screenshots/dashboard.png) | ![Reports](./screenshots/reports.png) |
 
-### 2. **Contact & List Management**
-- Organize subscribers into multiple lists.
-- **Bulk Import**: Seamlessly import thousands of contacts via CSV.
-- **Segmentation**: Target specific users based on custom criteria and tags.
+| Preference Center | Template Builder |
+|:---:|:---:|
+| ![Preferences](./screenshots/preferences.png) | ![Templates](./screenshots/templates.png) |
 
-### 3. **Visual Template Builder**
-- Drag-and-drop MJML-powered editor.
-- Library of pre-built, mobile-responsive templates.
-- HTML/JSON export and preview modes.
+---
 
-### 4. **Deep Analytics Dashboard**
-- **Global Stats**: Total Sent, Opened, Clicked, and Bounced.
-- **Tracking System**: Unique open tracking and link click redirection.
-- **Growth Trends**: Visualize your audience growth over time.
+## ✨ Features
 
-### 5. **Security & RBAC**
-- **Roles**: Super Admin, Manager, and Viewer.
-- **IP Lockout**: Automatic protection against brute-force login attempts.
-- **Secure Tokens**: Encrypted unsubscribe links to prevent unauthorized opt-outs.
+- **📬 AWS SES Integration**: Enterprise-grade email delivery using Amazon Simple Email Service (SES v2).
+- **📊 Real-time Analytics**: Live tracking of open rates, click rates, and delivery success.
+- **🎯 Smart Recipient Management**: Advanced contact segmentation and mailing list organization.
+- **🔒 Secure Preference Center**: Dedicated public portal for recipients to manage their communication preferences with per-list toggles.
+- **🛡️ Automated Unsubscribe**: Secure, token-based unsubscription flow with human-verification safeguards.
+- **⚡ Background Processing**: High-throughput delivery using AWS SQS and a dedicated worker system.
+- **📝 Template System**: Reusable email templates with dynamic variable replacement (e.g., `{{first_name}}`).
+- **🔐 RBAC Security**: Robust Role-Based Access Control for Organizations and Campaign Managers.
+- **🔄 Activity Feed**: Live audit trail of all recipient interactions (clicks, opens, unsubscribes).
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js 15+ (App Router), React 19, Tailwind CSS |
-| **Backend** | Next.js Server Actions, API Routes, TypeScript |
-| **Database** | PostgreSQL (NeonDB), Prisma ORM |
-| **Auth** | NextAuth.js (Credentials Provider) |
-| **Infrastructure** | AWS SES (Simple Email Service), AWS SQS (Queuing) |
-| **Deployment** | Vercel (Frontend/API), Neon (Database) |
+### Frontend
+- **Framework**: [Next.js 15 (App Router)](https://nextjs.org/)
+- **UI Logic**: [React 19](https://react.dev/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Components**: [Lucide React Icons](https://lucide.dev/), [HeroIcons](https://heroicons.com/)
+
+### Backend
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **ORM**: [Prisma](https://www.prisma.io/)
+- **Database**: [PostgreSQL](https://www.postgresql.org/) (Production) / [SQLite](https://www.sqlite.org/) (Local)
+- **Queue**: [AWS SQS](https://aws.amazon.com/sqs/)
+- **Email Delivery**: [AWS SES SDK v3](https://aws.amazon.com/ses/)
+
+### Infrastructure
+- **Deployment**: [Vercel](https://vercel.com/)
+- **Monitoring**: AWS CloudWatch (via SES/SQS)
 
 ---
 
-## 📐 Architecture & Workflow
+## 🏗️ Project Architecture
 
-1. **Campaign Creation**: User designs a template and selects a recipient list.
-2. **Dispatch**: The system validates the campaign and pushes individual email tasks to **AWS SQS**.
-3. **Delivery**: A background worker processes the queue and sends emails via **AWS SES**.
-4. **Tracking**: When a user opens an email or clicks a link, our **Tracking API** logs the event and redirects the user.
-5. **Feedback**: AWS SNS listens for Bounces/Complaints and updates the contact status in real-time.
+The platform follows a modern micro-service-lite architecture:
+
+1.  **Frontend (Next.js)**: Handles the user interface, campaign creation wizard, and analytics visualization.
+2.  **API Layer (Next.js Routes)**: Secure endpoints for data management and tracking pixel processing.
+3.  **Tracking System**: Highly optimized endpoints for open tracking (transparent pixels) and click redirects.
+4.  **Worker System (`worker.js`)**: A dedicated background process that consumes SQS messages to handle bulk email delivery without blocking the main thread.
+5.  **Analytics Pipeline**: Real-time aggregation of activity logs into campaign-level performance metrics.
 
 ---
 
-## 📂 Folder Structure
+## ⚙️ Installation & Setup
 
-```text
-├── app/                  # Next.js App Router (Pages & APIs)
-│   ├── api/              # Backend API Endpoints
-│   ├── dashboard/        # Main User Interface
-│   └── unsubscribe/      # Public Recipient Pages
-├── components/           # Shared UI Components (Shadcn/UI)
-├── lib/                  # Services, Utilities, and DB Client
-│   ├── services/         # Business Logic (Email, Analytics)
-│   └── rbac/             # Access Control Logic
-├── prisma/               # Database Schema & Migrations
-├── public/               # Static Assets
-└── worker.js             # Background Queue Processor
+### 1. Clone the repository
+```bash
+git clone https://github.com/SaheelYadav/email-campaign-platform.git
+cd email-campaign-platform
+```
+
+### 2. Install dependencies
+```bash
+npm install
+```
+
+### 3. Configure Environment Variables
+Create a `.env` file in the root directory:
+```env
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/email_platform"
+
+# Authentication
+NEXTAUTH_SECRET="generate-a-secure-secret-here"
+NEXTAUTH_URL="http://localhost:3000"
+
+# AWS Configuration
+AWS_REGION="us-east-1"
+AWS_ACCESS_KEY_ID="your-access-key-id"
+AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+AWS_SQS_QUEUE_URL="your-sqs-queue-url"
+
+# App URL (Critical for tracking)
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
+
+### 4. Initialize the Database
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+### 5. Start the Application
+```bash
+# Terminal 1: Frontend & API
+npm run dev
+
+# Terminal 2: Background Worker
+node worker.js
 ```
 
 ---
 
-## ⚙️ Installation & Local Setup
+## 🚢 Deployment (Vercel)
 
-### Prerequisites
-- Node.js 20+
-- PostgreSQL Database
-- AWS Account (SES Access)
-
-### Steps
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/SaheelYadav/email-campaign-platform.git
-   cd email-campaign-platform
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-
-3. **Configure Environment Variables**:
-   Create a `.env` file in the root directory (see the table below).
-
-4. **Initialize Database**:
-   ```bash
-   npx prisma db push
-   ```
-
-5. **Seed Default Templates**:
-   Start the app and visit `/api/templates/seed` while logged in to load initial designs.
-
-6. **Run the development server**:
-   ```bash
-   npm run dev
-   ```
+1.  **Push to GitHub**: Push your latest code.
+2.  **Connect Vercel**: Import the repository into your Vercel account.
+3.  **Add Variables**: Add all `.env` variables to Vercel Project Settings.
+4.  **Absolute URLs**: Ensure `NEXT_PUBLIC_APP_URL` matches your production domain (e.g., `https://campaigns.yourdomain.com`).
+5.  **Prisma Build**: Ensure your build command includes `prisma generate`.
 
 ---
 
-## 🔑 Environment Variables
+## 🔮 Future Roadmap
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Your PostgreSQL connection string (Neon/Local) |
-| `NEXTAUTH_SECRET` | Secret key for session encryption |
-| `AWS_ACCESS_KEY` | Your AWS IAM User Access Key |
-| `AWS_SECRET_ACCESS_KEY` | Your AWS IAM User Secret Key |
-| `AWS_REGION` | Your AWS SES Region (e.g., `us-east-1`) |
-| `SES_FROM_EMAIL` | Verified sender email in AWS SES |
-| `NEXT_PUBLIC_APP_URL` | Your application's base URL |
+- [ ] **AI Subject Suggestions**: Leverage Gemini AI to suggest high-converting subject lines.
+- [ ] **A/B Testing**: Side-by-side performance comparison for campaign variants.
+- [ ] **Advanced Heatmaps**: Visual representation of where users click within your emails.
+- [ ] **Custom Webhooks**: Integrate with Zapier or internal tools on engagement events.
+- [ ] **Recurring Campaigns**: Automated drip sequences and scheduled follow-ups.
 
 ---
 
-## 📧 AWS SES Setup
+## 📄 License
 
-To enable email sending, follow these steps in your AWS Console:
-1. **Verify Identity**: Add and verify your domain or email address in SES.
-2. **Production Access**: If you are in the SES Sandbox, request production access to send to unverified emails.
-3. **Configuration Set**: Create a configuration set named `M9_Analytics` to track delivery events.
-4. **SMTP/IAM**: Create an IAM user with `AmazonSESFullAccess` and generate credentials.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 📊 Tracking & Compliance
-
-### **Tracking System**
-- **Opens**: A 1x1 transparent pixel is embedded in each email.
-- **Clicks**: Links are rewritten to route through `/api/track/click`.
-- **Bot Filtering**: The system ignores bot/crawler activity to ensure accurate data.
-
-### **Compliance (RFC 8058)**
-M9 Analytics implements **One-Click Unsubscribe** headers. This ensures your emails are compliant with Google and Yahoo's 2024 sender requirements, reducing your spam score.
-
----
-
-## 📚 API & Postman
-Full API documentation is available in `API_DOCUMENTATION.md`.
-
-### **Postman Usage**
-1. Import `email-campaign-platform-postman.json` into Postman.
-2. Set the `base_url` variable to your deployment URL.
-3. Use the **Auth** folder to log in and receive your session cookie.
-
----
-
-## 🚢 Deployment
-
-### **Vercel**
-1. Connect your GitHub repository to Vercel.
-2. Add all environment variables from your `.env` file to Vercel Project Settings.
-3. Deploy! The `build` script will automatically handle Prisma generation.
-
----
-
-## 📸 Screenshots
-*(Add your project screenshots here)*
-> [!TIP]
-> Place screenshots of the Dashboard, Campaign Wizard, and Template Builder here to showcase the UI.
-
----
-
-## 🎥 Demo Video
-*(Add your demo video link here)*
-> [!NOTE]
-> A walkthrough video demonstrating a campaign launch is highly recommended for submission.
-
----
-
-## 🛠️ Troubleshooting
-
-- **Build Failing?** Ensure `DATABASE_URL` is accessible during the build step.
-- **Emails not sending?** Check if your AWS SES is still in "Sandbox Mode".
-- **Prisma Errors?** Run `npx prisma generate` to sync your client with the schema.
-
----
-
-## 📜 License & Copyright
-
-**Copyright © 2026 Saheel Yadav. All Rights Reserved.**
-
-This project is proprietary software. Unauthorized copying, redistribution, or commercial reuse is strictly prohibited. The code is provided for educational and portfolio demonstration purposes only.
-
----
-
-## 👤 Author
+## 👨‍💻 Author
 
 **Saheel Yadav**
-*Full-Stack Software Engineer*
-
-- **GitHub**: [@SaheelYadav](https://github.com/SaheelYadav)
-- **LinkedIn**: [Saheel Yadav](https://linkedin.com/in/saheel-yadav-ai-ml)
+- [LinkedIn](https://www.linkedin.com/in/saheelyadav/)
+- [Portfolio](https://saheelyadav.com/)
+- [GitHub](https://github.com/SaheelYadav)
 
 ---
-*© 2026 Saheel Yadav. All Rights Reserved.*
+Built with ❤️ for professional communication.

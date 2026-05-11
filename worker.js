@@ -242,6 +242,20 @@ async function processQueue() {
             data: { totalSent: { increment: 1 } }
           });
 
+          // Log EMAIL_SENT activity
+          await prisma.campaignActivityLog.create({
+            data: {
+              campaignId,
+              action: 'EMAIL_SENT',
+              actorId: contactId,
+              contactId: contactId,
+              metadata: {
+                email: recipient.email,
+                timestamp: new Date().toISOString()
+              }
+            }
+          });
+
           if (updated.totalSent + updated.totalFailed >= updated.recipientCount) {
             await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'SENT' } });
           }

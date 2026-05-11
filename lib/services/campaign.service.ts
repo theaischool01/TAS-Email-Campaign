@@ -251,8 +251,12 @@ export class CampaignService {
       throw new Error(`Database error: ${dbError.message}`)
     }
 
-    // 3. Process Summary Stats
+    // 3. Process Summary Stats with caps
     console.log(`📊 Report: Processing summary stats...`)
+    const delivered = (campaign.totalSent || 0) - (campaign.totalBounced || 0)
+    const uniqueOpens = new Set(logs.filter(l => l.action === 'EMAIL_OPENED').map(l => l.actorId)).size
+    const uniqueClicks = new Set(logs.filter(l => l.action === 'EMAIL_CLICKED').map(l => l.actorId)).size
+
     const summary = {
       sent: campaign.totalSent || 0,
       opened: campaign.totalOpened || 0,
@@ -260,9 +264,9 @@ export class CampaignService {
       bounced: campaign.totalBounced || 0,
       complained: campaign.totalComplained || 0,
       unsubscribed: logs.filter(l => l.action === 'EMAIL_UNSUBSCRIBED').length || campaign.totalUnsubscribed || 0,
-      delivered: (campaign.totalSent || 0) - (campaign.totalBounced || 0),
-      uniqueOpens: new Set(logs.filter(l => l.action === 'EMAIL_OPENED').map(l => l.actorId)).size,
-      uniqueClicks: new Set(logs.filter(l => l.action === 'EMAIL_CLICKED').map(l => l.actorId)).size,
+      delivered,
+      uniqueOpens: Math.min(uniqueOpens, delivered > 0 ? delivered : uniqueOpens),
+      uniqueClicks: Math.min(uniqueClicks, delivered > 0 ? delivered : uniqueClicks),
     }
     console.log(`📊 Report: Summary stats processed`, summary)
 
@@ -316,7 +320,7 @@ export class CampaignService {
       url,
       clicks: stats.clicks,
       uniqueClicks: stats.users.size,
-      percent: (summary.delivered || 0) > 0 ? (stats.users.size / (summary.delivered || 1)) * 100 : 0
+      percent: (delivered || 0) > 0 ? Math.min((stats.users.size / (delivered || 1)) * 100, 100) : 0
     })).sort((a, b) => b.clicks - a.clicks)
 
     // 6. Device Breakdown (parsing User-Agent)

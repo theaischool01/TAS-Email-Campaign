@@ -16,22 +16,31 @@ interface DashboardStats {
   growthTrend: any
   topCampaigns: any[]
   recentActivity: any[]
+  campaignCount: number
+  templateCount: number
+  contactCount: number
 }
 
 async function getDashboardStats(session: any): Promise<DashboardStats | null> {
   try {
-    const [summary, growthTrend, topCampaigns, recentActivity] = await Promise.all([
+    const [summary, growthTrend, topCampaigns, recentActivity, campaignCount, templateCount, contactCount] = await Promise.all([
       DashboardService.getStatsSummary(session, prisma),
       DashboardService.getContactGrowthTrend(session, prisma),
       DashboardService.getTopCampaigns(session, prisma),
-      DashboardService.getRecentActivity(session, prisma)
+      DashboardService.getRecentActivity(session, prisma),
+      DashboardService.getCampaignCount(session, prisma),
+      DashboardService.getTemplateCount(session, prisma),
+      DashboardService.getContactCount(session, prisma)
     ])
     
     return {
       summary,
       growthTrend,
       topCampaigns,
-      recentActivity
+      recentActivity,
+      campaignCount,
+      templateCount,
+      contactCount
     }
   } catch (error) {
     console.error("Error fetching dashboard stats:", error)
@@ -59,7 +68,7 @@ export default async function DashboardPage() {
       )
     }
 
-    const { summary, growthTrend, topCampaigns, recentActivity } = data
+    const { summary, growthTrend, topCampaigns, recentActivity, campaignCount, templateCount, contactCount } = data
 
     return (
       <DashboardLayout>
@@ -69,14 +78,14 @@ export default async function DashboardPage() {
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Platform Analytics</h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-lg font-medium">
-                Welcome back, <span className="text-blue-600 dark:text-blue-400">{session.user?.name}</span>
+                Overview of your email communication performance
               </p>
             </div>
             
             <div className="flex items-center space-x-3">
               <Link
                 href="/campaigns/new"
-                className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-all shadow-md shadow-blue-500/20"
+                className="inline-flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Mail className="w-4 h-4 mr-2" />
                 New Campaign
@@ -85,10 +94,10 @@ export default async function DashboardPage() {
           </div>
 
           {/* Key Metrics Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard 
               title="Total Contacts" 
-              value={growthTrend.currentCount.toLocaleString()}
+              value={contactCount.toLocaleString()}
               trend={{
                 value: growthTrend.growth,
                 label: 'Growth (30d)',
@@ -108,27 +117,36 @@ export default async function DashboardPage() {
             <StatCard 
               title="Avg. Open Rate" 
               value={`${(summary.openRate || 0).toFixed(1)}%`}
-              trend={{
-                value: 21,
-                label: 'vs Industry',
-                isUp: (summary.openRate || 0) >= 21
-              }}
               icon={<TrendingUp className="w-6 h-6" />}
-              status={(summary.openRate || 0) >= 21 ? 'success' : 'warning'}
+              status={(summary.openRate || 0) >= 20 ? 'success' : 'warning'}
             />
 
             <StatCard 
               title="Bounce Rate" 
               value={`${(summary.bounceRate || 0).toFixed(1)}%`}
               icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-              status={(summary.bounceRate || 0) > 2 ? 'danger' : (summary.bounceRate || 0) > 1 ? 'warning' : 'success'}
+              status={(summary.bounceRate || 0) > 2 ? 'danger' : 'success'}
             />
 
             <StatCard 
-              title="Emails Sent" 
-              value={summary.totalSent.toLocaleString()}
-              icon={<Mail className="w-6 h-6" />}
+              title="Campaigns Created" 
+              value={campaignCount.toLocaleString()}
+              icon={<FileText className="w-6 h-6" />}
               status="neutral"
+            />
+
+            <StatCard 
+              title="Templates Ready" 
+              value={templateCount.toLocaleString()}
+              icon={<FileText className="w-6 h-6" />}
+              status="neutral"
+            />
+
+            <StatCard 
+              title="Click Rate" 
+              value={`${(summary.clickRate || 0).toFixed(1)}%`}
+              icon={<TrendingUp className="w-6 h-6" />}
+              status="info"
             />
           </div>
 
@@ -145,34 +163,53 @@ export default async function DashboardPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800/50">
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Campaign</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Sent</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Open Rate</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Action</th>
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Campaign</th>
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Sent</th>
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Open Rate</th>
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Click Rate</th>
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {topCampaigns.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">No campaigns sent yet</td>
+                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No campaigns sent yet</td>
                       </tr>
                     ) : (
-                      topCampaigns.map((c) => (
-                        <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{c.name}</td>
-                          <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{c.totalSent.toLocaleString()}</td>
+                      topCampaigns.map((c: any) => (
+                        <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                           <td className="px-6 py-4">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-16 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500" style={{ width: `${Math.min(c.openRate || 0, 100)}%` }} />
-                              </div>
-                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{(c.openRate || 0).toFixed(1)}%</span>
+                            <span className="block font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{c.name}</span>
+                            <div className="flex gap-2 mt-1">
+                              {c.openRate >= 25 && (
+                                <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded uppercase tracking-tight">Best Open</span>
+                              )}
+                              {c.clickRate >= 5 && (
+                                <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-tight">High CTR</span>
+                              )}
                             </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                            {c.totalSent.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-sm font-bold text-slate-900 dark:text-white">{(c.openRate || 0).toFixed(1)}%</span>
+                              <div className="w-24 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-emerald-500 rounded-full" 
+                                  style={{ width: `${Math.min(c.openRate || 0, 100)}%` }} 
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">{(c.clickRate || 0).toFixed(1)}%</span>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <Link 
                               href={`/campaigns/${c.id}/report`}
-                              className="inline-flex items-center px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                              className="inline-flex items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-all"
                             >
                               Report
                             </Link>

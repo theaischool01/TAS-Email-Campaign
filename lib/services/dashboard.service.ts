@@ -90,12 +90,12 @@ export class DashboardService {
       recipientCount: aggregates._sum.recipientCount || 0
     }
 
-    // Calculate rates
+    // Calculate rates with 100% cap protection
     const delivered = summary.totalSent - summary.totalBounced
-    const openRate = delivered > 0 ? (summary.totalOpened / delivered) * 100 : 0
-    const clickRate = delivered > 0 ? (summary.totalClicked / delivered) * 100 : 0
-    const bounceRate = summary.totalSent > 0 ? (summary.totalBounced / summary.totalSent) * 100 : 0
-    const complaintRate = summary.totalSent > 0 ? (summary.totalComplained / summary.totalSent) * 100 : 0
+    const openRate = delivered > 0 ? Math.min((summary.totalOpened / delivered) * 100, 100) : 0
+    const clickRate = delivered > 0 ? Math.min((summary.totalClicked / delivered) * 100, 100) : 0
+    const bounceRate = summary.totalSent > 0 ? Math.min((summary.totalBounced / summary.totalSent) * 100, 100) : 0
+    const complaintRate = summary.totalSent > 0 ? Math.min((summary.totalComplained / summary.totalSent) * 100, 100) : 0
 
     return {
       ...summary,
@@ -134,7 +134,7 @@ export class DashboardService {
   }
 
   /**
-   * Get top 5 performing campaigns by open rate
+   * Get top 5 performing campaigns by engagement (Open Rate > Click Rate > Volume)
    */
   static async getTopCampaigns(session: Session | null, prisma: PrismaClient) {
     const filter = CampaignAccessControl.getDashboardCampaignFilter(session)
@@ -150,11 +150,16 @@ export class DashboardService {
         name: true,
         totalSent: true,
         totalOpened: true,
-        openRate: true
+        totalClicked: true,
+        openRate: true,
+        clickRate: true
       },
-      orderBy: {
-        openRate: 'desc'
-      },
+      orderBy: [
+        { openRate: 'desc' },
+        { clickRate: 'desc' },
+        { totalSent: 'desc' },
+        { id: 'asc' }
+      ],
       take: 5
     })
 

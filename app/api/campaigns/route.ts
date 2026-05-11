@@ -37,16 +37,16 @@ const campaignFiltersSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     console.log("🚀 GET /api/campaigns - Starting request")
-    
+
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       console.log("❌ No session found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("✅ Session found:", { 
-      userId: session.user.id, 
-      role: session.user.role 
+    console.log("✅ Session found:", {
+      userId: session.user.id,
+      role: session.user.role
     })
 
     // Parse query parameters
@@ -66,9 +66,8 @@ export async function GET(request: NextRequest) {
     // Validate query parameters
     const validatedParams = campaignFiltersSchema.parse(queryParams)
 
-    // Get visibility filter based on RBAC
+    // RBAC visibility filter
     const visibilityFilter = CampaignAccessControl.getCampaignVisibilityFilter(session)
-    console.log("🔍 Visibility filter:", visibilityFilter)
 
     // Build the where clause
     let whereClause: any = { ...visibilityFilter }
@@ -112,7 +111,6 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    console.log("📋 Final where clause:", whereClause)
 
     // Get campaigns with pagination
     const skip = (validatedParams.page - 1) * validatedParams.limit
@@ -154,7 +152,6 @@ export async function GET(request: NextRequest) {
       prisma.campaign.count({ where: whereClause })
     ])
 
-    console.log("📊 Campaigns found:", campaigns.length, "Total:", total)
 
     return NextResponse.json({
       success: true,
@@ -171,7 +168,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error("❌ GET /api/campaigns error:", error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Invalid query parameters", details: (error as any).errors },
@@ -190,16 +187,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     console.log("🚀 POST /api/campaigns - Starting request")
-    
+
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       console.log("❌ No session found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("✅ Session found:", { 
-      userId: session.user.id, 
-      role: session.user.role 
+    console.log("✅ Session found:", {
+      userId: session.user.id,
+      role: session.user.role
     })
 
     // Check if user can create campaigns
@@ -213,7 +210,6 @@ export async function POST(request: NextRequest) {
     console.log("📝 Request body:", body)
 
     const validatedData = createCampaignSchema.parse(body)
-    console.log("✅ Validated data:", validatedData)
 
     // Check for duplicate campaign name
     const existingCampaign = await prisma.campaign.findFirst({
@@ -234,24 +230,10 @@ export async function POST(request: NextRequest) {
     // Normalize tags before creating campaign
     const normalizedData = {
       ...validatedData,
-      tags: Array.isArray(validatedData.tags) 
+      tags: Array.isArray(validatedData.tags)
         ? JSON.stringify(validatedData.tags)
         : validatedData.tags || null
     }
-    // Create campaign with better error handling
-    console.log("🔧 API DEBUG: Creating campaign with data:", {
-      name: validatedData.name,
-      subject: validatedData.subject,
-      previewText: validatedData.previewText,
-      senderName: validatedData.senderName,
-      senderEmail: validatedData.senderEmail,
-      replyToEmail: validatedData.replyToEmail,
-      templateId: normalizedData.templateId,
-      tags: normalizedData.tags,
-      currentStep: validatedData.currentStep,
-      createdBy: session.user.id,
-      status: 'DRAFT'
-    })
 
     try {
       const campaign = await prisma.campaign.create({
@@ -286,7 +268,6 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      console.log("✅ API DEBUG: Campaign created successfully:", campaign.id)
 
       // Log activity
       try {
@@ -303,13 +284,12 @@ export async function POST(request: NextRequest) {
         })
         console.log("✅ API DEBUG: Activity logged successfully")
       } catch (logError) {
-        console.error("⚠️ API DEBUG: Activity logging failed:", logError)
-        // Don't fail the request if activity logging fails
+        console.warn("⚠️ Activity logging failed:", logError)
       }
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         success: true,
-        data: campaign 
+        data: campaign
       }, { status: 201 })
 
     } catch (createError) {
@@ -319,7 +299,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error("❌ POST /api/campaigns error:", error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Invalid request data", details: (error as any).errors },

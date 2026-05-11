@@ -1,4 +1,6 @@
 import { UnsubscribeService } from "@/lib/services/unsubscribe.service"
+import { PreferenceSubmitButton } from "@/components/preferences/PreferenceSubmitButton"
+import { ResubscribeButton } from "@/components/preferences/ResubscribeButton"
 import { Mail, Settings2, ShieldCheck, BellOff, Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,12 +48,24 @@ async function PreferencesContent({
       const listIds = formData.getAll("listId").map(id => id.toString())
       const selectedListIds = formData.getAll("subscribed").map(id => id.toString())
       
+      let changedCount = 0
       for (const listId of listIds) {
         const isSubscribed = selectedListIds.includes(listId)
         await UnsubscribeService.toggleListSubscription(uid, listId, isSubscribed)
+        changedCount++
       }
+
+      // Log the preference update once
+      await UnsubscribeService.logPreferenceUpdate(uid, { 
+        listsUpdated: changedCount,
+        source: 'preferences_center'
+      })
     }
+    
+    // Refresh relevant paths for real-time dashboard updates
     revalidatePath('/preferences')
+    revalidatePath('/dashboard')
+    revalidatePath('/campaigns')
   }
 
   return (
@@ -114,9 +128,7 @@ async function PreferencesContent({
               )}
 
               {contactData.lists.length > 0 && (
-                <Button type="submit" className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl shadow-blue-200 hover:shadow-2xl hover:scale-[1.01] transition-all bg-blue-600 hover:bg-blue-700">
-                  Save My Preferences
-                </Button>
+                <PreferenceSubmitButton />
               )}
             </div>
           </form>
@@ -130,10 +142,12 @@ async function PreferencesContent({
                 </Button>
               </form>
               <form action={handleUpdate} className="flex-1">
-                <Button name="action" value="subscribe-all" variant="ghost" className="w-full h-14 rounded-xl flex items-center justify-center gap-2 font-bold text-gray-500 hover:bg-gray-100 transition-all">
-                  <Bell className="h-5 w-5" />
-                  Reset to Active
-                </Button>
+                <input type="hidden" name="action" value="subscribe-all" />
+                <ResubscribeButton 
+                  actionType="reset" 
+                  variant="ghost" 
+                  className="w-full h-14 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-all" 
+                />
               </form>
             </div>
             <div className="flex items-center justify-center gap-3 py-2 bg-white rounded-xl border border-gray-100 shadow-sm">
