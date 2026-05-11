@@ -8,7 +8,7 @@ const path = require('path');
 require('dotenv').config();
 const http = require('http');
 
-const { UnsubscribeService } = require('./lib/services/unsubscribe.service');
+const { UnsubscribeService } = require('./lib/services/unsubscribe');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
 const logPath = path.join(process.cwd(), 'worker-error.log');
