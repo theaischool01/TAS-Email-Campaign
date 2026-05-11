@@ -849,7 +849,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
               </Button>
               
               <Button
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={!canEdit || isSaving || (!Array.isArray(blocks) || blocks.length === 0)}
                 size="sm"
               >
@@ -936,7 +936,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
         <div className="fixed bottom-4 right-4 bg-orange-100 border border-orange-400 text-orange-800 px-4 py-2 rounded-lg shadow-lg z-50">
           <div className="flex items-center">
             <span className="mr-3">You have unsaved changes</span>
-            <Button size="sm" onClick={handleSave}>
+            <Button size="sm" onClick={() => handleSave()}>
               Save Now
             </Button>
           </div>

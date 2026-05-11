@@ -1,8 +1,10 @@
-import { SESClient } from "@aws-sdk/client-ses"
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2"
+import nodemailer from "nodemailer"
+import { UnsubscribeService } from "./unsubscribe.service"
 
 // ─── SES Client ──────────────────────────────────────────────────────────────
 
-const sesClient = new SESClient({
+const sesClient = new SESv2Client({
   region: process.env.AWS_REGION || "ap-south-1",
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY || "",
@@ -98,12 +100,9 @@ function injectTrackingAndUnsubscribe(
 
 // ─── Core Send Functions ──────────────────────────────────────────────────────
 
-import nodemailer from "nodemailer"
-import { UnsubscribeService } from "./unsubscribe.service"
-
 const transporter = nodemailer.createTransport({
-  SES: { ses: sesClient, aws: { SESClient } }
-})
+  SES: { sesClient, SendEmailCommand }
+} as any)
 
 /**
  * Send a single email via AWS SES with tracking and List-Unsubscribe

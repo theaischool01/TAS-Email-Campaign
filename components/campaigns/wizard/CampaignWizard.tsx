@@ -1,5 +1,5 @@
 "use client"
-// FORCE DEPLOY: 2026-05-11 15:05
+// FORCE DEPLOY: 2026-05-11 15:15 - FINAL CLEAN REWRITE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSession } from "next-auth/react"
@@ -886,6 +886,8 @@ export function useCampaignWizard() {
     templates,
     recipientStats,
     canCreate,
+    launching,
+    setLaunching,
     
     // Actions
     updateCampaignDetails,
@@ -894,6 +896,7 @@ export function useCampaignWizard() {
     goToStep,
     saveRecipients,
     updateStatus,
+    handleFinish,
     
     // Computed
     validateCurrentStepErrors,

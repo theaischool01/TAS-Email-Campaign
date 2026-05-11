@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 // FORCE DEPLOY TIMESTAMP: 2026-05-11 00:39 AM
 const cron = require('node-cron');
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { SESClient } = require('@aws-sdk/client-ses');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -44,10 +44,10 @@ const awsConfig = {
 };
 
 const sqsClient = new SQSClient(awsConfig);
-const sesClient = new SESClient(awsConfig);
+const sesClient = new SESv2Client(awsConfig);
 const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
-  SES: { ses: sesClient, aws: { SESClient } }
+  SES: { sesClient, SendEmailCommand }
 });
 
 const QUEUE_NAME = "EmailDispatchQueue";
