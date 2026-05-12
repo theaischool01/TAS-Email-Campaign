@@ -132,7 +132,8 @@ import {
   Edit,
   Trash2,
   Copy,
-  Eye
+  Eye,
+  FileText
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -160,6 +161,7 @@ export default function TemplatesPage() {
 
   const isAdmin = session?.user?.role === "SUPER_ADMIN"
   const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
+  const isViewer = session?.user?.role === "VIEWER"
   const canCreate = isAdmin || isManager
 
   const fetchTemplates = useCallback(async () => {
@@ -183,6 +185,23 @@ export default function TemplatesPage() {
       setIsLoading(false)
     }
   }, [])
+
+  if (isViewer) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-6 text-center">
+            <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+            <p className="text-gray-600">You don't have permission to access templates.</p>
+            <Button onClick={() => router.push("/dashboard")} className="mt-4">
+              Back to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   // Initial load only
   useEffect(() => {

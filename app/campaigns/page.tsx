@@ -130,16 +130,18 @@ export default function CampaignsPage() {
     }
   }
 
-  const canCreate = session?.user?.role !== 'VIEWER'
+  const isViewer = session?.user?.role === 'VIEWER'
 
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-          <p className="text-muted-foreground mt-1">Manage and track your email marketing campaigns</p>
+          <p className="text-muted-foreground mt-1">
+            {isViewer ? "View and track email marketing performance" : "Manage and track your email marketing campaigns"}
+          </p>
         </div>
-        {canCreate && (
+        {!isViewer && (
           <Button onClick={() => router.push('/campaigns/new')} className="w-full md:w-auto">
             <Plus className="h-4 w-4 mr-2" /> New Campaign
           </Button>
@@ -236,22 +238,21 @@ export default function CampaignsPage() {
                   <th className="py-4 px-4 font-semibold text-sm text-center">Date</th>
                   <th className="py-4 px-4 font-semibold text-sm text-center">Open Rate</th>
                   <th className="py-4 px-4 font-semibold text-sm text-center">Click Rate</th>
-                  <th className="py-4 px-4 font-semibold text-sm">Created By</th>
                   <th className="py-4 px-4 font-semibold text-sm text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
                       <Clock className="h-6 w-6 animate-spin mx-auto mb-2" />
                       Loading campaigns...
                     </td>
                   </tr>
                 ) : campaigns.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-muted-foreground">
-                      No campaigns found matching your filters.
+                    <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                      {isViewer ? "No campaigns available for review" : "No campaigns found matching your filters."}
                     </td>
                   </tr>
                 ) : (
@@ -274,12 +275,6 @@ export default function CampaignsPage() {
                             <Badge className={`text-[10px] uppercase font-bold px-2 py-0 h-5 ${getStatusBadgeColor(campaign.status)}`}>
                               {campaign.status}
                             </Badge>
-                            {campaign.totalFailed > 0 && (
-                              <span className="text-[9px] text-red-600 font-bold flex items-center gap-1">
-                                <AlertCircle className="h-2 w-2" />
-                                {campaign.totalFailed} Failed
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td className="py-4 px-4 text-center text-sm">
@@ -307,49 +302,49 @@ export default function CampaignsPage() {
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="py-4 px-4">
-                          <div className="text-xs font-medium">{campaign.user?.name || 'Unknown'}</div>
-                        </td>
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button 
-                              variant="ghost" 
+                              variant="outline" 
                               size="sm" 
-                              className="h-8 w-8 p-0"
+                              className="text-xs font-bold"
                               onClick={() => router.push(`/campaigns/${campaign.id}/report`)}
                               disabled={campaign.status === 'DRAFT'}
                             >
-                              <BarChart3 className="h-4 w-4" />
+                              <BarChart3 className="h-4 w-4 mr-2" />
+                              View Report
                             </Button>
                             
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {['SCHEDULED', 'SENDING', 'PAUSED'].includes(campaign.status) && (
-                                  <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/status`)}>
-                                    <Clock className="h-4 w-4 mr-2 text-blue-600" />
-                                    Manage Status
+                            {!isViewer && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {['SCHEDULED', 'SENDING', 'PAUSED'].includes(campaign.status) && (
+                                    <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/status`)}>
+                                      <Clock className="h-4 w-4 mr-2 text-blue-600" />
+                                      Manage Status
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/edit`)}>
+                                    <Edit className="h-4 w-4 mr-2" /> Edit
                                   </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem onClick={() => router.push(`/campaigns/${campaign.id}/edit`)}>
-                                  <Edit className="h-4 w-4 mr-2" /> Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicate(campaign.id)}>
-                                  <Copy className="h-4 w-4 mr-2" /> Duplicate
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => handleDelete(campaign.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                  <DropdownMenuItem onClick={() => handleDuplicate(campaign.id)}>
+                                    <Copy className="h-4 w-4 mr-2" /> Duplicate
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => handleDelete(campaign.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campaigns", href: "/campaigns", icon: Mail, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER"] },
+  { name: "Campaigns", href: "/campaigns", icon: Mail, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER", "VIEWER"] },
   { name: "Contacts", href: "/contacts", icon: Users, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER"] },
   { name: "Templates", href: "/templates", icon: FileText, roles: ["SUPER_ADMIN", "CAMPAIGN_MANAGER"] },
   { name: "Admin", href: "/admin", icon: Shield, roles: ["SUPER_ADMIN"] },
