@@ -14,13 +14,13 @@ An enterprise-grade, high-performance email marketing and automation platform. B
 
 ## 📸 Screenshots
 
-| Dashboard Overview | Campaign Reports |
+| Dashboard Overview | Campaign Management |
 |:---:|:---:|
-| ![Dashboard](./screenshots/dashboard.png) | ![Reports](./screenshots/reports.png) |
+| ![Dashboard](./docs/screenshots/dashboard.png) | ![Campaigns](./docs/screenshots/Campaigns.png) |
 
 | Preference Center | Template Builder |
 |:---:|:---:|
-| ![Preferences](./screenshots/preferences.png) | ![Templates](./screenshots/templates.png) |
+| ![Preferences](./docs/screenshots/preference.png) | ![Templates](./docs/screenshots/templates.png) |
 
 ---
 
