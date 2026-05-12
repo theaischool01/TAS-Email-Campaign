@@ -1,0 +1,445 @@
+{
+	"info": {
+		"_postman_id": "56468812-3433-4118-8399-f8c8a38f013f",
+		"name": "Email Campaign Platform (Verified & Automated)",
+		"description": "Enterprise-grade API collection for the Email Campaign Platform. Includes automated variable capture, deep documentation, and production-ready examples. Optimized for recruiters and developers.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"description": "Endpoints for user registration and session management.",
+			"item": [
+				{
+					"name": "Register New User",
+					"description": "Create a new user account with a default VIEWER role.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Success",
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"body": "{\n    \"message\": \"Account created successfully\",\n    \"user\": {\n        \"id\": \"user_123\",\n        \"name\": \"Test User\",\n        \"email\": \"test@example.com\",\n        \"role\": \"VIEWER\"\n    }\n}"
+						},
+						{
+							"name": "Conflict (Email Exists)",
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"body": "{\n    \"error\": \"User with this email already exists\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Check Session",
+					"description": "Verify if the current user is authenticated and get their profile.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auth/session",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"session"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Campaigns",
+			"description": "Full lifecycle management for email campaigns.",
+			"item": [
+				{
+					"name": "List Campaigns",
+					"description": "Retrieve all campaigns with support for pagination and status filters.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/campaigns?page=1&limit=20",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"campaigns"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Campaign Draft",
+					"description": "Initialize a new campaign draft. Automatically captures campaign_id for downstream requests.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.id) {",
+									"    pm.environment.set(\"campaign_id\", jsonData.data.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Holiday Sale 2026\",\n  \"subject\": \"Exclusive Holiday Deals Inside! 🎁\",\n  \"previewText\": \"Unlock up to 50% off.\",\n  \"senderName\": \"Marketing Team\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/campaigns",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"campaigns"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Campaign Details",
+					"description": "Fetch complete details, recipient lists, and activity logs for a specific campaign.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/campaigns/{{campaign_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"campaigns",
+								"{{campaign_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Campaign (Draft)",
+					"description": "Modify settings or assign a template to a draft campaign.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subject\": \"UPDATED: Your Holiday Gift is Waiting!\",\n  \"templateId\": \"{{template_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/campaigns/{{campaign_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"campaigns",
+								"{{campaign_id}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Launch Campaign",
+					"description": "Trigger the background delivery process for a campaign.",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/campaigns/{{campaign_id}}/launch",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"campaigns",
+								"{{campaign_id}}",
+								"launch"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Contacts & Lists",
+			"description": "Manage subscribers and mailing lists.",
+			"item": [
+				{
+					"name": "List Contact Lists",
+					"description": "Fetch all available mailing lists.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (Array.isArray(jsonData) && jsonData.length > 0) {",
+									"    pm.environment.set(\"list_id\", jsonData[0].id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/contacts/lists",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"contacts",
+								"lists"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Single Contact",
+					"description": "Add a new subscriber to a specific list. Automatically captures contact_id.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.id) {",
+									"    pm.environment.set(\"contact_id\", jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "email",
+									"value": "customer@example.com",
+									"type": "text"
+								},
+								{
+									"key": "firstName",
+									"value": "John",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/contacts/lists/{{list_id}}/contacts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"contacts",
+								"lists",
+								"{{list_id}}",
+								"contacts"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Import (CSV)",
+					"description": "Upload a CSV file to bulk import subscribers.",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "targetListId",
+									"value": "{{list_id}}",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/contacts/import",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"contacts",
+								"import"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Templates",
+			"description": "Manage responsive email layouts.",
+			"item": [
+				{
+					"name": "List Templates",
+					"description": "Fetch all MJML/HTML templates.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (Array.isArray(jsonData) && jsonData.length > 0) {",
+									"    pm.environment.set(\"template_id\", jsonData[0].id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/templates",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"templates"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Template",
+					"description": "Fetch a specific template's source code.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/templates/{{template_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"templates",
+								"{{template_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Analytics",
+			"description": "High-level performance metrics.",
+			"item": [
+				{
+					"name": "Dashboard Summary",
+					"description": "Fetch aggregate metrics for the entire platform.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/analytics/dashboard",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"analytics",
+								"dashboard"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Campaign Performance",
+					"description": "Fetch detailed stats for a single campaign.",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/analytics/campaigns/{{campaign_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"analytics",
+								"campaigns",
+								"{{campaign_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

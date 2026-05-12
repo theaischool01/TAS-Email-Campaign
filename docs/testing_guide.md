@@ -1,45 +1,92 @@
-# 🧪 Email Campaign Platform - Testing Guide
+# Quality Assurance & Verification Guide 🧪
 
-This guide covers how to verify and test the core functionalities of the platform.
-
-## 📡 Webhook Tracking
-The platform uses AWS SES event publishing to track campaign activity.
-
-### 1. Verification Scripts
-We have created simulation scripts to verify that the webhook is processing events correctly.
-
-| Event Type | Script | Command |
-|------------|--------|---------|
-| **Bounce** | `simulate-bounce.js` | `node simulate-bounce.js <campaignId>` |
-| **Complaint** | `simulate-complaint.js` | `node simulate-complaint.js <campaignId>` |
-
-### 2. Manual Verification
-1. Create a campaign and send it.
-2. Run the simulation script with the campaign ID.
-3. Open the **Campaign Report** page.
-4. Verify that the Bounce/Complaint count has increased.
+This guide outlines the professional QA protocols and verification workflows for the **Email Campaign Platform**. It is designed to ensure system stability, data integrity, and delivery accuracy across all environments.
 
 ---
 
-### 🛡️ Template Integrity & Data Safety
-We have implemented a strict **Template Integrity** check in the Campaign API. Once a template is selected, the system will actively prevent it from being cleared or nullified by subsequent partial saves or race conditions.
+## 1. Campaign Delivery Workflow
 
-#### How to verify:
-1. Select a template in Step 3.
-2. Go back to Step 1 and change the campaign name.
-3. Refresh the page.
-4. Verify that the template remains selected in Step 4.
+Verify the end-to-end process of campaign creation, dispatch, and completion.
 
-### 🔍 Database Auditing Tools
-You can now perform deep database audits using the following scripts:
+| Step | Action | Expected Outcome |
+|------|--------|------------------|
+| 1.1 | Create a campaign draft | Campaign appears in the dashboard with `DRAFT` status. |
+| 1.2 | Select a template and list | Template preview renders correctly; recipient count matches the selected list. |
+| 1.3 | Launch the campaign | Status changes to `SENDING`. Worker begins processing SQS messages. |
+| 1.4 | Monitor completion | Status changes to `SENT` once all recipients are processed. |
 
-| Script | Command | Purpose |
-|--------|---------|---------|
-| `check-templates-db.js` | `node check-templates-db.js` | Audits ALL templates and campaigns in the DB. |
-| `check-specific-campaign.js` | `node check-specific-campaign.js` | Investigates a specific campaign (ID hardcoded in script). |
+---
 
-### 🚀 Troubleshooting "Missing HTML"
-If you still see a "no HTML content" error:
-1. Visit `https://email-campaign-platform-pi.vercel.app/api/templates/seed` to repair any empty template records.
-2. Run `node check-templates-db.js` to see if the HTML is actually present in the database.
-3. Check the `save_trace.log` (if available) to see which request sent the data.
+## 2. Tracking & Analytics Verification
+
+Confirm the accuracy of the real-time engagement tracking pipeline.
+
+### **Open Tracking**
+1.  Send a test campaign to a controlled inbox.
+2.  Open the email (ensure "display images" is enabled).
+3.  **Verification**: Check the Campaign Report; the "Opens" count must increment within seconds.
+
+### **Click Tracking**
+1.  Click a tracked link within the delivered email.
+2.  **Verification**: Ensure successful redirection to the destination URL.
+3.  **Verification**: Check the Campaign Report; the "Clicks" count must increment.
+
+### **Webhook Events (Bounce/Complaint)**
+*   Simulate an AWS SES `Bounce` or `Complaint` event via the provided testing utilities.
+*   **Verification**: The Campaign Report should immediately reflect the updated bounce/complaint metrics.
+
+---
+
+## 3. Unsubscribe & Preference Flow
+
+Ensure compliance with RFC 8058 and verify user preference persistence.
+
+| Workflow | Step | Verification |
+|----------|------|--------------|
+| **One-Click Unsubscribe** | Click the "Unsubscribe" link in the email footer. | Contact status in the DB changes to `UNSUBSCRIBED`. Activity log captures the event. |
+| **Preference Center** | Navigate to the Preference Center via the email link. | All current mailing list memberships are accurately displayed. |
+| **Resubscribe** | Toggle a list to "Active" and save preferences. | Contact status reverts to `ACTIVE`. Activity feed shows `EMAIL_RESUBSCRIBED`. |
+
+---
+
+## 4. System Stability & Data Integrity
+
+### **Template Persistence**
+The platform enforces strict template integrity. To verify:
+1.  Assign a template to a draft campaign.
+2.  Navigate away or perform partial updates (e.g., change campaign name).
+3.  **Expected Outcome**: The assigned `templateId` remains locked and persisted to prevent data loss during autosave cycles.
+
+### **RBAC Enforcement**
+1.  Log in with a `VIEWER` role.
+2.  Attempt to launch a campaign or delete a contact.
+3.  **Expected Outcome**: API returns `403 Forbidden`. UI elements (Launch/Delete buttons) are hidden or disabled.
+
+---
+
+## 5. Production Readiness
+
+Before deploying to Vercel, perform the following environmental checks:
+
+- [ ] **Build Check**: Run `npm run build` to ensure TypeScript and Next.js compilation passes.
+- [ ] **Prisma Sync**: Ensure the production database schema is up-to-date with `npx prisma db push`.
+- [ ] **Environment Variables**: Verify all AWS SES/SQS and NextAuth secrets are correctly configured in Vercel.
+- [ ] **Absolute URLs**: Ensure `NEXT_PUBLIC_APP_URL` points to the production domain for accurate tracking links.
+
+---
+
+## 🏁 Final Verification Checklist
+
+Prior to final release, all items below must be verified as **PASS**.
+
+- [x] **Campaign Dispatch**: Emails are successfully queued and delivered.
+- [x] **Open/Click Tracking**: Engagement metrics are accurately recorded.
+- [x] **Unsubscribe Logic**: One-click and Preference Center flows are functional.
+- [x] **Resubscribe Flow**: Users can successfully opt back into mailing lists.
+- [x] **Activity Feed**: Real-time logging of all major system events.
+- [x] **Analytics Dashboard**: Aggregate metrics render correctly with high precision.
+- [x] **Build Stability**: `npm run build` completes without errors.
+- [x] **Production Parity**: Local testing matches Vercel deployment behavior.
+
+---
+Built for reliability. Verified for scale. 🚀

@@ -1,8 +1,14 @@
 # Email Campaign Platform 🚀
 
-A high-performance, production-ready email marketing and automation platform built with **Next.js 15**, **TypeScript**, and **Prisma**. This platform integrates directly with **AWS SES** for reliable email delivery and features real-time tracking for opens, clicks, and recipient engagement.
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
+[![AWS SES](https://img.shields.io/badge/AWS-SES-orange?style=flat-square&logo=amazon-aws)](https://aws.amazon.com/ses/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-DB-336791?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
 
-Inspired by industry leaders like Mailchimp and Zoho Campaigns, this platform provides a complete suite for managing mailing lists, designing templates, and analyzing campaign performance through a sleek, modern dashboard.
+An enterprise-grade, high-performance email marketing and automation platform. Built with Next.js 15, AWS SES, and SQS for scalable delivery.
+
+[**📖 View API Documentation**](./docs/API_DOCUMENTATION.md)
 
 ---
 
