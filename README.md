@@ -150,8 +150,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 👨‍💻 Author
 
 **Saheel Yadav**
-- [LinkedIn](https://www.linkedin.com/in/saheelyadav/)
-- [Portfolio](https://saheelyadav.com/)
+- [LinkedIn](https://www.linkedin.com/in/saheel-yadav-ai-ml/)
+- [Portfolio](https://saheel-yadav-portfolio-git-main-saheel-yadavs-projects.vercel.app/)
 - [GitHub](https://github.com/SaheelYadav)
 
 ---
