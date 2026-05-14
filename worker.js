@@ -81,10 +81,15 @@ cron.schedule('* * * * *', async () => {
 
     for (const campaign of scheduledCampaigns) {
       console.log(`🚀 Launching Campaign: ${campaign.name}`);
-      const recipients = [];
+      // Fetch all suppressed emails to filter them out efficiently
+      const suppressedEmails = await prisma.suppressionList.findMany({
+        select: { email: true }
+      });
+      const suppressedSet = new Set(suppressedEmails.map(s => s.email));
+
       campaign.recipientLists.forEach(rl => {
         rl.contactList.members.forEach(m => {
-          if (m.contact && m.contact.status === 'ACTIVE') {
+          if (m.contact && m.contact.status === 'ACTIVE' && !suppressedSet.has(m.contact.email)) {
             recipients.push({
               email: m.contact.email,
               firstName: m.contact.firstName,
@@ -141,6 +146,28 @@ async function processQueue() {
 
           if (!campaign || campaign.status !== 'SENDING') {
             await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+            continue;
+          }
+
+          // FINAL PROTECTION: Check if recipient unsubscribed or is suppressed right before sending
+          const contact = await prisma.contact.findFirst({
+            where: { email: recipient.email },
+            select: { status: true }
+          });
+          
+          const isSuppressed = await prisma.suppressionList.findUnique({
+            where: { email: recipient.email }
+          });
+
+          if ((contact && contact.status !== 'ACTIVE') || isSuppressed) {
+            console.log(`⏩ Skipping ${recipient.email}: Contact is ${contact?.status || 'UNKNOWN'} or suppressed.`);
+            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+            
+            // Increment failed/skipped count to ensure campaign completion logic works
+            await prisma.campaign.update({
+              where: { id: campaignId },
+              data: { totalFailed: { increment: 1 } }
+            });
             continue;
           }
 

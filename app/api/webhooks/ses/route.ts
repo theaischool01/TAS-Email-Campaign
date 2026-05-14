@@ -115,6 +115,15 @@ export async function POST(request: NextRequest) {
                 }
               }
             });
+
+            // Add to suppression list for permanent bounces
+            if (bounce.bounceType === 'Permanent') {
+              await prisma.suppressionList.upsert({
+                where: { email },
+                update: { reason: `SES Permanent Bounce (${bounce.bounceSubType})` },
+                create: { email, reason: `SES Permanent Bounce (${bounce.bounceSubType})` }
+              });
+            }
           }
         }
       }
@@ -156,6 +165,13 @@ export async function POST(request: NextRequest) {
                 }
               }
             });
+
+            // Add to suppression list for complaints
+            await prisma.suppressionList.upsert({
+              where: { email },
+              update: { reason: `SES Complaint (${complaint.complaintFeedbackType})` },
+              create: { email, reason: `SES Complaint (${complaint.complaintFeedbackType})` }
+            });
           }
         }
       }
@@ -187,6 +203,16 @@ export async function POST(request: NextRequest) {
               metadata: { source: 'ses-native' }
             }
           })
+
+          // Add to suppression list for SES-native unsubscribes
+          const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+          if (contact) {
+            await prisma.suppressionList.upsert({
+              where: { email: contact.email },
+              update: { reason: 'SES Native Unsubscribe' },
+              create: { email: contact.email, reason: 'SES Native Unsubscribe' }
+            });
+          }
         }
       }
     }

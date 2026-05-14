@@ -323,3 +323,12 @@ model LoginAttempt {
 
   @@map("login_attempts")
 }
+
+model SuppressionList {
+  email     String   @id
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("suppression_list")
+}

@@ -48,16 +48,36 @@ export class UnsubscribeService {
         })
       }
 
-      // 1. Update contact status
+      // 1. Update contact status and manage suppression list
       if (cid && cid !== 'unknown') {
-        await prisma.contact.update({
+        const contact = await prisma.contact.update({
           where: { id: cid },
           data: { status: 'UNSUBSCRIBED' }
+        })
+        
+        // Add to suppression list (upsert)
+        await prisma.suppressionList.upsert({
+          where: { email: contact.email },
+          update: { reason: `Unsubscribed from campaign ${cam || 'unknown'}` },
+          create: { 
+            email: contact.email, 
+            reason: `Unsubscribed from campaign ${cam || 'unknown'}` 
+          }
         })
       } else if (em) {
         await prisma.contact.updateMany({
           where: { email: em },
           data: { status: 'UNSUBSCRIBED' }
+        })
+
+        // Add to suppression list (upsert)
+        await prisma.suppressionList.upsert({
+          where: { email: em },
+          update: { reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` },
+          create: { 
+            email: em, 
+            reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` 
+          }
         })
       }
 
@@ -237,11 +257,16 @@ export class UnsubscribeService {
     try {
       let contactId = cid;
       
-      // 1. Update contact status to ACTIVE
+      // 1. Update contact status to ACTIVE and remove from suppression list
       if (cid && cid !== 'unknown') {
-        await prisma.contact.update({
+        const contact = await prisma.contact.update({
           where: { id: cid },
           data: { status: 'ACTIVE' }
+        })
+
+        // Remove from suppression list (safe delete)
+        await prisma.suppressionList.deleteMany({
+          where: { email: contact.email }
         })
       } else if (em) {
         const contact = await prisma.contact.findFirst({ where: { email: em } });
@@ -252,6 +277,11 @@ export class UnsubscribeService {
             data: { status: 'ACTIVE' }
           })
         }
+
+        // Remove from suppression list (safe delete)
+        await prisma.suppressionList.deleteMany({
+          where: { email: em }
+        })
       }
 
       // 2. Log EMAIL_RESUBSCRIBED with deduplication

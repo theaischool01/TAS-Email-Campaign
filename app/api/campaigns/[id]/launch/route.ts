@@ -225,13 +225,22 @@ export async function POST(
     // Build unique recipients map (email → recipient data)
     const recipientsMap = new Map<string, EmailRecipient>()
 
+    // Fetch suppression list for this campaign's run
+    const suppressedEmails = await prisma.suppressionList.findMany({
+      select: { email: true }
+    })
+    const suppressedSet = new Set(suppressedEmails.map((s: any) => s.email))
+
     for (const rl of existingCampaign.recipientLists || []) {
       for (const member of rl.contactList?.members || []) {
         const contact = member.contact
         if (!contact) continue
-        // Skip excluded, unsubscribed, bounced, or complained contacts
+        
+        // Skip excluded, unsubscribed, bounced, complained, OR suppressed contacts
         if (excludedContactIds.has(contact.id)) continue
         if (contact.status !== "ACTIVE") continue
+        if (suppressedSet.has(contact.email)) continue
+        
         // Deduplicate by email
         if (!recipientsMap.has(contact.email)) {
           recipientsMap.set(contact.email, {
