@@ -75,30 +75,64 @@ cron.schedule('* * * * *', async () => {
       where: { status: 'SCHEDULED', scheduledAt: { lte: now } },
       include: {
         recipientLists: { include: { contactList: { include: { members: { include: { contact: true } } } } } },
+        excludedLists: true,
         template: true
       }
     });
 
     for (const campaign of scheduledCampaigns) {
       console.log(`🚀 Launching Campaign: ${campaign.name}`);
-      // Fetch all suppressed emails to filter them out efficiently
-      const suppressedEmails = await prisma.suppressionList.findMany({
-        select: { email: true }
-      });
-      const suppressedSet = new Set(suppressedEmails.map(s => s.email));
 
-      campaign.recipientLists.forEach(rl => {
-        rl.contactList.members.forEach(m => {
-          if (m.contact && m.contact.status === 'ACTIVE' && !suppressedSet.has(m.contact.email)) {
-            recipients.push({
-              email: m.contact.email,
-              firstName: m.contact.firstName,
-              lastName: m.contact.lastName,
-              contactId: m.contact.id
+      let suppressedSet = new Set();
+      try {
+        const suppressedEmails = await prisma.suppressionList.findMany({
+          select: { email: true }
+        });
+        suppressedSet = new Set(suppressedEmails.map(s => s.email));
+      } catch (err) {
+        if (err?.code === 'P2021') {
+          console.warn('⚠️ suppression_list missing; continuing without suppression filter');
+        } else {
+          throw err;
+        }
+      }
+
+      const excludedContactListIds = (campaign.excludedLists || []).map(el => el.contactListId);
+      let excludedContactIds = new Set();
+      if (excludedContactListIds.length > 0) {
+        const excludedMembers = await prisma.contactListMember.findMany({
+          where: { contactListId: { in: excludedContactListIds } },
+          select: { contactId: true }
+        });
+        excludedContactIds = new Set(excludedMembers.map(m => m.contactId));
+      }
+
+      const recipientsMap = new Map();
+      for (const rl of campaign.recipientLists || []) {
+        for (const m of rl.contactList?.members || []) {
+          const contact = m.contact;
+          if (!contact) continue;
+          if (excludedContactIds.has(contact.id)) continue;
+          if (contact.status !== 'ACTIVE') continue;
+          if (suppressedSet.has(contact.email)) continue;
+          if (!recipientsMap.has(contact.email)) {
+            recipientsMap.set(contact.email, {
+              email: contact.email,
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              contactId: contact.id
             });
           }
-        });
-      });
+        }
+      }
+
+      const recipients = Array.from(recipientsMap.values());
+      console.log('Scheduler recipients:', recipients.length);
+
+      if (!recipients.length) {
+        console.warn(`⚠️ No recipients for scheduled campaign ${campaign.id}; skipping`);
+        continue;
+      }
 
       await prisma.campaign.update({
         where: { id: campaign.id },
