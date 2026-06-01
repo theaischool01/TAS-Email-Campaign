@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,29 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  SUPER_ADMIN
-  CAMPAIGN_MANAGER
-  VIEWER
-}
-
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  role          Role      @default(VIEWER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  accounts Account[]
-  sessions Session[]
-  contactLists ContactList[]
+  id             String          @id @default(cuid())
+  name           String?
+  email          String          @unique
+  password       String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  emailVerified  DateTime?
+  image          String?
+  role           Role            @default(VIEWER)
+  accounts       Account[]
+  campaigns      Campaign[]
+  contactLists   ContactList[]
   emailTemplates EmailTemplate[]
-  campaigns Campaign[]
-  
+  sessions       Session[]
+
   @@map("users")
 }
 
@@ -44,15 +32,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
@@ -78,69 +65,236 @@ model VerificationToken {
 }
 
 model ContactList {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  ownerId     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relations
-  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members     ContactListMember[]
-  contacts     Contact[]
-  recipientLists CampaignRecipientList[]
-  excludedLists CampaignExcludedList[]
-  
+  id                   String                  @id @default(cuid())
+  name                 String
+  description          String?
+  ownerId              String
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  ContactToContactList ContactToContactList[]
+  excludedLists        CampaignExcludedList[]
+  recipientLists       CampaignRecipientList[]
+  members              ContactListMember[]
+  owner                User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
   @@map("contact_lists")
 }
 
 model Contact {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  firstName   String?
-  lastName    String?
-  phone       String?
-  company     String?
-  city        String?
-  tags        String?   // JSON array of tags
-  status      ContactStatus @default(ACTIVE)
-  source      ContactSource @default(MANUAL)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relations
-  lists       ContactListMember[]
-  contactLists ContactList[]
-  activityLogs CampaignActivityLog[]
-  
+  id                   String                 @id @default(cuid())
+  email                String                 @unique
+  firstName            String?
+  lastName             String?
+  phone                String?
+  status               ContactStatus          @default(ACTIVE)
+  source               ContactSource          @default(MANUAL)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  city                 String?
+  company              String?
+  tags                 String?
+  ContactToContactList ContactToContactList[]
+  activityLogs         CampaignActivityLog[]
+  lists                ContactListMember[]
+
   @@map("contacts")
 }
 
 model ContactListMember {
   id            String      @id @default(cuid())
-  contactList    ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  contactListId  String
-  contact        Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  contactId      String
-  createdAt      DateTime     @default(now())
-  
+  contactListId String
+  contactId     String
+  createdAt     DateTime    @default(now())
+  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactList   ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+
   @@unique([contactListId, contactId])
   @@map("contact_list_members")
 }
 
 model Segment {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  criteria    Json?     // Store segmentation criteria as JSON
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relations
+  id                 String                     @id @default(cuid())
+  name               String
+  description        String?
+  criteria           Json?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
   recipientCampaigns CampaignRecipientSegment[]
 
   @@map("segments")
+}
+
+model EmailTemplate {
+  id        String     @id @default(cuid())
+  name      String
+  category  String?
+  thumbnail String?
+  html      String
+  json      String?
+  createdBy String
+  isPublic  Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
+  user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([createdBy, name])
+  @@map("email_templates")
+}
+
+model Campaign {
+  id                  String                     @id @default(cuid())
+  name                String
+  subject             String
+  previewText         String?
+  senderName          String?
+  senderEmail         String?
+  replyToEmail        String?
+  status              CampaignStatus             @default(DRAFT)
+  scheduledAt         DateTime?
+  sentAt              DateTime?
+  timezone            String?
+  recipientCount      Int                        @default(0)
+  estimatedRecipients Int?
+  openRate            Float?
+  clickRate           Float?
+  totalSent           Int                        @default(0)
+  totalOpened         Int                        @default(0)
+  totalClicked        Int                        @default(0)
+  tags                String?
+  templateId          String?
+  createdBy           String
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  currentStep         Int                        @default(1)
+  isRecurring         Boolean                    @default(false)
+  recurrenceInterval  String?
+  totalFailed         Int                        @default(0)
+  totalBounced        Int                        @default(0)
+  totalComplained     Int                        @default(0)
+  totalUnsubscribed   Int                        @default(0)
+  activityLogs        CampaignActivityLog[]
+  excludedLists       CampaignExcludedList[]
+  recipientLists      CampaignRecipientList[]
+  recipientSegments   CampaignRecipientSegment[]
+  testSends           CampaignTestSend[]
+  user                User                       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  template            EmailTemplate?             @relation(fields: [templateId], references: [id])
+
+  @@unique([createdBy, name])
+  @@map("campaigns")
+}
+
+model CampaignRecipientSegment {
+  id         String   @id @default(cuid())
+  campaignId String
+  segmentId  String
+  createdAt  DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  segment    Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, segmentId])
+  @@map("campaign_recipient_segments")
+}
+
+model CampaignRecipientList {
+  id            String      @id @default(cuid())
+  campaignId    String
+  contactListId String
+  createdAt     DateTime    @default(now())
+  campaign      Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactList   ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactListId])
+  @@map("campaign_recipient_lists")
+}
+
+model CampaignExcludedList {
+  id            String      @id @default(cuid())
+  campaignId    String
+  contactListId String
+  createdAt     DateTime    @default(now())
+  campaign      Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactList   ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactListId])
+  @@map("campaign_excluded_lists")
+}
+
+model CampaignTestSend {
+  id         String   @id @default(cuid())
+  campaignId String
+  email      String
+  sentBy     String
+  sentAt     DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_test_sends")
+}
+
+model CampaignActivityLog {
+  id         String   @id @default(cuid())
+  campaignId String
+  actorId    String
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  contactId  String?
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact    Contact? @relation(fields: [contactId], references: [id])
+
+  @@map("campaign_activity_logs")
+}
+
+model Settings {
+  id               String   @id @default("system")
+  orgName          String   @default("My Organisation")
+  orgLogo          String?
+  defaultFromEmail String?
+  defaultFromName  String?
+  awsAccessKey     String?
+  awsSecretKey     String?
+  awsRegion        String?  @default("us-east-1")
+  updatedAt        DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model LoginAttempt {
+  id          String    @id @default(cuid())
+  ip          String    @unique
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("login_attempts")
+}
+
+model SuppressionList {
+  email     String   @id
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("suppression_list")
+}
+
+model ContactToContactList {
+  A             String
+  B             String
+  contacts      Contact     @relation(fields: [A], references: [id], onDelete: Cascade)
+  contact_lists ContactList @relation(fields: [B], references: [id], onDelete: Cascade)
+
+  @@id([A, B], map: "_ContactToContactList_AB_pkey")
+  @@index([B], map: "_ContactToContactList_B_index")
+  @@map("_ContactToContactList")
+}
+
+enum Role {
+  SUPER_ADMIN
+  CAMPAIGN_MANAGER
+  VIEWER
 }
 
 enum ContactStatus {
@@ -164,171 +318,4 @@ enum CampaignStatus {
   PAUSED
   CANCELLED
   FAILED
-}
-
-model EmailTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  category    String?
-  thumbnail   String?
-  html        String   @db.Text
-  json        String?  @db.Text
-  createdBy   String
-  isPublic    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  campaigns Campaign[]
-
-  // Prevent duplicate template names per user
-  @@unique([createdBy, name])
-  @@map("email_templates")
-}
-
-model Campaign {
-  id                    String         @id @default(cuid())
-  name                  String
-  subject               String
-  previewText           String?
-  senderName            String?
-  senderEmail           String?
-  replyToEmail           String?
-  isRecurring           Boolean         @default(false)
-  recurrenceInterval    String?         // DAILY, WEEKLY, MONTHLY
-  status                CampaignStatus @default(DRAFT)
-  scheduledAt           DateTime?
-  sentAt                DateTime?
-  timezone              String?
-  recipientCount        Int            @default(0)
-  estimatedRecipients   Int?
-  openRate              Float?
-  clickRate             Float?
-  totalSent             Int             @default(0)
-  totalOpened           Int             @default(0)
-  totalClicked          Int             @default(0)
-  totalBounced          Int             @default(0)
-  totalComplained       Int             @default(0)
-  totalUnsubscribed     Int             @default(0)
-  totalFailed           Int             @default(0)
-  tags                  String?         // JSON array of tags
-  currentStep           Int             @default(1)  // Wizard progress tracking
-  templateId            String?
-  createdBy              String
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-
-  // Relations
-  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  template EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  recipientLists CampaignRecipientList[]
-  recipientSegments CampaignRecipientSegment[]
-  excludedLists CampaignExcludedList[]
-  testSends CampaignTestSend[]
-  activityLogs CampaignActivityLog[]
-
-  // Prevent duplicate campaign names per user
-  @@unique([createdBy, name])
-  @@map("campaigns")
-}
-
-model CampaignRecipientSegment {
-  id           String   @id @default(cuid())
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId   String
-  segment      Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
-  segmentId    String
-  createdAt    DateTime @default(now())
-
-  @@unique([campaignId, segmentId])
-  @@map("campaign_recipient_segments")
-}
-
-model CampaignRecipientList {
-  id           String   @id @default(cuid())
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId   String
-  contactList  ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  contactListId String
-  createdAt    DateTime @default(now())
-
-  @@unique([campaignId, contactListId])
-  @@map("campaign_recipient_lists")
-}
-
-model CampaignExcludedList {
-  id           String   @id @default(cuid())
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId   String
-  contactList  ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  contactListId String
-  createdAt    DateTime @default(now())
-
-  @@unique([campaignId, contactListId])
-  @@map("campaign_excluded_lists")
-}
-
-model CampaignTestSend {
-  id         String   @id @default(cuid())
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId String
-  email      String
-  sentBy     String
-  sentAt     DateTime @default(now())
-
-  @@map("campaign_test_sends")
-}
-
-model CampaignActivityLog {
-  id        String   @id @default(cuid())
-  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId String
-  actorId   String   // Can be User ID or Contact ID
-  action    String
-  metadata  Json?
-  createdAt DateTime @default(now())
-
-  // Relations
-  contactId String?
-  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  
-  @@map("campaign_activity_logs")
-}
-
-model Settings {
-  id                String   @id @default("system")
-  orgName           String   @default("My Organisation")
-  orgLogo           String?
-  defaultFromEmail  String?
-  defaultFromName   String?
-  
-  // AWS SES Config
-  awsAccessKey      String?
-  awsSecretKey      String?
-  awsRegion         String?  @default("us-east-1")
-  
-  updatedAt         DateTime @updatedAt
-
-  @@map("settings")
-}
-
-model LoginAttempt {
-  id          String   @id @default(cuid())
-  ip          String   @unique
-  attempts    Int      @default(0)
-  lockedUntil DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("login_attempts")
-}
-
-model SuppressionList {
-  email     String   @id
-  reason    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("suppression_list")
 }

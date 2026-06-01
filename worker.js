@@ -87,6 +87,7 @@ cron.schedule('* * * * *', async () => {
       });
       const suppressedSet = new Set(suppressedEmails.map(s => s.email));
 
+      const recipients = [];
       campaign.recipientLists.forEach(rl => {
         rl.contactList.members.forEach(m => {
           if (m.contact && m.contact.status === 'ACTIVE' && !suppressedSet.has(m.contact.email)) {
