@@ -2,27 +2,34 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma as prismaClient } from "@/app/lib/prisma"
+// @ts-ignore
+import Papa from "papaparse"
 
 const prisma = prismaClient as any
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const formData = await request.formData()
     const file = formData.get("file") as File
-    const targetListId = formData.get("targetListId") as string
+    const targetListId = formData.get("targetListId") as string | null
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    // Check file type and size
-    if (!file.name.endsWith('.csv')) {
+    if (!targetListId) {
+      return NextResponse.json({ error: "No list selected" }, { status: 400 })
+    }
+
+    if (!file.name.endsWith(".csv")) {
       return NextResponse.json({ error: "Only CSV files are supported" }, { status: 400 })
     }
 
@@ -30,147 +37,127 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File size must be less than 25MB" }, { status: 400 })
     }
 
-    const text = await file.text()
-    const lines = text.split('\n').filter(line => line.trim())
-    
-    if (lines.length === 0) {
-      return NextResponse.json({ error: "CSV file is empty" }, { status: 400 })
+    const targetList = await prisma.contactList.findFirst({
+      where: {
+        id: targetListId,
+        ownerId: session.user.id,
+      },
+    })
+
+    if (!targetList) {
+      return NextResponse.json({ error: "Contact list not found" }, { status: 404 })
     }
 
-    // Skip header row
-    const headers = lines[0]?.split(',').map(h => h.trim().toLowerCase())
-    const dataLines = lines.slice(1)
-    
-    const results = []
-    let addedCount = 0
-    let updatedCount = 0
-    let skippedCount = 0
-    let duplicateCount = 0
+    const csvText = await file.text()
 
-    // Create column mapping
-    const columnMap = {
-      email: headers.indexOf('email'),
-      firstName: headers.indexOf('firstname') || headers.indexOf('first name'),
-      lastName: headers.indexOf('lastname') || headers.indexOf('last name'),
-      phone: headers.indexOf('phone'),
-      company: headers.indexOf('company'),
-      city: headers.indexOf('city'),
-      tags: headers.indexOf('tags')
+    // Parse with PapaParse — handles quoted fields, commas inside values, etc.
+    const parsed = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h: string) => h.trim().toLowerCase(),
+    })
+
+    const rows = parsed.data as Record<string, string>[]
+    const fields = (parsed.meta?.fields ?? []) as string[]
+
+    // Determine column mapping from headers
+    const emailCol = fields.includes("email") ? "email" : null
+    const nameCol = fields.includes("name") ? "name" : null
+    const firstNameCol =
+      fields.includes("firstname") ? "firstname"
+      : fields.includes("first name") ? "first name"
+      : null
+    const lastNameCol =
+      fields.includes("lastname") ? "lastname"
+      : fields.includes("last name") ? "last name"
+      : null
+
+    const counts = {
+      total: rows.length,
+      added: 0,
+      duplicates: 0,
+      ignored: 0,
     }
 
-    // Get or create default list
-    let listId = targetListId
-    if (!listId) {
-      const defaultList = await prisma.contactList.findFirst({
-        where: {
-          ownerId: session.user.id,
-          name: "Imported Contacts"
-        }
-      })
+    const contactIds: string[] = []
 
-      if (!defaultList) {
-        const newList = await prisma.contactList.create({
-          data: {
-            name: "Imported Contacts",
-            description: "Contacts imported from CSV file",
-            ownerId: session.user.id
-          }
-        })
-        listId = newList.id
-      } else {
-        listId = defaultList.id
-      }
-    }
+    for (const row of rows) {
+      // --- Email ---
+      const rawEmail = emailCol ? (row[emailCol] ?? "").trim().toLowerCase() : ""
 
-    const contactIds = []
-
-    // Process contacts
-    for (const line of dataLines) {
-      if (!line.trim()) continue
-
-      const values = line.split(',').map(v => v.trim())
-      const email = values[columnMap.email]?.trim().toLowerCase()
-      
-      if (!email || !email.includes('@')) {
-        skippedCount++
-        results.push({
-          success: false,
-          message: `Invalid email: ${values[columnMap.email] || 'missing'}`,
-          details: 'Email is required and must be valid'
-        })
+      if (!rawEmail || !emailRegex.test(rawEmail)) {
+        counts.ignored++
         continue
       }
 
-      try {
-        // Check for duplicate email
-        const existingContact = await prisma.contact.findUnique({
-          where: { email }
+      // --- Duplicate check ---
+      const existing = await prisma.contact.findUnique({
+        where: { email: rawEmail },
+      })
+
+      if (existing) {
+        counts.duplicates++
+        // Still add to list if not already a member
+        const alreadyMember = await prisma.contactListMember.findFirst({
+          where: { contactListId: targetListId, contactId: existing.id },
         })
-
-        if (existingContact) {
-          duplicateCount++
-          results.push({
-            success: false,
-            message: `Duplicate email: ${email}`,
-            details: 'Contact with this email already exists'
-          })
-          continue
+        if (!alreadyMember) {
+          contactIds.push(existing.id)
         }
+        continue
+      }
 
-        // Create new contact with all fields
+      // --- Name parsing ---
+      let firstName: string | null = null
+      let lastName: string | null = null
+
+      if (nameCol && row[nameCol]) {
+        const parts = row[nameCol].trim().split(/\s+/)
+        firstName = parts[0] || null
+        lastName = parts.slice(1).join(" ") || null
+      } else {
+        if (firstNameCol && row[firstNameCol]) {
+          firstName = row[firstNameCol].trim() || null
+        }
+        if (lastNameCol && row[lastNameCol]) {
+          lastName = row[lastNameCol].trim() || null
+        }
+      }
+
+      // --- Create contact ---
+      try {
         const newContact = await prisma.contact.create({
           data: {
-            email,
-            firstName: values[columnMap.firstName]?.trim() || null,
-            lastName: values[columnMap.lastName]?.trim() || null,
-            phone: values[columnMap.phone]?.trim() || null,
-            company: values[columnMap.company]?.trim() || null,
-            city: values[columnMap.city]?.trim() || null,
-            tags: values[columnMap.tags]?.trim() || null,
+            email: rawEmail,
+            firstName,
+            lastName,
             status: "ACTIVE",
-            source: "IMPORT"
-          }
+            source: "IMPORT",
+          },
         })
 
         contactIds.push(newContact.id)
-        addedCount++
-
-        results.push({
-          success: true,
-          message: `Contact imported: ${email}`,
-          details: 'Successfully created new contact'
-        })
-
-      } catch (error) {
-        console.error('Error importing contact:', error)
-        skippedCount++
-        results.push({
-          success: false,
-          message: `Error importing: ${email}`,
-          details: 'Failed to create contact'
-        })
+        counts.added++
+      } catch {
+        // Unique constraint race condition — treat as duplicate
+        counts.duplicates++
       }
     }
 
-    // Add contacts to the list
+    // Bulk-add all new contacts to the target list
     if (contactIds.length > 0) {
       await prisma.contactListMember.createMany({
-        data: contactIds.map(contactId => ({
-          contactListId: listId,
-          contactId
-        }))
+        data: contactIds.map((contactId) => ({
+          contactListId: targetListId,
+          contactId,
+        })),
+        skipDuplicates: true,
       })
     }
 
     return NextResponse.json({
-      message: "Import completed",
-      results: [
-        {
-          success: true,
-          message: `Successfully processed ${lines.length} rows`,
-          details: `Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Duplicates: ${duplicateCount}`
-        }
-      ]
+      success: true,
+      results: counts,
     })
   } catch (error) {
     console.error("Import error:", error)

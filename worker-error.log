@@ -10,3 +10,163 @@
 --- Worker Started at 2026-06-01T01:23:53.064Z ---
 
 --- Worker Started at 2026-06-01T01:31:43.404Z ---
+
+--- Worker Started at 2026-06-01T01:54:03.674Z ---
+
+--- Worker Started at 2026-06-01T01:58:37.102Z ---
+
+--- Worker Started at 2026-06-03T06:18:24.930Z ---
+
+--- Worker Started at 2026-06-03T11:21:47.019Z ---
+
+--- Worker Started at 2026-06-03T11:27:19.072Z ---
+
+--- Worker Started at 2026-06-03T14:40:53.675Z ---
+
+--- Worker Started at 2026-06-03T14:40:56.134Z ---
+[2026-06-03T14:40:56.253Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:33:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-03T23:09:47.620Z ---
+
+--- Worker Started at 2026-06-04T03:53:47.051Z ---
+
+--- Worker Started at 2026-06-04T04:05:35.393Z ---
+
+--- Worker Started at 2026-06-04T04:12:53.431Z ---
+
+--- Worker Started at 2026-06-04T04:23:13.515Z ---
+
+--- Worker Started at 2026-06-04T04:24:00.406Z ---
+
+--- Worker Started at 2026-06-04T05:40:20.431Z ---
+
+--- Worker Started at 2026-06-04T05:46:39.096Z ---
+
+--- Worker Started at 2026-06-04T05:52:56.648Z ---
+
+--- Worker Started at 2026-06-04T06:12:23.001Z ---
+
+--- Worker Started at 2026-06-04T06:23:04.547Z ---
+
+--- Worker Started at 2026-06-04T06:23:32.123Z ---
+
+--- Worker Started at 2026-06-04T06:35:12.326Z ---
+
+--- Worker Started at 2026-06-04T06:50:34.443Z ---
+
+--- Worker Started at 2026-06-04T06:50:41.445Z ---
+
+--- Worker Started at 2026-06-04T07:04:37.678Z ---
+
+--- Worker Started at 2026-06-04T07:17:32.627Z ---
+
+--- Worker Started at 2026-06-04T10:20:14.439Z ---
+
+--- Worker Started at 2026-06-04T10:47:54.777Z ---
+[2026-06-04T10:47:54.933Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T10:48:37.091Z ---
+[2026-06-04T10:48:37.205Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T10:50:06.857Z ---
+
+--- Worker Started at 2026-06-04T11:18:43.125Z ---
+
+--- Worker Started at 2026-06-04T11:30:01.072Z ---
+
+--- Worker Started at 2026-06-04T11:36:45.331Z ---
+
+--- Worker Started at 2026-06-04T11:38:57.635Z ---
+[2026-06-04T11:38:57.742Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T11:43:33.474Z ---
+
+--- Worker Started at 2026-06-04T11:58:06.559Z ---
+
+--- Worker Started at 2026-06-04T11:59:08.550Z ---
+[2026-06-04T11:59:08.625Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T12:02:30.865Z ---
+
+--- Worker Started at 2026-06-04T12:09:32.205Z ---
+
+--- Worker Started at 2026-06-04T12:14:07.610Z ---
+
+--- Worker Started at 2026-06-04T12:24:03.020Z ---
+[2026-06-04T12:24:03.099Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T14:48:26.384Z ---
+
+--- Worker Started at 2026-06-04T15:00:42.935Z ---
+
+--- Worker Started at 2026-06-04T15:21:15.033Z ---
+
+--- Worker Started at 2026-06-04T15:27:55.312Z ---
+
+--- Worker Started at 2026-06-04T15:35:37.176Z ---
+
+--- Worker Started at 2026-06-04T15:40:04.804Z ---
+
+--- Worker Started at 2026-06-04T15:43:47.812Z ---
+
+--- Worker Started at 2026-06-04T15:46:40.128Z ---

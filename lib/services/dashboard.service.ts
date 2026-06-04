@@ -175,7 +175,8 @@ export class DashboardService {
     
     const activity = await prisma.campaignActivityLog.findMany({
       where: {
-        campaign: campaignFilter
+        campaign: campaignFilter,
+        action: { not: 'EMAIL_SEND_IN_PROGRESS' }
       },
       include: {
         campaign: {

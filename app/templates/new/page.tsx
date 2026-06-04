@@ -1,6 +1,5 @@
 "use client"
 
-import { useSession } from "next-auth/react"
 import dynamic from "next/dynamic"
 
 // Dynamic import to prevent SSR issues
@@ -17,21 +16,5 @@ const TemplateBuilder = dynamic(
 )
 
 export default function NewTemplatePage() {
-  const { data: session } = useSession()
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
-  const canCreate = isAdmin || isManager
-
-  if (!canCreate) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
-          <p className="text-gray-600">You don't have permission to create templates.</p>
-        </div>
-      </div>
-    )
-  }
-
   return <TemplateBuilder mode="create" />
 }

@@ -67,7 +67,7 @@ function injectTrackingAndUnsubscribe(
   const unsubscribeUrl = `${baseUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}&email=${encodedEmail}`
   
   // 2. Open Tracking Pixel (Path parameters as defined in API)
-  const trackingPixel = `<img src="${baseUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" style="display:none;" alt="" />`
+  const trackingPixel = `<img src="${baseUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />`
   
   // 3. Link Wrapping (Click Tracking)
   // This regex finds all href="..." in <a> tags
@@ -208,3 +208,25 @@ export async function sendBulkEmails(
 
   return result
 }
+
+/**
+ * Send a simple transactional email (no tracking, no unsubscribe injection)
+ * Used for: password reset, account notifications, system emails
+ */
+export async function sendTransactionalEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string
+  subject: string
+  html: string
+}): Promise<void> {
+  await transporter.sendMail({
+    from: process.env.SES_FROM_EMAIL,
+    to,
+    subject,
+    html,
+  })
+}
+

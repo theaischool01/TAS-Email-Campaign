@@ -8,39 +8,39 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { 
-  Users, 
+  Plus, 
+  Search, 
   Mail, 
-  Upload, 
-  Search,
-  Plus,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
-  User
+  MoreHorizontal, 
+  Trash2, 
+  Edit, 
+  Eye, 
+  Upload,
+  User,
+  Users
 } from "lucide-react"
-import { formatUserName, getCreatedByText } from "@/lib/role-helpers"
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
+import { getCreatedByText } from "@/lib/role-helpers"
 
 interface ContactList {
   id: string
   name: string
   description?: string
+  createdAt: string
   _count: {
     members: number
   }
-  createdAt: string
   owner: {
     id: string
-    name: string
-    email: string
-    role: string
+    name?: string
+    email?: string
+    role?: string
   }
 }
 
@@ -50,9 +50,6 @@ export default function ContactsPage() {
   const [contactLists, setContactLists] = useState<ContactList[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
 
   useEffect(() => {
     fetchContactLists()
@@ -104,23 +101,6 @@ export default function ContactsPage() {
     return null
   }
 
-  if (!isAdmin && !isManager) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don't have permission to access contacts.</p>
-            <Button onClick={() => router.push("/dashboard")} className="mt-4">
-              Back to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -142,14 +122,12 @@ export default function ContactsPage() {
                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              {(isAdmin || isManager) && (
-                <Link href="/contacts/import">
-                  <Button>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import Contacts
-                  </Button>
-                </Link>
-              )}
+              <Link href="/contacts/import">
+                <Button>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import Contacts
+                </Button>
+              </Link>
               <Link href="/contacts/lists/new">
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
@@ -194,45 +172,43 @@ export default function ContactsPage() {
                     <Badge variant="secondary">
                       {list._count.members} contacts
                     </Badge>
-                    {(isAdmin || isManager) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-gray-600 hover:text-gray-700"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/contacts/lists/${list.id}`}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Contacts
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Rename List
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteList(list.id)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete List
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-gray-600 hover:text-gray-700"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/contacts/lists/${list.id}`}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Contacts
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Rename List
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteList(list.id)}
+                          className="text-red-600 focus:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete List
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     {/* Created By Information */}
-                    {(isAdmin || list.owner.id === session?.user?.id) && (
+                    {list.owner && (
                       <div className="flex items-center text-sm text-gray-500">
                         <User className="h-3 w-3 mr-1" />
                         <span>

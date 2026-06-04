@@ -31,7 +31,7 @@ async function UnsubscribeContent({
   }
 
   // 1. Validate token only
-  const data = UnsubscribeService.decodeToken(uid)
+  const data = await UnsubscribeService.decodeToken(uid)
   if (!data) {
     return (
       <div className="p-8 text-center">

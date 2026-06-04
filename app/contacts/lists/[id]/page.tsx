@@ -5,27 +5,20 @@ import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { 
   ArrowLeft, 
   Plus, 
   Search, 
-  Upload, 
-  Edit, 
-  Trash2,
-  Mail,
-  Phone,
-  Building,
-  MapPin,
-  Tag,
-  Users,
+  Mail, 
+  Trash2, 
+  Upload,
   User
 } from "lucide-react"
-import { formatUserName, getCreatedByText } from "@/lib/role-helpers"
+import { getCreatedByText } from "@/lib/role-helpers"
 
 interface Contact {
   id: string
@@ -35,25 +28,22 @@ interface Contact {
   phone?: string
   company?: string
   city?: string
-  tags?: string
   status: string
-  createdAt: string
 }
 
 interface ContactList {
   id: string
   name: string
   description?: string
-  ownerId: string
   createdAt: string
   _count: {
     members: number
   }
   owner: {
     id: string
-    name: string
-    email: string
-    role: string
+    name?: string
+    email?: string
+    role?: string
   }
 }
 
@@ -68,9 +58,6 @@ export default function ContactListDetailPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [showImportForm, setShowImportForm] = useState(false)
   const [error, setError] = useState("")
-
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
 
   useEffect(() => {
     if (params.id) {
@@ -156,23 +143,6 @@ export default function ContactListDetailPage() {
     return null
   }
 
-  if (!isAdmin && !isManager) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <Mail className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don't have permission to manage contacts.</p>
-            <Button onClick={() => router.push("/dashboard")} className="mt-4">
-              Back to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -191,7 +161,7 @@ export default function ContactListDetailPage() {
                   <Badge variant="secondary" className="ml-3">
                     {contactList._count.members} contacts
                   </Badge>
-                  {(isAdmin || contactList.owner.id === session?.user?.id) && (
+                  {contactList.owner && (
                     <div className="ml-4 flex items-center text-sm text-gray-500">
                       <User className="h-3 w-3 mr-1" />
                       <span>
@@ -213,18 +183,14 @@ export default function ContactListDetailPage() {
                   className="pl-10 w-64"
                 />
               </div>
-              {(isAdmin || isManager) && (
-                <>
-                  <Button onClick={() => setShowImportForm(true)} variant="outline">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Import
-                  </Button>
-                  <Button onClick={() => setShowAddForm(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Contact
-                  </Button>
-                </>
-              )}
+              <Button onClick={() => setShowImportForm(true)} variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import
+              </Button>
+              <Button onClick={() => setShowAddForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Contact
+              </Button>
             </div>
           </div>
         </div>
@@ -243,7 +209,7 @@ export default function ContactListDetailPage() {
             <p className="text-gray-600 mb-4">
               {searchTerm ? "Try adjusting your search terms" : "Get started by adding your first contact"}
             </p>
-            {!searchTerm && (isAdmin || isManager) && (
+            {!searchTerm && (
               <Button onClick={() => setShowAddForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add First Contact
@@ -269,11 +235,9 @@ export default function ContactListDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
-                      {(isAdmin || isManager) && (
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      )}
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -300,20 +264,18 @@ export default function ContactListDetailPage() {
                             {contact.status}
                           </Badge>
                         </td>
-                        {(isAdmin || isManager) && (
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex items-center justify-end space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteContact(contact.id)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteContact(contact.id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -337,9 +299,9 @@ export default function ContactListDetailPage() {
             <CardContent>
               <form onSubmit={handleAddContact} className="space-y-4">
                 {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
+                  <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+                    {error}
+                  </div>
                 )}
                 
                 <div className="grid grid-cols-2 gap-4">
@@ -358,22 +320,6 @@ export default function ContactListDetailPage() {
                   <Input id="email" name="email" type="email" placeholder="john@example.com" required />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input id="phone" name="phone" type="tel" placeholder="+1 (555) 123-4567" />
-                  </div>
-                  <div>
-                    <Label htmlFor="company">Company</Label>
-                    <Input id="company" name="company" placeholder="Acme Corp" />
-                  </div>
-                </div>
-                
-                <div>
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" name="city" placeholder="San Francisco" />
-                </div>
-
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
                     Cancel

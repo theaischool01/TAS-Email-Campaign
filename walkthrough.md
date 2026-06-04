@@ -57,6 +57,26 @@ The `README.md` was completely rewritten to serve as a high-impact project landi
 - **Unsubscribe/Preferences**: Verified secure token flow and persistence in the Preference Center.
 - **UI/UX**: Verified dashboard responsiveness and professional aesthetics.
 
+### 8. Campaign Scheduling Validation Update
+- **[components/campaigns/wizard/Step4Review.tsx](file:///c:/Users/Saheel/Desktop/Email_Campaign_Platform/email-campaign-platform/components/campaigns/wizard/Step4Review.tsx)**: Reverted the hardcoded IST offset and restored native browser local timezone date construction.
+- **[app/api/campaigns/[id]/schedule/route.ts](file:///c:/Users/Saheel/Desktop/Email_Campaign_Platform/email-campaign-platform/app/api/campaigns/[id]/schedule/route.ts)**: Restored original simple future time validation check while preserving the 60-second buffer threshold.
+
+### 9. Scheduled Campaign Email Delivery & Lock Collision Fix
+- **[worker.js](file:///c:/Users/Saheel/Desktop/Email_Campaign_Platform/email-campaign-platform/worker.js)**: 
+  * Replaced the simple `forEach` array pushing of recipients in the scheduler cron with a `Map` based deduplication by email to prevent duplicate messages for contacts in multiple lists.
+  * Sanitized `null` database values to `undefined` for `firstName`, `lastName`, and `contactId` fields before sending to SQS. This prevents serialization of literal `null` values which formerly caused lock collisions (e.g. `send:${campaignId}:unknown`) and halted delivery processing.
+
+### 10. Database Connection Keep-Alive & Network Fault Tolerance
+- **[worker.js](file:///c:/Users/Saheel/Desktop/Email_Campaign_Platform/email-campaign-platform/worker.js)**:
+  * Implemented a database connection keep-alive query ping (`prisma.$queryRaw`SELECT 1``) executed every 4 minutes inside a background `setInterval` handler to prevent Neon PostgreSQL serverless timeouts.
+  * Re-architected startup queue URL resolution to run inside the main loop, permitting retry loops to gracefully handle startup-time or runtime AWS SQS connection drop/`ENOTFOUND` faults without worker process crashes.
+
+## Verification Results
+- Triggering `POST /api/templates/seed` returns `"Completed seeding process. Updated: 32, Failed: 0"`.
+- Verified that no hardcoded default passwords exist in the TypeScript codebase.
+- Ran `npx tsc --noEmit` which completed successfully with **0 errors**.
+- Ran `npx next build` which compiled the production build successfully with **0 errors**.
+
 ### **Build Verification (Status: PASS)**
 - **TypeScript**: Passes all type checks (runtime `any` cast preserved for Windows Prisma compatibility).
 - **Next.js Build**: Optimized for Vercel deployment with integrated Prisma client generation.

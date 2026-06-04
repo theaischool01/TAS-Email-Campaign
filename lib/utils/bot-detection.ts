@@ -1,86 +1,68 @@
 /**
  * Centralized bot and prefetch detection for email tracking
+ * 
+ * IMPORTANT: Email client image proxies (Gmail's GoogleImageProxy, Apple's 
+ * privacy proxy, etc.) are NOT bots — they represent real human opens.
+ * Only flag actual web crawlers, security scanners, and link prefetchers.
  */
 export function isBotUserAgent(userAgent: string, ip?: string): boolean {
   if (!userAgent) return true; // Empty UA is usually a bot
   
-  // Normalize IP (handle ::ffff: and comma-separated x-forwarded-for)
-  let normalizedIp = ip || '';
-  if (normalizedIp.includes(',')) {
-    normalizedIp = normalizedIp.split(',')[0].trim();
-  }
-  if (normalizedIp.startsWith('::ffff:')) {
-    normalizedIp = normalizedIp.substring(7);
-  }
+  const lowerUA = userAgent.toLowerCase();
 
-  // Specific Google IP ranges commonly used for scanning
-  const isGoogleIp = normalizedIp.startsWith('66.102.') ||
-                     normalizedIp.startsWith('66.249.') || 
-                     normalizedIp.startsWith('72.14.') || 
-                     normalizedIp.startsWith('74.125.') || 
-                     normalizedIp.startsWith('108.177.') ||
-                     normalizedIp.startsWith('209.85.') ||
-                     normalizedIp.startsWith('216.239.');
+  // ─── EMAIL CLIENT PROXIES (NOT BOTS) ─────────────────────────────────────
+  // These are legitimate image proxy services used by email clients.
+  // When Gmail/Apple/Yahoo loads a tracking pixel through their proxy,
+  // it means a real person opened the email.
+  const emailClientProxies = [
+    'googleimageproxy',   // Gmail's image proxy
+    'ggpht.com',          // Gmail's image CDN
+    'yahoo pipes',        // Yahoo Mail image proxy  
+    'ymailproxy',         // Yahoo Mail proxy
+  ];
   
-  if (isGoogleIp) {
-    console.log(`[BOT-DETECTION] Blocked Google IP: ${normalizedIp}`);
-    return true;
+  if (emailClientProxies.some(proxy => lowerUA.includes(proxy))) {
+    // This is an email client proxy — NOT a bot
+    return false;
   }
 
+  // ─── ACTUAL BOTS & CRAWLERS ──────────────────────────────────────────────
+  // These are web crawlers, security scanners, and link prefetchers 
+  // that do NOT represent real human email opens.
   const botPatterns = [
-    /bot/i,
-    /google/i,
-    /proxy/i,
-    /scanner/i,
-    /crawl/i,
-    /facebook/i,
-    /whatsapp/i,
-    /preview/i,
-    /spider/i,
-    /archiver/i,
-    /pinger/i,
-    /apple-pns/i,
-    /outlook-com/i,
-    /microsoft/i,
-    /yahoo/i,
-    /bing/i,
-    /duckduckgo/i,
-    /slack/i,
-    /twitter/i,
-    /linkedin/i,
-    /headless/i,
-    /phantom/i,
-    /compute/i,
-    /aws/i,
-    /azure/i,
-    /cloudflare/i,
-    /vercel/i,
-    /heroku/i,
-    /digitalocean/i,
-    /python-requests/i,
-    /go-http-client/i,
-    /node-fetch/i,
-    /axios/i,
-    /Chrome\/42\.0\.2311\.135/i, // Specific Google preview/crawler UA
+    /bot(?!tom)/i,          // "bot" but not "bottom" 
+    /crawl/i,               // Web crawlers
+    /spider/i,              // Web spiders
+    /scanner/i,             // Security scanners
+    /archiver/i,            // Web archivers
+    /pinger/i,              // Monitoring pingers
+    /headless/i,            // Headless browsers
+    /phantom/i,             // PhantomJS
+    /slurp/i,               // Yahoo web crawler (not mail)
+    /bingbot/i,             // Bing crawler
+    /bingpreview/i,         // Bing preview
+    /duckduckbot/i,         // DuckDuckGo crawler
+    /facebookexternalhit/i, // Facebook link preview
+    /whatsapp/i,            // WhatsApp link preview
+    /twitterbot/i,          // Twitter link preview
+    /linkedinbot/i,         // LinkedIn link preview
+    /slackbot/i,            // Slack link preview
+    /telegrambot/i,         // Telegram link preview
+    /python-requests/i,     // Python HTTP client
+    /go-http-client/i,      // Go HTTP client
+    /node-fetch/i,          // Node.js fetch
+    /axios/i,               // Axios HTTP client
+    /wget/i,                // wget
+    /curl/i,                // curl
+    /libwww/i,              // Perl LWP
+    /httpie/i,              // HTTPie
   ];
 
-  const lowerUA = userAgent.toLowerCase();
-  const isMatched = botPatterns.some(pattern => pattern.test(lowerUA));
+  const isMatched = botPatterns.some(pattern => pattern.test(userAgent));
   
   if (isMatched) {
-    console.log(`[BOT-DETECTION] Matched Pattern: ${userAgent}`);
+    console.log(`[BOT-DETECTION] Blocked bot: ${userAgent}`);
   }
-  
-  // Specific check for Google's Image Proxy (Gmail)
-  const isGoogleProxy = userAgent.includes('GoogleImageProxy') || userAgent.includes('ggpht.com');
-  
-  // Check for common data center markers in UA or generic headless environments
-  const isDataCenter = 
-    lowerUA.includes('datacentre') || 
-    lowerUA.includes('cloud') ||
-    lowerUA.includes('server') ||
-    lowerUA.includes('monitoring') ||
-    lowerUA.includes('proxy');
 
-  return isMatched || isGoogleProxy || isDataCenter;
+  return isMatched;
 }

@@ -1,15 +1,26 @@
+import { DefaultSession } from "next-auth"
+
+
+declare module "next-auth" {
+  interface User {
+    role?: any
+  }
+  interface Session extends DefaultSession {
+    user: {
+      id: string
+      role: any
+    } & DefaultSession["user"]
+  }
+}
+
 /**
  * Role formatting utilities for production-ready multi-user support
  */
 
 export function formatRole(role: string): string {
   switch (role) {
-    case 'SUPER_ADMIN':
+    case 'ADMIN':
       return 'Admin'
-    case 'CAMPAIGN_MANAGER':
-      return 'Campaign Manager'
-    case 'VIEWER':
-      return 'Viewer'
     default:
       return role
   }

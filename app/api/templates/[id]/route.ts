@@ -74,8 +74,7 @@ export async function PUT(
     }
 
     // Check if user can edit this template
-    const canEdit = session.user.role === "SUPER_ADMIN" || 
-                  (session.user.role === "CAMPAIGN_MANAGER" && template.createdBy === session.user.id)
+    const canEdit = template.createdBy === session.user.id && !template.isSystem
 
     if (!canEdit) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
@@ -127,8 +126,7 @@ export async function DELETE(
     }
 
     // Check if user can delete this template
-    const canDelete = session.user.role === "SUPER_ADMIN" || 
-                   (session.user.role === "CAMPAIGN_MANAGER" && template.createdBy === session.user.id)
+    const canDelete = template.createdBy === session.user.id && !template.isSystem
 
     if (!canDelete) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })

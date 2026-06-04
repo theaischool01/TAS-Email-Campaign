@@ -8,20 +8,22 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String?
-  email          String          @unique
-  password       String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  emailVerified  DateTime?
-  image          String?
-  role           Role            @default(VIEWER)
-  accounts       Account[]
-  campaigns      Campaign[]
-  contactLists   ContactList[]
-  emailTemplates EmailTemplate[]
-  sessions       Session[]
+  id               String          @id @default(cuid())
+  name             String?
+  email            String          @unique
+  password         String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  emailVerified    DateTime?
+  image            String?
+  role             Role            @default(ADMIN)
+  resetToken       String?         @unique
+  resetTokenExpiry DateTime?
+  accounts         Account[]
+  campaigns        Campaign[]
+  contactLists     ContactList[]
+  emailTemplates   EmailTemplate[]
+  sessions         Session[]
 
   @@map("users")
 }
@@ -42,6 +44,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
   @@map("accounts")
 }
 
@@ -52,6 +55,7 @@ model Session {
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("sessions")
 }
 
@@ -77,6 +81,7 @@ model ContactList {
   members              ContactListMember[]
   owner                User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
   @@map("contact_lists")
 }
 
@@ -93,6 +98,7 @@ model Contact {
   city                 String?
   company              String?
   tags                 String?
+  softBounceCount      Int                    @default(0)
   ContactToContactList ContactToContactList[]
   activityLogs         CampaignActivityLog[]
   lists                ContactListMember[]
@@ -131,12 +137,13 @@ model EmailTemplate {
   thumbnail String?
   html      String
   json      String?
-  createdBy String
+  createdBy String?
   isPublic  Boolean    @default(false)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  isSystem  Boolean    @default(false)
   campaigns Campaign[]
-  user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@unique([createdBy, name])
   @@map("email_templates")
@@ -169,9 +176,9 @@ model Campaign {
   currentStep         Int                        @default(1)
   isRecurring         Boolean                    @default(false)
   recurrenceInterval  String?
-  totalFailed         Int                        @default(0)
   totalBounced        Int                        @default(0)
   totalComplained     Int                        @default(0)
+  totalFailed         Int                        @default(0)
   totalUnsubscribed   Int                        @default(0)
   activityLogs        CampaignActivityLog[]
   excludedLists       CampaignExcludedList[]
@@ -182,6 +189,7 @@ model Campaign {
   template            EmailTemplate?             @relation(fields: [templateId], references: [id])
 
   @@unique([createdBy, name])
+  @@index([templateId])
   @@map("campaigns")
 }
 
@@ -229,6 +237,7 @@ model CampaignTestSend {
   sentAt     DateTime @default(now())
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
+  @@index([campaignId])
   @@map("campaign_test_sends")
 }
 
@@ -243,6 +252,11 @@ model CampaignActivityLog {
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   contact    Contact? @relation(fields: [contactId], references: [id])
 
+  @@index([campaignId, action])
+  @@index([campaignId, contactId, action])
+  @@index([campaignId, createdAt(sort: Desc)])
+  @@index([contactId])
+  @@index([createdAt(sort: Desc)])
   @@map("campaign_activity_logs")
 }
 
@@ -292,9 +306,7 @@ model ContactToContactList {
 }
 
 enum Role {
-  SUPER_ADMIN
-  CAMPAIGN_MANAGER
-  VIEWER
+  ADMIN
 }
 
 enum ContactStatus {

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs"
 import { Role } from "@prisma/client"
 import { PrismaClient } from "@prisma/client"
 import { prisma as importedPrisma } from "../app/lib/prisma"
+import logger from "@/lib/logger"
 
 const prisma = importedPrisma || new PrismaClient()
 import { headers } from "next/headers"
@@ -17,7 +18,8 @@ export const authOptions: NextAuthOptions = {
       name: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
+        rememberMe: { label: "Remember Me", type: "text" }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -60,6 +62,7 @@ export const authOptions: NextAuthOptions = {
           email: dbUser.email,
           name: dbUser.name,
           role: dbUser.role,
+          rememberMe: credentials.rememberMe === "true",
         } as any
       }
     })
@@ -76,10 +79,14 @@ export const authOptions: NextAuthOptions = {
           token.sub = user.id
           token.name = user.name
           token.email = user.email
+          if ((user as any).rememberMe) {
+            token.rememberMe = true
+            token.exp = Math.floor(Date.now() / 1000) + 3 * 24 * 60 * 60
+          }
         }
         return token
       } catch (error: any) {
-        console.error("NextAuth JWT callback error:", error)
+        logger.error({ error }, "NextAuth JWT callback error")
         return token
       }
     },
@@ -93,7 +100,7 @@ export const authOptions: NextAuthOptions = {
         }
         return session
       } catch (error: any) {
-        console.error("NextAuth session callback error:", error)
+        logger.error({ error }, "NextAuth session callback error")
         return session
       }
     }

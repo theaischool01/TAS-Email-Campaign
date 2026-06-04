@@ -56,8 +56,6 @@ export default async function DashboardPage() {
       redirect("/login")
     }
 
-    const isViewer = session.user.role === "VIEWER"
-
     const data = await getDashboardStats(session)
     if (!data) {
       return (
@@ -79,47 +77,40 @@ export default async function DashboardPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                {isViewer ? "Viewer Overview" : "Platform Analytics"}
+                Platform Analytics
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-lg font-medium">
-                {isViewer 
-                  ? `Welcome back, ${session.user.name}. Here is your engagement summary.`
-                  : "Overview of your email communication performance"
-                }
+                Overview of your email communication performance
               </p>
             </div>
             
-            {!isViewer && (
-              <div className="flex items-center space-x-3">
-                <Link
-                  href="/campaigns/new"
-                  className="inline-flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Mail className="w-4 h-4 mr-2" />
-                  New Campaign
-                </Link>
-              </div>
-            )}
+            <div className="flex items-center space-x-3">
+              <Link
+                href="/campaigns/new"
+                className="inline-flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Mail className="w-4 h-4 mr-2" />
+                New Campaign
+              </Link>
+            </div>
           </div>
 
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {!isViewer && (
-              <StatCard 
-                title="Total Contacts" 
-                value={data.contactCount.toLocaleString()}
-                trend={{
-                  value: data.growthTrend.growth,
-                  label: 'Growth (30d)',
-                  isUp: data.growthTrend.growth >= 0
-                }}
-                icon={<Users className="w-6 h-6" />}
-                status="neutral"
-              />
-            )}
+            <StatCard 
+              title="Total Contacts" 
+              value={data.contactCount.toLocaleString()}
+              trend={{
+                value: data.growthTrend.growth,
+                label: 'Growth (30d)',
+                isUp: data.growthTrend.growth >= 0
+              }}
+              icon={<Users className="w-6 h-6" />}
+              status="neutral"
+            />
             
             <StatCard 
-              title={isViewer ? "Accessible Campaigns" : "Campaigns Created"}
+              title="Campaigns Created"
               value={campaignCount.toLocaleString()}
               icon={<FileText className="w-6 h-6" />}
               status="neutral"
@@ -139,30 +130,19 @@ export default async function DashboardPage() {
               status={(summary.openRate || 0) >= 20 ? 'success' : 'warning'}
             />
 
-            {isViewer ? (
-              <StatCard 
-                title="Avg. Click Rate" 
-                value={`${(summary.clickRate || 0).toFixed(1)}%`}
-                icon={<TrendingUp className="w-6 h-6" />}
-                status="info"
-              />
-            ) : (
-              <StatCard 
-                title="Bounce Rate" 
-                value={`${(summary.bounceRate || 0).toFixed(1)}%`}
-                icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-                status={(summary.bounceRate || 0) > 2 ? 'danger' : 'success'}
-              />
-            )}
+            <StatCard 
+              title="Bounce Rate" 
+              value={`${(summary.bounceRate || 0).toFixed(1)}%`}
+              icon={<ExclamationTriangleIcon className="w-6 h-6" />}
+              status={(summary.bounceRate || 0) > 2 ? 'danger' : 'success'}
+            />
 
-            {!isViewer && (
-              <StatCard 
-                title="Templates Ready" 
-                value={data.templateCount.toLocaleString()}
-                icon={<FileText className="w-6 h-6" />}
-                status="neutral"
-              />
-            )}
+            <StatCard 
+              title="Templates Ready" 
+              value={data.templateCount.toLocaleString()}
+              icon={<FileText className="w-6 h-6" />}
+              status="neutral"
+            />
           </div>
 
           {/* Second Row: Top Campaigns & Activity */}
@@ -171,7 +151,7 @@ export default async function DashboardPage() {
             <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900 dark:text-white">
-                  {isViewer ? "Visible Campaigns" : "Top Performing Campaigns"}
+                  Top Performing Campaigns
                 </h3>
                 <Link href="/campaigns" className="text-xs font-semibold text-blue-600 hover:underline">View All</Link>
               </div>
@@ -183,15 +163,15 @@ export default async function DashboardPage() {
                       <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Campaign</th>
                       <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Sent</th>
                       <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Open Rate</th>
-                      {!isViewer && <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Click Rate</th>}
+                      <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500">Click Rate</th>
                       <th className="px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-500 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {topCampaigns.length === 0 ? (
                       <tr>
-                        <td colSpan={isViewer ? 4 : 5} className="px-6 py-12 text-center text-slate-400 italic">
-                          {isViewer ? "No campaigns assigned yet" : "No campaigns sent yet"}
+                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
+                          No campaigns sent yet
                         </td>
                       </tr>
                     ) : (
@@ -199,13 +179,11 @@ export default async function DashboardPage() {
                         <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                           <td className="px-6 py-4">
                             <span className="block font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{c.name}</span>
-                            {!isViewer && (
-                              <div className="flex gap-2 mt-1">
-                                {c.openRate >= 25 && (
-                                  <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded uppercase tracking-tight">Best Open</span>
-                                )}
-                              </div>
-                            )}
+                            <div className="flex gap-2 mt-1">
+                              {c.openRate >= 25 && (
+                                <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded uppercase tracking-tight">Best Open</span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
                             {c.totalSent.toLocaleString()}
@@ -221,11 +199,9 @@ export default async function DashboardPage() {
                               </div>
                             </div>
                           </td>
-                          {!isViewer && (
-                            <td className="px-6 py-4">
-                              <span className="text-sm font-bold text-slate-900 dark:text-white">{(c.clickRate || 0).toFixed(1)}%</span>
-                            </td>
-                          )}
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-bold text-slate-900 dark:text-white">{(c.clickRate || 0).toFixed(1)}%</span>
+                          </td>
                           <td className="px-6 py-4 text-right">
                             <Link 
                               href={`/campaigns/${c.id}/report`}
@@ -248,54 +224,35 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* Viewer Profile Summary or Quick Stats */}
-          {isViewer && (
-            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 rounded-2xl p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
-                  {session.user.name?.[0]}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white">Profile Summary</h4>
-                  <p className="text-sm text-slate-500">You are logged in as a <strong>Viewer</strong> with read-only access to campaign analytics.</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Quick Actions Footer */}
-          {!isViewer && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Link
-                href="/contacts"
-                className="p-6 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/10 rounded-2xl hover:shadow-lg transition-all group"
-              >
-                <Users className="w-8 h-8 text-emerald-600 mb-3 group-hover:scale-110 transition-transform" />
-                <h4 className="font-bold text-slate-900 dark:text-white">Manage Audience</h4>
-                <p className="text-sm text-slate-500 mt-1">Import and segment contact lists.</p>
-              </Link>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Link
+              href="/contacts"
+              className="p-6 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/10 rounded-2xl hover:shadow-lg transition-all group"
+            >
+              <Users className="w-8 h-8 text-emerald-600 mb-3 group-hover:scale-110 transition-transform" />
+              <h4 className="font-bold text-slate-900 dark:text-white">Manage Audience</h4>
+              <p className="text-sm text-slate-500 mt-1">Import and segment contact lists.</p>
+            </Link>
 
-              <Link
-                href="/templates"
-                className="p-6 bg-purple-50 dark:bg-purple-500/5 border border-purple-100 dark:border-purple-500/10 rounded-2xl hover:shadow-lg transition-all group"
-              >
-                <FileText className="w-8 h-8 text-purple-600 mb-3 group-hover:scale-110 transition-transform" />
-                <h4 className="font-bold text-slate-900 dark:text-white">Email Layouts</h4>
-                <p className="text-sm text-slate-500 mt-1">Review and manage email templates.</p>
-              </Link>
+            <Link
+              href="/templates"
+              className="p-6 bg-purple-50 dark:bg-purple-500/5 border border-purple-100 dark:border-purple-500/10 rounded-2xl hover:shadow-lg transition-all group"
+            >
+              <FileText className="w-8 h-8 text-purple-600 mb-3 group-hover:scale-110 transition-transform" />
+              <h4 className="font-bold text-slate-900 dark:text-white">Email Layouts</h4>
+              <p className="text-sm text-slate-500 mt-1">Review and manage email templates.</p>
+            </Link>
 
-              {session.user.role === "SUPER_ADMIN" && (
-                <Link
-                  href="/settings/org"
-                  className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl hover:shadow-lg transition-all group"
-                >
-                  <TrendingUp className="w-8 h-8 text-slate-600 mb-3 group-hover:scale-110 transition-transform" />
-                  <h4 className="font-bold text-slate-900 dark:text-white">Global Config</h4>
-                  <p className="text-sm text-slate-500 mt-1">Manage SES and organization defaults.</p>
-                </Link>
-              )}
-            </div>
-          )}
+            <Link
+              href="/settings/org"
+              className="p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl hover:shadow-lg transition-all group"
+            >
+              <TrendingUp className="w-8 h-8 text-slate-600 mb-3 group-hover:scale-110 transition-transform" />
+              <h4 className="font-bold text-slate-900 dark:text-white">Global Config</h4>
+              <p className="text-sm text-slate-500 mt-1">Manage SES and organization defaults.</p>
+            </Link>
+          </div>
         </div>
       </DashboardLayout>
     )

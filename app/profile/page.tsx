@@ -39,7 +39,7 @@ export default async function ProfilePage() {
                   </div>
                   <div>
                     <h3 className="font-medium">{user.name || "No name"}</h3>
-                    <Badge variant="secondary">{user.role}</Badge>
+                    <Badge variant="secondary">Admin</Badge>
                   </div>
                 </div>
                 
@@ -56,7 +56,7 @@ export default async function ProfilePage() {
                     <Shield className="w-4 h-4 text-gray-400" />
                     <div>
                       <p className="text-sm font-medium">Role</p>
-                      <p className="text-sm text-gray-600">{user.role}</p>
+                      <p className="text-sm text-gray-600">Admin</p>
                     </div>
                   </div>
                   
@@ -65,9 +65,7 @@ export default async function ProfilePage() {
                     <div>
                       <p className="text-sm font-medium">Account Type</p>
                       <p className="text-sm text-gray-600">
-                        {user.role === "SUPER_ADMIN" ? "Administrator" : 
-                         user.role === "CAMPAIGN_MANAGER" ? "Campaign Manager" : 
-                         "Viewer"}
+                        Administrator
                       </p>
                     </div>
                   </div>
@@ -88,53 +86,13 @@ export default async function ProfilePage() {
                 <div>
                   <h3 className="text-lg font-medium mb-4">Permissions</h3>
                   <div className="space-y-3">
-                    {user.role === "SUPER_ADMIN" && (
-                      <>
-                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                          <div>
-                            <p className="font-medium text-green-900">Full System Access</p>
-                            <p className="text-sm text-green-700">Complete control over all features and users</p>
-                          </div>
-                          <Badge variant="default">Active</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                          <div>
-                            <p className="font-medium text-green-900">User Management</p>
-                            <p className="text-sm text-green-700">Create, edit, and delete user accounts</p>
-                          </div>
-                          <Badge variant="default">Active</Badge>
-                        </div>
-                      </>
-                    )}
-                    
-                    {user.role === "CAMPAIGN_MANAGER" && (
-                      <>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                          <div>
-                            <p className="font-medium text-blue-900">Campaign Management</p>
-                            <p className="text-sm text-blue-700">Create and manage email campaigns</p>
-                          </div>
-                          <Badge variant="default">Active</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <p className="font-medium">Contact Management</p>
-                            <p className="text-sm text-gray-600">Manage contact lists and segments</p>
-                          </div>
-                          <Badge variant="default">Active</Badge>
-                        </div>
-                      </>
-                    )}
-                    
-                    {user.role === "VIEWER" && (
-                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-gray-900">Read-Only Access</p>
-                          <p className="text-sm text-gray-700">View campaigns and analytics only</p>
-                        </div>
-                        <Badge variant="secondary">Active</Badge>
+                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-green-900">Full Access</p>
+                        <p className="text-sm text-green-700">Complete control over your campaigns, contacts, templates and settings</p>
                       </div>
-                    )}
+                      <Badge variant="default">Active</Badge>
+                    </div>
                   </div>
                 </div>
 

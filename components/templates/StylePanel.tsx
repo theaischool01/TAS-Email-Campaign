@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
+import { useUploadThing } from "@/lib/uploadthing"
 import { Settings, Type, Palette, Grid3x3, AlignLeft, AlignCenter, AlignRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +25,60 @@ interface StylePanelProps {
 export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
   const [localContent, setLocalContent] = useState(block.content)
   const [localStyles, setLocalStyles] = useState(block.styles)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  const { startUpload } = useUploadThing("imageUploader", {
+    onClientUploadComplete: (res: { url: string }[] | undefined) => {
+      if (res && res[0]) {
+        const url = res[0].url
+        const newContent = { ...localContent, src: url }
+        setLocalContent(newContent)
+        onUpdateBlock(block.id, { content: newContent })
+      }
+      setIsUploading(false)
+      setUploadProgress(0)
+    },
+    onUploadError: (err: Error) => {
+      setUploadError(err.message || "Upload failed")
+      setIsUploading(false)
+      setUploadProgress(0)
+    },
+    onUploadProgress: (p: number) => {
+      setUploadProgress(p)
+    },
+  })
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    // Client-side size guard (4MB)
+    if (file.size > 4 * 1024 * 1024) {
+      setUploadError("File too large. Maximum size is 4MB.")
+      return
+    }
+    setUploadError(null)
+    setIsUploading(true)
+    setUploadProgress(0)
+    await startUpload([file])
+  }, [startUpload])
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const file = e.dataTransfer.files[0]
+    if (file && file.type.startsWith('image/')) {
+      handleFileUpload(file)
+    } else {
+      setUploadError("Please drop an image file (jpg, png, gif, webp).")
+    }
+  }, [handleFileUpload])
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
 
   const handleContentChange = (key: string, value: any) => {
     const newContent = { ...localContent, [key]: value }
@@ -122,8 +177,81 @@ export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
       case 'image':
         return (
           <div className="space-y-4">
+            {/* Upload Zone */}
             <div>
-              <Label htmlFor="imageUrl" className="text-sm font-medium">Image URL</Label>
+              <Label className="text-sm font-medium">Upload Image</Label>
+              <div
+                ref={dropZoneRef}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onClick={() => !isUploading && fileInputRef.current?.click()}
+                className="mt-1 flex flex-col items-center justify-center w-full border-2 border-dashed rounded-md cursor-pointer transition-colors"
+                style={{
+                  borderColor: isUploading ? '#6366f1' : '#d1d5db',
+                  backgroundColor: isUploading ? '#eef2ff' : '#f9fafb',
+                  minHeight: '90px',
+                  padding: '12px 8px',
+                }}
+              >
+                {isUploading ? (
+                  <div className="flex flex-col items-center gap-2 w-full px-2">
+                    <div className="text-xs text-indigo-600 font-medium">Uploading... {uploadProgress}%</div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div
+                        className="bg-indigo-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <svg className="h-6 w-6 text-gray-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-xs text-gray-500 text-center">
+                      Drag image here or <span className="text-indigo-600 font-medium">click to upload</span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">Max 4MB · JPG, PNG, GIF, WEBP</p>
+                  </>
+                )}
+              </div>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleFileUpload(file)
+                  // reset so same file can be re-selected
+                  e.target.value = ''
+                }}
+              />
+              {/* Upload error */}
+              {uploadError && (
+                <p className="text-xs text-red-500 mt-1">{uploadError}</p>
+              )}
+            </div>
+
+            {/* Preview of uploaded/current image */}
+            {localContent.src && (
+              <div>
+                <Label className="text-xs text-gray-500">Preview</Label>
+                <div className="mt-1 rounded-md overflow-hidden border border-gray-200" style={{ maxHeight: '100px' }}>
+                  <img
+                    src={localContent.src}
+                    alt={localContent.alt || ''}
+                    className="w-full object-contain"
+                    style={{ maxHeight: '100px' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* URL fallback */}
+            <div>
+              <Label htmlFor="imageUrl" className="text-sm font-medium">Or paste image URL</Label>
               <Input
                 id="imageUrl"
                 value={localContent.src || ''}
@@ -131,6 +259,8 @@ export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
                 placeholder="https://example.com/image.jpg"
               />
             </div>
+
+            {/* Alt text — unchanged */}
             <div>
               <Label htmlFor="altText" className="text-sm font-medium">Alt Text</Label>
               <Input
@@ -139,6 +269,82 @@ export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
                 onChange={(e) => handleContentChange('alt', e.target.value)}
                 placeholder="Image description"
               />
+            </div>
+
+            {/* Resize Controls */}
+            <div className="space-y-3 pt-1 border-t border-gray-100">
+              <Label className="text-sm font-medium text-gray-700">Size &amp; Alignment</Label>
+
+              {/* Resize hint */}
+              <p className="text-xs text-gray-400 italic">
+                Drag the corner handles on the canvas to resize. Aspect ratio is locked.
+              </p>
+
+              {/* Alignment */}
+              <div>
+                <Label className="text-xs text-gray-500">Alignment</Label>
+                <div className="flex gap-2 mt-1">
+                  {(['left', 'center', 'right'] as const).map((dir) => (
+                    <button
+                      key={dir}
+                      type="button"
+                      onClick={() => handleContentChange('alignment', dir)}
+                      className="flex-1 py-1 text-xs font-medium rounded-md border transition-colors"
+                      style={{
+                        backgroundColor: (localContent.alignment || 'center') === dir ? '#6366f1' : '#ffffff',
+                        color: (localContent.alignment || 'center') === dir ? '#ffffff' : '#374151',
+                        borderColor: (localContent.alignment || 'center') === dir ? '#6366f1' : '#d1d5db',
+                      }}
+                    >
+                      {dir === 'left' ? '← Left' : dir === 'center' ? '↔ Center' : 'Right →'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Height */}
+              <div>
+                <Label className="text-xs text-gray-500">Height</Label>
+                <div className="flex gap-2 mt-1">
+                  {/* Auto / Fixed toggle */}
+                  <div className="flex rounded-md border border-gray-300 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => handleContentChange('height', 'auto')}
+                      className="px-2 py-1 text-xs font-medium transition-colors"
+                      style={{
+                        backgroundColor: (!localContent.height || localContent.height === 'auto') ? '#6366f1' : '#ffffff',
+                        color: (!localContent.height || localContent.height === 'auto') ? '#ffffff' : '#374151',
+                      }}
+                    >
+                      Auto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleContentChange('height', localContent.height && localContent.height !== 'auto' ? localContent.height : 200)}
+                      className="px-2 py-1 text-xs font-medium transition-colors"
+                      style={{
+                        backgroundColor: localContent.height && localContent.height !== 'auto' ? '#6366f1' : '#ffffff',
+                        color: localContent.height && localContent.height !== 'auto' ? '#ffffff' : '#374151',
+                      }}
+                    >
+                      Fixed
+                    </button>
+                  </div>
+                  <Input
+                    id="imgHeight"
+                    type="number"
+                    value={(!localContent.height || localContent.height === 'auto') ? '' : Number(localContent.height)}
+                    min={10}
+                    max={2000}
+                    disabled={!localContent.height || localContent.height === 'auto'}
+                    onChange={(e) => handleContentChange('height', Number(e.target.value))}
+                    className="flex-1"
+                    placeholder="auto"
+                  />
+                  <span className="text-xs text-gray-500 self-center">px</span>
+                </div>
+              </div>
             </div>
           </div>
         )

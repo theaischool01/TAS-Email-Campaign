@@ -42,10 +42,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user can create templates
-    if (session.user.role === "VIEWER") {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
-    }
 
     const body = await request.json()
     const { name, category, html, json, isPublic = false } = body

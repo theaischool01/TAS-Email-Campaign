@@ -1,16 +1,50 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { isBotUserAgent } from "@/lib/utils/bot-detection"
+// @ts-ignore
+import MessageValidator from "sns-validator"
+import logger from "@/lib/logger"
 
 const prisma = prismaClient as any
+const validator = new MessageValidator()
+
+function validateSnsMessage(payload: any): Promise<boolean> {
+  return new Promise((resolve) => {
+    validator.validate(payload, (err: any) => {
+      if (err) {
+        resolve(false)
+      } else {
+        resolve(true)
+      }
+    })
+  })
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    const rawBody = await request.text()
+    let body: any
+    try {
+      body = JSON.parse(rawBody)
+    } catch (e) {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+    }
+
+    // SNS signature verification gate
+    const isValid = await validateSnsMessage(body)
+    if (!isValid) {
+      logger.warn({ timestamp: new Date().toISOString() }, "SNS signature validation failed")
+      return NextResponse.json({ error: "Invalid SNS signature" }, { status: 403 })
+    }
     
     // SNS Message handling
     if (body.Type === 'SubscriptionConfirmation') {
-      return NextResponse.json({ message: "Subscription confirmation received" })
+      const subscribeUrl = body.SubscribeURL
+      if (subscribeUrl) {
+        await fetch(subscribeUrl)
+        logger.info(`[SES WEBHOOK] Successfully confirmed subscription via GET to: ${subscribeUrl}`)
+      }
+      return NextResponse.json({ message: "Subscription confirmed" })
     }
 
     if (body.Type === 'Notification') {
@@ -19,9 +53,9 @@ export async function POST(request: NextRequest) {
       const campaignId = message.mail.tags?.['campaignId']?.[0] || message.mail.headers?.find((h: any) => h.name === 'X-Campaign-ID')?.value
       const contactId = message.mail.tags?.['contactId']?.[0] || message.mail.headers?.find((h: any) => h.name === 'X-Contact-ID')?.value
 
-      console.log(`[SES WEBHOOK] Event: ${eventType}, Campaign: ${campaignId}, Contact: ${contactId}`);
+      logger.info(`[SES WEBHOOK] Event: ${eventType}, Campaign: ${campaignId}, Contact: ${contactId}`);
       if (!campaignId) {
-        console.log('[SES WEBHOOK] Missing campaignId. Full mail object:', JSON.stringify(message.mail, null, 2));
+        logger.info({ mail: message.mail }, '[SES WEBHOOK] Missing campaignId. Full mail object:');
         return NextResponse.json({ message: "Missing campaignId" })
       }
 
@@ -81,21 +115,80 @@ export async function POST(request: NextRequest) {
       if (eventType === 'Bounce') {
         const bounce = message.bounce;
         const recipients = bounce.bouncedRecipients || [];
-        
+        const isHardBounce = bounce.bounceType === 'Permanent';
+        const isSoftBounce = bounce.bounceType === 'Transient' || 
+                             bounce.bounceType === 'Undetermined';
+
         for (const recipient of recipients) {
           const email = recipient.emailAddress;
-          
-          // Check if this bounce was already recorded for this campaign
+
           const existingBounce = await prisma.campaignActivityLog.findFirst({
-            where: { campaignId, action: 'EMAIL_BOUNCED', metadata: { path: ['email'], equals: email } }
+            where: { 
+              campaignId, 
+              action: 'EMAIL_BOUNCED', 
+              metadata: { path: ['email'], equals: email } 
+            }
           })
 
           if (!existingBounce) {
-            await prisma.contact.updateMany({
-              where: { email },
-              data: { status: 'BOUNCED' }
-            });
+            if (isHardBounce) {
+              // Hard bounce — mark BOUNCED immediately + add to suppression
+              await prisma.contact.updateMany({
+                where: { email },
+                data: { status: 'BOUNCED' }
+              });
 
+              await prisma.suppressionList.upsert({
+                where: { email },
+                update: { reason: `SES Permanent Bounce (${bounce.bounceSubType})` },
+                create: { email, reason: `SES Permanent Bounce (${bounce.bounceSubType})` }
+              });
+
+              logger.warn({ email, bounceSubType: bounce.bounceSubType }, 
+                'Hard bounce — contact marked BOUNCED and suppressed')
+
+            } else if (isSoftBounce) {
+              // Soft bounce — increment counter, only suppress after 3
+              const contact = await prisma.contact.findFirst({
+                where: { email },
+                select: { id: true, softBounceCount: true }
+              });
+
+              if (contact) {
+                const newCount = (contact.softBounceCount || 0) + 1;
+
+                if (newCount >= 3) {
+                  // 3 soft bounces = treat as hard bounce
+                  await prisma.contact.update({
+                    where: { id: contact.id },
+                    data: { 
+                      status: 'BOUNCED',
+                      softBounceCount: newCount
+                    }
+                  });
+
+                  await prisma.suppressionList.upsert({
+                    where: { email },
+                    update: { reason: `SES Soft Bounce x3 (${bounce.bounceSubType})` },
+                    create: { email, reason: `SES Soft Bounce x3 (${bounce.bounceSubType})` }
+                  });
+
+                  logger.warn({ email, softBounceCount: newCount }, 
+                    'Soft bounce x3 — contact marked BOUNCED and suppressed')
+                } else {
+                  // Under 3 — just increment, keep ACTIVE
+                  await prisma.contact.update({
+                    where: { id: contact.id },
+                    data: { softBounceCount: newCount }
+                  });
+
+                  logger.info({ email, softBounceCount: newCount }, 
+                    'Soft bounce recorded — contact still ACTIVE')
+                }
+              }
+            }
+
+            // Always log the bounce activity
             await prisma.campaign.update({
               where: { id: campaignId },
               data: { totalBounced: { increment: 1 } }
@@ -111,19 +204,11 @@ export async function POST(request: NextRequest) {
                   email, 
                   source: 'ses-native',
                   bounceType: bounce.bounceType,
-                  bounceSubType: bounce.bounceSubType 
+                  bounceSubType: bounce.bounceSubType,
+                  isSoftBounce: isSoftBounce
                 }
               }
             });
-
-            // Add to suppression list for permanent bounces
-            if (bounce.bounceType === 'Permanent') {
-              await prisma.suppressionList.upsert({
-                where: { email },
-                update: { reason: `SES Permanent Bounce (${bounce.bounceSubType})` },
-                create: { email, reason: `SES Permanent Bounce (${bounce.bounceSubType})` }
-              });
-            }
           }
         }
       }
@@ -172,6 +257,69 @@ export async function POST(request: NextRequest) {
               update: { reason: `SES Complaint (${complaint.complaintFeedbackType})` },
               create: { email, reason: `SES Complaint (${complaint.complaintFeedbackType})` }
             });
+
+            // Calculate complaint rate and alert if threshold exceeded
+            const updatedCampaign = await prisma.campaign.findUnique({
+              where: { id: campaignId },
+              select: { totalComplained: true, totalSent: true, name: true }
+            })
+
+            if (updatedCampaign && updatedCampaign.totalSent > 0) {
+              const complaintRate = updatedCampaign.totalComplained / updatedCampaign.totalSent
+
+              if (complaintRate >= 0.005) {
+                // 0.5% — SES suspension risk
+                logger.error({ 
+                  campaignId, 
+                  campaignName: updatedCampaign.name,
+                  complaintRate: (complaintRate * 100).toFixed(3) + '%',
+                  totalComplained: updatedCampaign.totalComplained,
+                  totalSent: updatedCampaign.totalSent
+                }, 'CRITICAL: Complaint rate above 0.5% — SES suspension risk')
+
+                await prisma.campaign.update({
+                  where: { id: campaignId },
+                  data: { status: 'PAUSED' }
+                })
+
+                await prisma.campaignActivityLog.create({
+                  data: {
+                    campaignId,
+                    action: 'COMPLAINT_RATE_CRITICAL',
+                    actorId: 'ses-native',
+                    metadata: {
+                      complaintRate,
+                      totalComplained: updatedCampaign.totalComplained,
+                      totalSent: updatedCampaign.totalSent,
+                      action: 'campaign_paused'
+                    }
+                  }
+                })
+
+              } else if (complaintRate >= 0.001) {
+                // 0.1% — SES warning threshold
+                logger.warn({ 
+                  campaignId,
+                  campaignName: updatedCampaign.name,
+                  complaintRate: (complaintRate * 100).toFixed(3) + '%',
+                  totalComplained: updatedCampaign.totalComplained,
+                  totalSent: updatedCampaign.totalSent
+                }, 'WARNING: Complaint rate above 0.1% — monitor closely')
+
+                await prisma.campaignActivityLog.create({
+                  data: {
+                    campaignId,
+                    action: 'COMPLAINT_RATE_WARNING',
+                    actorId: 'ses-native',
+                    metadata: {
+                      complaintRate,
+                      totalComplained: updatedCampaign.totalComplained,
+                      totalSent: updatedCampaign.totalSent
+                    }
+                  }
+                })
+              }
+            }
           }
         }
       }
@@ -219,7 +367,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('❌ SES Webhook Error:', error)
+    logger.error({ error }, '❌ SES Webhook Error:')
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

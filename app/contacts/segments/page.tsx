@@ -93,25 +93,7 @@ export default function SegmentsPage() {
     }
   }
 
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
-
   if (!session) return null
-
-  if (!isAdmin && !isManager) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600 mb-4">You don't have permission to manage segments.</p>
-            <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">

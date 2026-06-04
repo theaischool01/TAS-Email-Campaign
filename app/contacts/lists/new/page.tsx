@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, Mail } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 
 export default function CreateContactListPage() {
   const { data: session } = useSession()
@@ -18,9 +18,6 @@ export default function CreateContactListPage() {
   const [description, setDescription] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,23 +52,6 @@ export default function CreateContactListPage() {
 
   if (!session) {
     return null
-  }
-
-  if (!isAdmin && !isManager) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <Mail className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don't have permission to create contact lists.</p>
-            <Button onClick={() => router.push("/dashboard")} className="mt-4">
-              Back to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   return (

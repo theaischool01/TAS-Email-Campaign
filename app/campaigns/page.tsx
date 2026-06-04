@@ -130,7 +130,7 @@ export default function CampaignsPage() {
     }
   }
 
-  const isViewer = session?.user?.role === 'VIEWER'
+  const isViewer = false
 
   return (
     <div className="container mx-auto py-8 px-4">

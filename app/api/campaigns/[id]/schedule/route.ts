@@ -86,14 +86,15 @@ export async function POST(
     console.log("🕒 SCHEDULE API: Validated data:", validatedData)
     
     const scheduleDate = new Date(validatedData.scheduledAt)
+    const nowWithBuffer = new Date(now.getTime() - 60000) // 60-second buffer
     
     console.log("🕒 SCHEDULE API: Comparing times", { 
       scheduled: scheduleDate.toISOString(), 
       now: now.toISOString(),
-      isFuture: scheduleDate > now 
+      isFuture: scheduleDate > nowWithBuffer 
     })
 
-    if (scheduleDate <= now) {
+    if (scheduleDate <= nowWithBuffer) {
       return NextResponse.json(
         { error: `Scheduled time must be in the future. Scheduled: ${scheduleDate.toISOString()}, Now: ${now.toISOString()}` },
         { status: 400 }

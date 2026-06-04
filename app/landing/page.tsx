@@ -14,11 +14,8 @@ export default function LandingPage() {
           <span className="text-xl font-bold text-gray-900 tracking-tight">Email Campaign Platform</span>
         </div>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" asChild>
-            <Link href="/login">Login</Link>
-          </Button>
           <Button asChild>
-            <Link href="/register">Get Started</Link>
+            <Link href="/login">Login</Link>
           </Button>
         </div>
       </nav>
@@ -34,10 +31,7 @@ export default function LandingPage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 mb-20">
           <Button size="lg" className="px-10 py-7 text-lg rounded-full" asChild>
-            <Link href="/register">Create Your Account</Link>
-          </Button>
-          <Button size="lg" variant="outline" className="px-10 py-7 text-lg rounded-full" asChild>
-            <Link href="/login">View Dashboard</Link>
+            <Link href="/login">Login to Dashboard</Link>
           </Button>
         </div>
 

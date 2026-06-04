@@ -1,35 +1,24 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, Suspense } from "react"
 import { signIn } from "next-auth/react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2 } from "lucide-react"
+import { Loader2, Eye, EyeOff } from "lucide-react"
 
 function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [rememberMe, setRememberMe] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
-
-  useEffect(() => {
-    const message = searchParams.get("message")
-    if (message) {
-      setSuccess(message)
-      // Clear the message from URL
-      const url = new URL(window.location.href)
-      url.searchParams.delete("message")
-      window.history.replaceState({}, "", url.toString())
-    }
-  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,6 +29,7 @@ function LoginForm() {
       const result = await signIn("credentials", {
         email,
         password,
+        rememberMe,
         redirect: false,
       })
 
@@ -67,11 +57,6 @@ function LoginForm() {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            {success && (
-              <Alert className="bg-green-50 border-green-200">
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
-              </Alert>
-            )}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -90,14 +75,50 @@ function LoginForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <div className="flex justify-end">
+                <Link
+                  href="/forgot-password"
+                  className="text-sm text-blue-600 hover:text-blue-500"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
+              <Label htmlFor="rememberMe" className="text-sm font-normal text-gray-600 cursor-pointer">
+                Remember me for 3 days
+              </Label>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
@@ -105,12 +126,6 @@ function LoginForm() {
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign in
             </Button>
-            <p className="text-sm text-gray-600 text-center">
-              Don't have an account?{" "}
-              <Link href="/register" className="text-blue-600 hover:text-blue-500">
-                Create an account
-              </Link>
-            </p>
           </CardFooter>
         </form>
       </Card>

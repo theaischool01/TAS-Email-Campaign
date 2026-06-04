@@ -14,10 +14,8 @@ export class CampaignAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all campaigns, others only their own
-    return isSuperAdmin ? {} : { createdBy: session.user.id }
+    // All admins only see their own campaigns
+    return { createdBy: session.user.id }
   }
 
   /**
@@ -28,10 +26,7 @@ export class CampaignAccessControl {
       return false
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = campaignOwnerId === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return campaignOwnerId === session.user.id
   }
 
   /**
@@ -42,8 +37,7 @@ export class CampaignAccessControl {
       return false
     }
 
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can create campaigns
-    return ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
+    return true
   }
 
   /**
@@ -54,14 +48,6 @@ export class CampaignAccessControl {
       return false
     }
 
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can edit campaigns
-    const canEditType = ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
-    if (!canEditType) {
-      return false
-    }
-
-    // SUPER_ADMIN can edit any campaign, CAMPAIGN_MANAGER can only edit their own
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
     const isOwner = campaign.createdBy === session.user.id
     
     // Only draft campaigns can be edited
@@ -69,7 +55,7 @@ export class CampaignAccessControl {
       return false
     }
     
-    return isSuperAdmin || isOwner
+    return isOwner
   }
 
   /**
@@ -80,17 +66,7 @@ export class CampaignAccessControl {
       return false
     }
 
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can delete campaigns
-    const canDeleteType = ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
-    if (!canDeleteType) {
-      return false
-    }
-
-    // SUPER_ADMIN can delete any campaign, CAMPAIGN_MANAGER can only delete their own
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = campaign.createdBy === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return campaign.createdBy === session.user.id
   }
 
   /**
@@ -101,17 +77,7 @@ export class CampaignAccessControl {
       return false
     }
     
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can launch campaigns
-    const canLaunchType = ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
-    if (!canLaunchType) {
-      return false
-    }
-    
-    // SUPER_ADMIN can launch any campaign, CAMPAIGN_MANAGER can only launch their own
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = campaign.createdBy === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return campaign.createdBy === session.user.id
   }
 
   /**
@@ -122,17 +88,7 @@ export class CampaignAccessControl {
       return false
     }
 
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can duplicate campaigns
-    const canDuplicateType = ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
-    if (!canDuplicateType) {
-      return false
-    }
-
-    // SUPER_ADMIN can duplicate any campaign, CAMPAIGN_MANAGER can only duplicate their own
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = campaign.createdBy === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return campaign.createdBy === session.user.id
   }
 
   /**
@@ -143,17 +99,7 @@ export class CampaignAccessControl {
       return false
     }
 
-    // Only SUPER_ADMIN and CAMPAIGN_MANAGER can view analytics
-    const canViewType = ["SUPER_ADMIN", "CAMPAIGN_MANAGER"].includes(session.user.role)
-    if (!canViewType) {
-      return false
-    }
-
-    // SUPER_ADMIN can view any campaign analytics, CAMPAIGN_MANAGER can only view their own
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = campaign.createdBy === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return campaign.createdBy === session.user.id
   }
 
   /**
@@ -164,10 +110,7 @@ export class CampaignAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all campaign recipient lists, others only their own
-    return isSuperAdmin ? {} : { campaign: { createdBy: session.user.id } }
+    return { campaign: { createdBy: session.user.id } }
   }
 
   /**
@@ -178,10 +121,7 @@ export class CampaignAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all campaign test sends, others only their own
-    return isSuperAdmin ? {} : { campaign: { createdBy: session.user.id } }
+    return { campaign: { createdBy: session.user.id } }
   }
 
   /**
@@ -192,10 +132,7 @@ export class CampaignAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all campaign activity logs, others only their own
-    return isSuperAdmin ? {} : { campaign: { createdBy: session.user.id } }
+    return { campaign: { createdBy: session.user.id } }
   }
 
   /**

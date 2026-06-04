@@ -1,4 +1,4 @@
-import { SQSClient, SendMessageCommand, CreateQueueCommand, GetQueueUrlCommand, ReceiveMessageCommand, DeleteMessageCommand } from "@aws-sdk/client-sqs"
+import { SQSClient, SendMessageCommand, CreateQueueCommand, GetQueueUrlCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } from "@aws-sdk/client-sqs"
 
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION || "ap-south-1",
@@ -8,7 +8,7 @@ const sqsClient = new SQSClient({
   },
 })
 
-const QUEUE_NAME = "EmailDispatchQueue"
+const QUEUE_NAME = "EmailDispatchQueue_DevLocal"
 
 export interface QueueMessage {
   campaignId: string
@@ -42,14 +42,70 @@ export class QueueService {
   }
 
   static async createQueue(): Promise<string> {
-    const command = new CreateQueueCommand({
-      QueueName: QUEUE_NAME,
-      Attributes: {
-        VisibilityTimeout: "60", // 1 minute
-      },
+    const dlqName = `${QUEUE_NAME}_DLQ`
+    let dlqUrl: string | undefined
+
+    // 1. Create DLQ
+    try {
+      const dlqCommand = new CreateQueueCommand({
+        QueueName: dlqName,
+        Attributes: {
+          VisibilityTimeout: "120"
+        }
+      })
+      const dlqRes = await sqsClient.send(dlqCommand)
+      dlqUrl = dlqRes.QueueUrl
+    } catch (e) {
+      console.log(`DLQ ${dlqName} detection error/exists, fetching URL...`)
+      const getDlqUrlCmd = new GetQueueUrlCommand({ QueueName: dlqName })
+      const getRes = await sqsClient.send(getDlqUrlCmd)
+      dlqUrl = getRes.QueueUrl
+    }
+
+    if (!dlqUrl) throw new Error("Failed to resolve DLQ URL")
+
+    // 2. Get DLQ ARN
+    const getAttrsCmd = new GetQueueAttributesCommand({
+      QueueUrl: dlqUrl,
+      AttributeNames: ["QueueArn"]
     })
-    const response = await sqsClient.send(command)
-    this.queueUrl = response.QueueUrl || null
+    const attrsRes = await sqsClient.send(getAttrsCmd)
+    const dlqArn = attrsRes.Attributes?.QueueArn
+
+    if (!dlqArn) throw new Error("Failed to get DLQ ARN")
+
+    // 3. Create/Update Primary Queue with RedrivePolicy & 120s VisibilityTimeout
+    const queueAttributes = {
+      VisibilityTimeout: "120", // 2 minutes
+      RedrivePolicy: JSON.stringify({
+        deadLetterTargetArn: dlqArn,
+        maxReceiveCount: 3
+      })
+    }
+
+    try {
+      const command = new CreateQueueCommand({
+        QueueName: QUEUE_NAME,
+        Attributes: queueAttributes
+      })
+      const response = await sqsClient.send(command)
+      this.queueUrl = response.QueueUrl || null
+    } catch (error: any) {
+      if (error.name === "QueueAlreadyExists" || error.Code === "QueueAlreadyExists" || error.message.includes("already exists")) {
+        console.log(`Queue ${QUEUE_NAME} exists with different attributes. Updating attributes via SetQueueAttributes...`)
+        const getRes = await sqsClient.send(new GetQueueUrlCommand({ QueueName: QUEUE_NAME }))
+        this.queueUrl = getRes.QueueUrl || null
+        if (this.queueUrl) {
+          await sqsClient.send(new SetQueueAttributesCommand({
+            QueueUrl: this.queueUrl,
+            Attributes: queueAttributes
+          }))
+        }
+      } else {
+        throw error
+      }
+    }
+
     if (!this.queueUrl) throw new Error("Failed to create queue")
     return this.queueUrl
   }

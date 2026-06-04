@@ -12,10 +12,8 @@ export class ContactAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all contact lists, others only their own
-    return isSuperAdmin ? {} : { ownerId: session.user.id }
+    // Scope to ownerId only
+    return { ownerId: session.user.id }
   }
 
   /**
@@ -26,10 +24,7 @@ export class ContactAccessControl {
       return false
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isOwner = contactListOwnerId === session.user.id
-    
-    return isSuperAdmin || isOwner
+    return contactListOwnerId === session.user.id
   }
 
   /**
@@ -40,10 +35,7 @@ export class ContactAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all contact list members, others only their own
-    return isSuperAdmin ? {} : { 
+    return { 
       contactList: {
         ownerId: session.user.id
       }
@@ -56,13 +48,6 @@ export class ContactAccessControl {
   static getContactVisibilityFilter(session: Session | null) {
     if (!session?.user) {
       throw new Error("No session found")
-    }
-
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    // SUPER_ADMIN can see all contacts, others only those in their lists
-    if (isSuperAdmin) {
-      return {}
     }
 
     return {

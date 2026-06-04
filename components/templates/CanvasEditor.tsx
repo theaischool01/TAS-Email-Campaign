@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { Plus, GripVertical, Trash2, Edit, ChevronUp, ChevronDown, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -24,6 +24,240 @@ interface CanvasEditorProps {
   onDuplicateBlock: (blockId: string) => void
 }
 
+// ─── Resize handle cursor map ───────────────────────────────────────────────
+const HANDLE_CURSORS: Record<string, string> = {
+  'tl': 'nw-resize',
+  'tr': 'ne-resize',
+  'bl': 'sw-resize',
+  'br': 'se-resize',
+}
+
+// ─── ImageBlock — self-contained resize + alignment logic ────────────────────
+interface ImageBlockProps {
+  block: TemplateBlock
+  isSelected: boolean
+  onUpdateBlock: (blockId: string, updates: Partial<TemplateBlock>) => void
+  onSelectBlock: (block: TemplateBlock) => void
+}
+
+function ImageBlock({ block, isSelected, onUpdateBlock, onSelectBlock }: ImageBlockProps) {
+  const imgRef = useRef<HTMLImageElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const resizeState = useRef<{
+    active: boolean
+    handle: string
+    startX: number
+    startWidth: number
+    aspectRatio: number
+  }>({ active: false, handle: '', startX: 0, startWidth: 0, aspectRatio: 1 })
+
+  // Compute display dimensions
+  const imgWidth = block.content?.widthUnit === 'px'
+    ? (block.content?.width ?? 300) + 'px'
+    : (block.content?.width ?? 100) + '%'
+  const imgHeight = !block.content?.height || block.content?.height === 'auto'
+    ? 'auto'
+    : block.content.height + 'px'
+  const alignment = block.content?.alignment || 'center'
+
+  // ── Capture aspect ratio on image load ───────────────────────────────────
+  const handleImgLoad = useCallback(() => {
+    const img = imgRef.current
+    if (img && img.naturalWidth && img.naturalHeight) {
+      resizeState.current.aspectRatio = img.naturalWidth / img.naturalHeight
+    }
+  }, [])
+
+  // ── Mouse event handlers ─────────────────────────────────────────────────
+  const startResize = useCallback((e: React.MouseEvent, handle: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Read aspect ratio from natural size; fallback to stored or 2:1
+    const img = imgRef.current
+    const ar = (img && img.naturalWidth && img.naturalHeight)
+      ? img.naturalWidth / img.naturalHeight
+      : (resizeState.current.aspectRatio || 2)
+
+    // Current rendered px width
+    const currentPxWidth = img ? img.getBoundingClientRect().width : (block.content?.width ?? 300)
+
+    resizeState.current = {
+      active: true,
+      handle,
+      startX: e.clientX,
+      startWidth: currentPxWidth,
+      aspectRatio: ar,
+    }
+  }, [block.content?.width])
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!resizeState.current.active) return
+      const { handle, startX, startWidth, aspectRatio } = resizeState.current
+
+      const deltaX = handle === 'tl' || handle === 'bl'
+        ? startX - e.clientX   // left handles: drag left = grow
+        : e.clientX - startX   // right handles: drag right = grow
+
+      const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+      const newHeight = Math.round(newWidth / aspectRatio)
+
+      // Live-update the img element directly for smooth feedback (no React re-render per px)
+      if (imgRef.current) {
+        imgRef.current.style.width = newWidth + 'px'
+        imgRef.current.style.height = newHeight + 'px'
+      }
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!resizeState.current.active) return
+      const { handle, startX, startWidth, aspectRatio } = resizeState.current
+      resizeState.current.active = false
+
+      const deltaX = handle === 'tl' || handle === 'bl'
+        ? startX - e.clientX
+        : e.clientX - startX
+
+      const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+      const newHeight = Math.round(newWidth / aspectRatio)
+
+      onUpdateBlock(block.id, {
+        content: {
+          ...block.content,
+          width: Math.round(newWidth),
+          widthUnit: 'px',
+          height: newHeight,
+        }
+      })
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [block.id, block.content, onUpdateBlock])
+
+  // ── Handle style ─────────────────────────────────────────────────────────
+  const handleStyle = (position: { top?: string; bottom?: string; left?: string; right?: string }, cursor: string): React.CSSProperties => ({
+    position: 'absolute',
+    width: '10px',
+    height: '10px',
+    backgroundColor: '#ffffff',
+    border: '2px solid #6366f1',
+    borderRadius: '2px',
+    cursor,
+    zIndex: 20,
+    ...position,
+  })
+
+  // ── Alignment button style ───────────────────────────────────────────────
+  const alignBtnStyle = (active: boolean): React.CSSProperties => ({
+    padding: '2px 7px',
+    fontSize: '11px',
+    fontWeight: 600,
+    border: '1px solid #6366f1',
+    borderRadius: '3px',
+    backgroundColor: active ? '#6366f1' : '#ffffff',
+    color: active ? '#ffffff' : '#6366f1',
+    cursor: 'pointer',
+    lineHeight: 1.4,
+  })
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{ padding: '20px', textAlign: alignment as any, position: 'relative', userSelect: 'none' }}
+      onClick={(e) => { e.stopPropagation(); onSelectBlock(block) }}
+    >
+      {/* Alignment toolbar — only when selected */}
+      {isSelected && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: '4px',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '5px',
+            padding: '3px 5px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+            zIndex: 30,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(['left', 'center', 'right'] as const).map((dir) => (
+            <button
+              key={dir}
+              style={alignBtnStyle(alignment === dir)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                onUpdateBlock(block.id, { content: { ...block.content, alignment: dir } })
+              }}
+              title={dir.charAt(0).toUpperCase() + dir.slice(1)}
+            >
+              {dir === 'left' ? '⬡ L' : dir === 'center' ? '⬡ C' : '⬡ R'}
+            </button>
+          ))}
+          <span style={{ borderLeft: '1px solid #e5e7eb', margin: '0 2px' }} />
+          <span style={{ fontSize: '10px', color: '#9ca3af', alignSelf: 'center', whiteSpace: 'nowrap' }}>
+            Drag corners to resize
+          </span>
+        </div>
+      )}
+
+      {/* Image + corner handles */}
+      <div style={{ position: 'relative', display: 'inline-block', marginTop: isSelected ? '28px' : '0' }}>
+        <img
+          ref={imgRef}
+          src={block.content?.src || 'https://via.placeholder.com/600x300'}
+          alt={block.content?.alt || ''}
+          onLoad={handleImgLoad}
+          draggable={false}
+          style={{
+            width: imgWidth,
+            height: imgHeight,
+            maxWidth: '100%',
+            borderRadius: '8px',
+            display: 'block',
+            pointerEvents: 'none', // prevent img drag interfering with resize
+          }}
+        />
+
+        {/* 4 corner resize handles — only when selected */}
+        {isSelected && (
+          <>
+            <div
+              style={handleStyle({ top: '-5px', left: '-5px' }, HANDLE_CURSORS['tl'])}
+              onMouseDown={(e) => startResize(e, 'tl')}
+            />
+            <div
+              style={handleStyle({ top: '-5px', right: '-5px' }, HANDLE_CURSORS['tr'])}
+              onMouseDown={(e) => startResize(e, 'tr')}
+            />
+            <div
+              style={handleStyle({ bottom: '-5px', left: '-5px' }, HANDLE_CURSORS['bl'])}
+              onMouseDown={(e) => startResize(e, 'bl')}
+            />
+            <div
+              style={handleStyle({ bottom: '-5px', right: '-5px' }, HANDLE_CURSORS['br'])}
+              onMouseDown={(e) => startResize(e, 'br')}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main CanvasEditor ───────────────────────────────────────────────────────
 export default function CanvasEditor({
   blocks,
   selectedBlock,
@@ -98,19 +332,14 @@ export default function CanvasEditor({
             </div>
           )
         case 'image':
+          // Rendered by dedicated ImageBlock component (handles resize + alignment)
           return (
-            <div style={{ padding: '20px', textAlign: 'center' }}>
-              <img
-                src={block.content.src || 'https://via.placeholder.com/600x300'}
-                alt={block.content.alt || ''}
-                style={{
-                  maxWidth: '100%',
-                  height: 'auto',
-                  borderRadius: '8px',
-                  ...block.styles
-                }}
-              />
-            </div>
+            <ImageBlock
+              block={block}
+              isSelected={isSelected}
+              onUpdateBlock={onUpdateBlock}
+              onSelectBlock={onSelectBlock}
+            />
           )
         case 'divider':
           return (
@@ -249,11 +478,24 @@ export default function CanvasEditor({
         case 'html':
           return (
             <div style={{ padding: '20px' }}>
-              <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px', backgroundColor: '#f9f9f9' }}>
-                <div style={{ color: '#666', fontSize: '12px', fontFamily: 'monospace' }}>
-                  Custom HTML content
+              {block.content?.html ? (
+                <div
+                  style={{
+                    width: '100%',
+                    overflow: 'auto',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '4px',
+                    padding: '8px'
+                  }}
+                  dangerouslySetInnerHTML={{ __html: block.content.html }}
+                />
+              ) : (
+                <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px', backgroundColor: '#f9f9f9' }}>
+                  <div style={{ color: '#666', fontSize: '12px', fontFamily: 'monospace' }}>
+                    Custom HTML content
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )
         default:
