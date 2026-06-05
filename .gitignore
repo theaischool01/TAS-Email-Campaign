@@ -48,3 +48,8 @@ worker-error.log
 Thumbs.db
 
 .vercel
+
+# Runtime log files
+save_trace.log
+worker-error.log
+*.log
