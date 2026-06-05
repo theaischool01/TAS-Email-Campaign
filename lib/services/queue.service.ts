@@ -8,7 +8,7 @@ const sqsClient = new SQSClient({
   },
 })
 
-const QUEUE_NAME = "EmailDispatchQueue_DevLocal"
+const QUEUE_NAME = process.env.SQS_QUEUE_NAME || "EmailDispatchQueue"
 
 export interface QueueMessage {
   campaignId: string

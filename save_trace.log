@@ -1067,3 +1067,210 @@ BODY: {
   "status": "DRAFT",
   "templateId": "cmpzc6o0v001nta0osdzg1vzm"
 }
+
+--- SAVE TRACE 2026-06-04T16:06:19.418Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "name": "batch021",
+  "subject": "welcome",
+  "currentStep": 1,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T16:06:21.400Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "currentStep": 2,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T16:06:25.891Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "name": "batch021",
+  "subject": "welcome",
+  "currentStep": 2,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T16:06:33.107Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "currentStep": 3,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T16:06:33.379Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "templateId": "cmpzc6o7z001pta0o4w9iimxe",
+  "currentStep": 3
+}
+
+--- SAVE TRACE 2026-06-04T16:06:36.984Z ---
+ID: cmpzoti6z000sta80ypmi7hi7
+BODY: {
+  "currentStep": 4,
+  "status": "DRAFT",
+  "templateId": "cmpzc6o7z001pta0o4w9iimxe"
+}
+
+--- SAVE TRACE 2026-06-04T16:07:58.670Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "name": "batch022",
+  "subject": "welcome",
+  "currentStep": 1,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T16:08:01.454Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "currentStep": 2,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T16:08:05.623Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "name": "batch022",
+  "subject": "welcome",
+  "currentStep": 2,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T16:08:11.822Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "currentStep": 3,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T16:08:12.541Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "templateId": "cmpzc6o0v001nta0osdzg1vzm",
+  "currentStep": 3
+}
+
+--- SAVE TRACE 2026-06-04T16:08:14.094Z ---
+ID: cmpzovnza001eta807cwq4b33
+BODY: {
+  "currentStep": 4,
+  "status": "DRAFT",
+  "templateId": "cmpzc6o0v001nta0osdzg1vzm"
+}
+
+--- SAVE TRACE 2026-06-04T23:49:00.850Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "name": "batch022",
+  "subject": "welcome",
+  "currentStep": 1,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T23:49:04.159Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "currentStep": 2,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T23:49:08.615Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "name": "batch022",
+  "subject": "welcome",
+  "currentStep": 2,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-04T23:49:10.380Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "templateId": "cmpzc6o0v001nta0osdzg1vzm",
+  "currentStep": 3
+}
+
+--- SAVE TRACE 2026-06-04T23:49:11.757Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "currentStep": 3,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-04T23:49:12.266Z ---
+ID: cmq05cikb000dtaoo50twxch7
+BODY: {
+  "currentStep": 4,
+  "status": "DRAFT",
+  "templateId": "cmpzc6o0v001nta0osdzg1vzm"
+}
+
+--- SAVE TRACE 2026-06-05T00:00:32.869Z ---
+ID: cmq05rcgw000ztaoouubuhi2i
+BODY: {
+  "name": "batch023",
+  "subject": "welcome",
+  "currentStep": 1,
+  "tags": [],
+  "previewText": "Exclusive discounts Available now",
+  "senderName": "marketing Team",
+  "senderEmail": "saheelyadav67@gmail.com",
+  "replyToEmail": "shivamsinghr098@gmail.com"
+}
+
+--- SAVE TRACE 2026-06-05T00:00:34.450Z ---
+ID: cmq05rcgw000ztaoouubuhi2i
+BODY: {
+  "currentStep": 2,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-05T00:00:40.253Z ---
+ID: cmq05rcgw000ztaoouubuhi2i
+BODY: {
+  "templateId": "cmpzc6o7z001pta0o4w9iimxe",
+  "currentStep": 3
+}
+
+--- SAVE TRACE 2026-06-05T00:00:40.406Z ---
+ID: cmq05rcgw000ztaoouubuhi2i
+BODY: {
+  "currentStep": 3,
+  "status": "DRAFT"
+}
+
+--- SAVE TRACE 2026-06-05T00:00:41.542Z ---
+ID: cmq05rcgw000ztaoouubuhi2i
+BODY: {
+  "currentStep": 4,
+  "status": "DRAFT",
+  "templateId": "cmpzc6o7z001pta0o4w9iimxe"
+}

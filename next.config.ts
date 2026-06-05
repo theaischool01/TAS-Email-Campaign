@@ -12,12 +12,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  experimental: {
-    // @ts-ignore
-    turbopack: {
-      root: "./",
-    },
-  },
   async headers() {
     return [
       {

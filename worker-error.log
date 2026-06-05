@@ -170,3 +170,24 @@
 --- Worker Started at 2026-06-04T15:43:47.812Z ---
 
 --- Worker Started at 2026-06-04T15:46:40.128Z ---
+
+--- Worker Started at 2026-06-04T23:19:49.053Z ---
+
+--- Worker Started at 2026-06-04T23:34:10.681Z ---
+[2026-06-04T23:34:10.849Z] CRASH: Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.<anonymous> (C:\Users\Saheel\Desktop\Email_Campaign_Platform\email-campaign-platform\worker.js:69:4)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+
+--- Worker Started at 2026-06-04T23:38:46.520Z ---
+
+--- Worker Started at 2026-06-04T23:44:31.975Z ---
+
+--- Worker Started at 2026-06-04T23:47:21.913Z ---

@@ -86,7 +86,7 @@ const transporter = nodemailer.createTransport({
   SES: { sesClient, SendEmailCommand }
 });
 
-const QUEUE_NAME = "EmailDispatchQueue_DevLocal";
+const QUEUE_NAME = process.env.SQS_QUEUE_NAME || "EmailDispatchQueue";
 let queueUrl = null;
 
 const SES_RATE_PER_SECOND = parseInt(process.env.SES_RATE_PER_SECOND) || 10
