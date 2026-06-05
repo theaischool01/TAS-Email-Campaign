@@ -15,10 +15,7 @@ export function createOwnerFilter(session: Session | null) {
     throw new Error("No session found")
   }
 
-  const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-  
-  // SUPER_ADMIN can see all data, others only their own
-  return isSuperAdmin ? {} : { createdBy: session.user.id }
+  return { createdBy: session.user.id }
 }
 
 /**
@@ -29,10 +26,7 @@ export function canAccessResource(session: Session | null, resourceOwnerId: stri
     return false
   }
 
-  const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-  const isOwner = resourceOwnerId === session.user.id
-  
-  return isSuperAdmin || isOwner
+  return resourceOwnerId === session.user.id
 }
 
 /**
@@ -43,17 +37,9 @@ export function createContactListMemberFilter(session: Session | null) {
     throw new Error("No session found")
   }
 
-  const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-  
-  if (isSuperAdmin) {
-    // SUPER_ADMIN can see all contact list members
-    return {}
-  } else {
-    // Others can only see members of their own contact lists
-    return {
-      contactList: {
-        ownerId: session.user.id
-      }
+  return {
+    contactList: {
+      ownerId: session.user.id
     }
   }
 }
@@ -66,16 +52,10 @@ export function createContactFilter(session: Session | null) {
     throw new Error("No session found")
   }
 
-  const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-  
-  if (isSuperAdmin) {
-    // SUPER_ADMIN can see all contacts
-    return {}
-  } else {
-    // Others can only see contacts in their own contact lists
-    return {
-      contactLists: {
-        some: {
+  return {
+    lists: {
+      some: {
+        contactList: {
           ownerId: session.user.id
         }
       }

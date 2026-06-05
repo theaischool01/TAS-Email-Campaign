@@ -46,9 +46,6 @@ export default function ContactDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
-
   useEffect(() => {
     if (params.id) {
       fetchContact()
@@ -97,21 +94,6 @@ export default function ContactDetailPage() {
 
   if (!session) {
     return null
-  }
-
-  if (!isAdmin && !isManager) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <Mail className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don't have permission to view contact details.</p>
-            <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   return (
@@ -243,30 +225,28 @@ export default function ContactDetailPage() {
             </Card>
 
             {/* Actions Card */}
-            {(isAdmin || isManager) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Actions</CardTitle>
-                  <CardDescription>Manage this contact</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex space-x-3">
-                    <Button variant="outline" className="flex-1">
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit Contact
-                    </Button>
-                    <Button 
-                      variant="destructive" 
-                      className="flex-1"
-                      onClick={handleDeleteContact}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Contact
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Actions</CardTitle>
+                <CardDescription>Manage this contact</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex space-x-3">
+                  <Button variant="outline" className="flex-1">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Contact
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={handleDeleteContact}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Contact
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         ) : (
           <div className="text-center py-12">

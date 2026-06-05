@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma as prismaClient } from "@/app/lib/prisma"
+import logger from "@/lib/logger"
 const prisma = prismaClient as any
 
 export async function GET(
@@ -58,7 +59,7 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error("Click Tracking Error:", error)
+    logger.error({ error }, "Click Tracking Error:")
   }
 
     // Redirect to the original URL

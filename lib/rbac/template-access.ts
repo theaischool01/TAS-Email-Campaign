@@ -22,41 +22,13 @@ export class TemplateAccessControl {
       throw new Error("No session found")
     }
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
-    const isViewer = session.user.role === "VIEWER"
-    console.log("🔍 Template Access Debug:", {
-      role: session.user.role,
-      userId: session.user.id,
-      isSuperAdmin,
-      isManager,
-      isViewer
-    })
-    // SUPER_ADMIN: sees all templates (unfiltered access)
-    if (isSuperAdmin) {
-      console.log("📊 Admin visibility filter: ALL templates")
-      return {} 
-    }
-    // CAMPAIGN_MANAGER: sees own templates + public templates
-    if (isManager) {
-      const filter = {
-        OR: [
-          { createdBy: session.user.id }, // Own templates
-          { isPublic: true } // Public starter templates
-        ]
-      }
-      console.log("📊 Manager visibility filter:", filter)
-      return filter
-    }
-    // VIEWER: sees public templates only (preview-only access)
-    if (isViewer) {
-      const filter = { isPublic: true }
-      console.log("📊 Viewer visibility filter:", filter)
-      return filter
-    }
-    // Default: no access
-    console.log("📊 Default visibility filter: NO ACCESS")
-    return { id: "__no_access_impossible__" } // Impossible filter
+    // Visibility filter: show templates where createdBy === session.user.id OR isSystem === true
+    return {
+      OR: [
+        { createdBy: session.user.id },
+        { isSystem: true }
+      ]
+    } as any
   }
 
   /**
@@ -65,23 +37,8 @@ export class TemplateAccessControl {
   static canEditTemplate(session: Session | null, template: any) {
     if (!session?.user) return false
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
-
-    // SUPER_ADMIN can edit any template
-    if (isSuperAdmin) {
-      console.log("✅ Admin can edit template:", template.id)
-      return true
-    }
-
-    // CAMPAIGN_MANAGER can edit own templates only
-    if (isManager && template.createdBy === session.user.id) {
-      console.log("✅ Manager can edit own template:", template.id)
-      return true
-    }
-
-    console.log("❌ User cannot edit template:", template.id, "role:", session.user.role)
-    return false
+    // Edit only allowed on own templates where isSystem === false
+    return template.createdBy === session.user.id && template.isSystem === false
   }
 
   /**
@@ -90,23 +47,8 @@ export class TemplateAccessControl {
   static canDeleteTemplate(session: Session | null, template: any) {
     if (!session?.user) return false
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
-
-    // SUPER_ADMIN can delete any template
-    if (isSuperAdmin) {
-      console.log("✅ Admin can delete template:", template.id)
-      return true
-    }
-
-    // CAMPAIGN_MANAGER can delete own templates only
-    if (isManager && template.createdBy === session.user.id) {
-      console.log("✅ Manager can delete own template:", template.id)
-      return true
-    }
-
-    console.log("❌ User cannot delete template:", template.id, "role:", session.user.role)
-    return false
+    // Delete only allowed on own templates where isSystem === false
+    return template.createdBy === session.user.id && template.isSystem === false
   }
 
   /**
@@ -115,30 +57,8 @@ export class TemplateAccessControl {
   static canDuplicateTemplate(session: Session | null, template: any) {
     if (!session?.user) return false
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
-    const isViewer = session.user.role === "VIEWER"
-
-    // SUPER_ADMIN can duplicate any template
-    if (isSuperAdmin) {
-      console.log("✅ Admin can duplicate template:", template.id)
-      return true
-    }
-
-    // CAMPAIGN_MANAGER can duplicate public templates and own templates
-    if (isManager && (template.isPublic || template.createdBy === session.user.id)) {
-      console.log("✅ Manager can duplicate template:", template.id, "public:", template.isPublic)
-      return true
-    }
-
-    // VIEWER cannot duplicate (preview-only)
-    if (isViewer) {
-      console.log("❌ Viewer cannot duplicate template:", template.id)
-      return false
-    }
-
-    console.log("❌ User cannot duplicate template:", template.id, "role:", session.user.role)
-    return false
+    // Can duplicate own templates or system templates
+    return template.createdBy === session.user.id || template.isSystem === true
   }
 
   /**
@@ -147,30 +67,8 @@ export class TemplateAccessControl {
   static canPreviewTemplate(session: Session | null, template: any) {
     if (!session?.user) return false
 
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    const isManager = session.user.role === "CAMPAIGN_MANAGER"
-    const isViewer = session.user.role === "VIEWER"
-
-    // SUPER_ADMIN can preview any template
-    if (isSuperAdmin) {
-      console.log("✅ Admin can preview template:", template.id)
-      return true
-    }
-
-    // CAMPAIGN_MANAGER can preview public templates and own templates
-    if (isManager && (template.isPublic || template.createdBy === session.user.id)) {
-      console.log("✅ Manager can preview template:", template.id)
-      return true
-    }
-
-    // VIEWER can preview public templates only
-    if (isViewer && template.isPublic) {
-      console.log("✅ Viewer can preview public template:", template.id)
-      return true
-    }
-
-    console.log("❌ User cannot preview template:", template.id, "role:", session.user.role)
-    return false
+    // Can preview own templates or system templates
+    return template.createdBy === session.user.id || template.isSystem === true
   }
 
   /**
@@ -187,7 +85,7 @@ export class TemplateAccessControl {
     }
 
     const count = await prisma.emailTemplate.count({
-      where: visibilityFilter
+      where: visibilityFilter as any
     })
 
     console.log("📊 Template count result:", count, "filter:", visibilityFilter)

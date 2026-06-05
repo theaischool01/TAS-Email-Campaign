@@ -32,6 +32,7 @@ export interface WizardState {
   hasInteracted: boolean
   submitAttempted: boolean
   status: CampaignStatus
+  excludedContacts: Record<string, string[]>
 }
 
 // Wizard context hook
@@ -68,6 +69,7 @@ export function useCampaignWizard() {
     hasInteracted: false,
     submitAttempted: false,
     status: CampaignStatus.DRAFT,
+    excludedContacts: {}
   })
 
   const [loading, setLoading] = useState(true)
@@ -628,6 +630,16 @@ export function useCampaignWizard() {
     }))
   }, [])
 
+  // Update excluded contacts
+  const updateExcludedContacts = useCallback((excluded: Record<string, string[]>) => {
+    setState(prev => ({
+      ...prev,
+      excludedContacts: excluded,
+      isDirty: true,
+      hasInteracted: true
+    }))
+  }, [])
+
   // Refetch templates
   const refreshTemplates = useCallback(async () => {
     try {
@@ -816,6 +828,10 @@ export function useCampaignWizard() {
       console.log("🚀 LAUNCH: Sending launch request for campaign:", state.campaignId)
       const response = await fetch(`/api/campaigns/${state.campaignId}/launch`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          excludedContactIds: Object.values(state.excludedContacts).flat()
+        })
       })
       
       const payload = await response.json()
@@ -892,11 +908,13 @@ export function useCampaignWizard() {
     // Actions
     updateCampaignDetails,
     updateRecipients,
+    updateExcludedContacts,
     updateTemplate,
     goToStep,
     saveRecipients,
     updateStatus,
     handleFinish,
+    refreshTemplates,
     
     // Computed
     validateCurrentStepErrors,

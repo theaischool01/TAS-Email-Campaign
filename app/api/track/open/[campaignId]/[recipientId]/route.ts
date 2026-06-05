@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { isBotUserAgent } from "@/lib/utils/bot-detection"
+import logger from "@/lib/logger"
 const prisma = prismaClient as any
 
 export async function GET(
@@ -12,7 +13,7 @@ export async function GET(
   const ip = request.headers.get('x-forwarded-for') || 'unknown'
   
   const isBot = isBotUserAgent(userAgent, ip)
-  console.log(`[OPEN-TRACK] Hit! Campaign: ${campaignId}, isBot: ${isBot}`);
+  logger.info(`[OPEN-TRACK] Hit! Campaign: ${campaignId}, Recipient: ${recipientId}, UA: ${userAgent?.substring(0, 80)}, isBot: ${isBot}`);
   
   try {
     // Use a transaction to prevent race conditions
@@ -54,10 +55,15 @@ export async function GET(
           where: { id: campaignId },
           data: { totalOpened: { increment: 1 } }
         })
+        logger.info(`[OPEN-TRACK] ✅ COUNTED open for campaign ${campaignId}, recipient ${recipientId}`)
+      } else if (isBot) {
+        logger.info(`[OPEN-TRACK] 🤖 Bot open ignored for counter (still logged). Campaign: ${campaignId}`)
+      } else {
+        logger.info(`[OPEN-TRACK] ♻️ Duplicate human open (already counted). Campaign: ${campaignId}`)
       }
     })
   } catch (error) {
-    console.error("Open Tracking Error:", error)
+    logger.error({ error }, "Open Tracking Error:")
   }
 
     // Return a 1x1 transparent GIF

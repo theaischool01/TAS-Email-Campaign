@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/next-auth"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
 import { sendBulkEmails, EmailRecipient } from "@/lib/services/email.service"
+import logger from "@/lib/logger"
 
 const prisma = prismaClient as any
 
@@ -14,12 +15,15 @@ export async function POST(
 ) {
   const { id: campaignId } = await params
   try {
-    console.log("🚀 POST /api/campaigns/[id]/launch - Starting launch", { campaignId })
+    logger.info({ campaignId }, "LAUNCH: Starting")
 
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const body = await request.json().catch(() => ({}))
+    const excludedContactIds: string[] = body.excludedContactIds || []
 
     // Fetch campaign with full relations
     let existingCampaign = await prisma.campaign.findUnique({
@@ -63,7 +67,7 @@ export async function POST(
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    // RBAC: only owner or SUPER_ADMIN can launch
+    // RBAC: only owner can launch
     if (!CampaignAccessControl.canLaunchCampaign(session, existingCampaign)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
@@ -78,7 +82,7 @@ export async function POST(
 
     // Validate minimum required fields
     if (!existingCampaign.name || !existingCampaign.subject) {
-      console.log("❌ LAUNCH: Missing name or subject", { name: existingCampaign.name, subject: existingCampaign.subject })
+      logger.warn({ campaignId }, "LAUNCH: Missing name or subject")
       return NextResponse.json(
         { error: "Campaign must have a name and subject before launching" },
         { status: 422 }
@@ -89,7 +93,7 @@ export async function POST(
       (!existingCampaign.recipientLists || existingCampaign.recipientLists.length === 0) &&
       (!existingCampaign.recipientSegments || existingCampaign.recipientSegments.length === 0)
     ) {
-      console.log("❌ LAUNCH: No recipients selected")
+      logger.warn({ campaignId }, "LAUNCH: No recipients selected")
       return NextResponse.json(
         { error: "Campaign must have at least one recipient list or segment before launching" },
         { status: 422 }
@@ -98,7 +102,7 @@ export async function POST(
 
     // Double-check template existence (Race condition protection)
     if (!existingCampaign.templateId || !existingCampaign.template?.html) {
-      console.log("🔄 LAUNCH: Template missing or HTML empty, refetching with delay to prevent race condition...")
+      logger.warn({ campaignId }, "LAUNCH: Template missing, refetching with delay")
       await new Promise(resolve => setTimeout(resolve, 800)) // Wait 800ms
       const refreshedCampaign = await prisma.campaign.findUnique({
         where: { id: campaignId },
@@ -110,67 +114,30 @@ export async function POST(
         }
       })
       if (refreshedCampaign) {
-        console.log("✅ LAUNCH: Campaign refreshed successfully")
+        logger.info({ campaignId }, "LAUNCH: Campaign refreshed")
         existingCampaign = refreshedCampaign
       }
     }
-
-    // TARGETED BACKEND INVESTIGATION LOGS
-    const template = existingCampaign.template as any
-    console.log("🔍 [INVESTIGATION] TEMPLATE OBJECT:", JSON.stringify(template, null, 2))
-    if (template) {
-      console.log("🔍 [INVESTIGATION] TEMPLATE KEYS:", Object.keys(template))
-      console.log("🔍 [INVESTIGATION] HTML FIELD:", template.html)
-      console.log("🔍 [INVESTIGATION] CONTENT FIELD:", template.content)
-      console.log("🔍 [INVESTIGATION] BODY FIELD:", template.body)
-      console.log("🔍 [INVESTIGATION] JSON FIELD:", template.json)
-      console.log("🔍 [INVESTIGATION] HTML LENGTH:", template.html?.length || 0)
-    }
-
-    // DEBUG: Log campaign state
-    console.log("🔍 LAUNCH DIAGNOSTIC:", {
-      campaignId,
-      status: existingCampaign.status,
-      templateId: existingCampaign.templateId,
-      hasTemplateRelation: !!existingCampaign.template,
-      hasTemplateHtml: !!existingCampaign.template?.html,
-      recipientCount: (existingCampaign as any).recipientLists?.length || 0
-    })
 
     // Validate template HTML exists
     let templateHtml = existingCampaign.template?.html
     
     // Self-healing: If HTML is missing from the relation, try to fetch the template record directly
     if (!templateHtml && existingCampaign.templateId) {
-      console.log("🔍 LAUNCH: Template HTML missing from relation, attempting self-healing...", { templateId: existingCampaign.templateId })
+      logger.warn({ campaignId, templateId: existingCampaign.templateId }, "LAUNCH: Template HTML missing, attempting self-heal")
       const directTemplate = await prisma.emailTemplate.findUnique({
         where: { id: existingCampaign.templateId },
         select: { id: true, html: true, name: true }
       })
-      
-      console.log("🔍 LAUNCH: Direct template fetch result:", {
-        found: !!directTemplate,
-        templateId: directTemplate?.id,
-        htmlLength: directTemplate?.html?.length || 0
-      })
 
       if (directTemplate?.html) {
         templateHtml = directTemplate.html
-        console.log("✅ LAUNCH: Successfully recovered template HTML via self-healing")
+        logger.info({ campaignId }, "LAUNCH: Template HTML recovered via self-heal")
       }
     }
 
-    if (templateHtml) {
-      console.log("📄 LAUNCH: Template HTML Preview (First 200 chars):", templateHtml.substring(0, 200).replace(/\n/g, ' '))
-      console.log("📄 LAUNCH: HTML total length:", templateHtml.length)
-    }
-
     if (!templateHtml) {
-      console.log("❌ LAUNCH: Critical Failure - Template HTML is empty in DB", { 
-        templateId: existingCampaign.templateId,
-        relationFound: !!existingCampaign.template,
-        templateName: (existingCampaign as any).template?.name || "Unknown"
-      })
+      logger.error({ campaignId, templateId: existingCampaign.templateId }, "LAUNCH: Template HTML empty in DB")
       
       // One last try: if we have a template name, try to find another template with same name that HAS html
       let fallbackHtml = null;
@@ -185,7 +152,7 @@ export async function POST(
         if (fallback?.html) {
           fallbackHtml = fallback.html;
           templateHtml = fallback.html;
-          console.log("🩹 LAUNCH: Successfully applied emergency name-based fallback HTML");
+          logger.warn({ campaignId }, "LAUNCH: Applied emergency template fallback")
         }
       }
 
@@ -207,20 +174,30 @@ export async function POST(
 
     // ─── Build recipient list ───────────────────────────────────────────────
 
-    // Collect all excluded contact IDs
+    // Collect all excluded contact IDs from lists
     const excludedContactListIds: string[] = (existingCampaign.excludedLists || []).map(
       (el: any) => el.contactListId
     )
 
     // Collect excluded contacts from excluded lists
-    let excludedContactIds = new Set<string>()
+    let excludedListContactIds = new Set<string>()
     if (excludedContactListIds.length > 0) {
       const excludedMembers = await prisma.contactListMember.findMany({
         where: { contactListId: { in: excludedContactListIds } },
         select: { contactId: true },
       })
-      excludedContactIds = new Set(excludedMembers.map((m: any) => m.contactId))
+      excludedListContactIds = new Set(excludedMembers.map((m: any) => m.contactId))
     }
+
+    const allContacts = (existingCampaign.recipientLists || []).flatMap(
+      (rl: any) => (rl.contactList?.members || []).map((m: any) => m.contact).filter(Boolean)
+    )
+
+    const filteredContacts = allContacts.filter(
+      (contact: any) => !excludedContactIds.includes(contact.id)
+    )
+
+    logger.info({ campaignId, excludedCount: excludedContactIds.length }, "LAUNCH: Excluded contacts filtered")
 
     // Build unique recipients map (email → recipient data)
     const recipientsMap = new Map<string, EmailRecipient>()
@@ -231,35 +208,30 @@ export async function POST(
     })
     const suppressedSet = new Set(suppressedEmails.map((s: any) => s.email))
 
-    for (const rl of existingCampaign.recipientLists || []) {
-      for (const member of rl.contactList?.members || []) {
-        const contact = member.contact
-        if (!contact) continue
-        
-        // Skip excluded, unsubscribed, bounced, complained, OR suppressed contacts
-        if (excludedContactIds.has(contact.id)) continue
-        if (contact.status !== "ACTIVE") continue
-        if (suppressedSet.has(contact.email)) continue
-        
-        // Deduplicate by email
-        if (!recipientsMap.has(contact.email)) {
-          recipientsMap.set(contact.email, {
-            email: contact.email,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            contactId: contact.id
-          })
-        }
+    for (const contact of filteredContacts) {
+      // Skip excluded, unsubscribed, bounced, complained, OR suppressed contacts
+      if (excludedListContactIds.has(contact.id)) continue
+      if (contact.status !== "ACTIVE") continue
+      if (suppressedSet.has(contact.email)) continue
+      
+      // Deduplicate by email
+      if (!recipientsMap.has(contact.email)) {
+        recipientsMap.set(contact.email, {
+          email: contact.email,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          contactId: contact.id
+        })
       }
     }
 
     const recipients = Array.from(recipientsMap.values())
     const recipientCount = recipients.length
 
-    console.log(`📊 LAUNCH: Found ${recipientCount} eligible recipients for campaign: ${campaignId}`)
+    logger.info({ campaignId, recipientCount }, "LAUNCH: Eligible recipients found")
 
     if (recipientCount === 0) {
-      console.log("❌ LAUNCH: No active recipients found")
+      logger.warn({ campaignId }, "LAUNCH: No active recipients found")
       return NextResponse.json(
         { error: "No active recipients found in the selected lists (all contacts may be unsubscribed or excluded)" },
         { status: 422 }
@@ -267,7 +239,6 @@ export async function POST(
     }
 
     // ─── Check for scheduling ─────────────────────────────────────────────
-    const body = await request.json().catch(() => ({}))
     const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
     const isScheduled = scheduledAt && scheduledAt > new Date()
 
@@ -324,7 +295,7 @@ export async function POST(
     })
 
     // ─── Enqueue emails via AWS SQS ────────────────────────────────────────
-    console.log(`✉️ LAUNCH: Enqueueing ${recipientCount} recipients for background delivery...`)
+    logger.info({ campaignId, recipientCount }, "LAUNCH: Enqueueing recipients")
 
     try {
       const messages = recipients.map(r => ({
@@ -339,7 +310,7 @@ export async function POST(
 
       const { QueueService } = await import("@/lib/services/queue.service")
       await QueueService.enqueueBatch(messages)
-      console.log(`✅ LAUNCH: All recipients enqueued successfully`)
+      logger.info({ campaignId }, "LAUNCH: All recipients enqueued")
 
       // Separate activity logging so it doesn't break the launch if it fails
       try {
@@ -356,7 +327,7 @@ export async function POST(
           },
         })
       } catch (logError) {
-        console.error("⚠️ LAUNCH: Activity logging failed (non-critical):", logError)
+        logger.error({ error: logError }, "LAUNCH: Activity logging failed (non-critical)")
       }
 
       return NextResponse.json({
@@ -368,7 +339,7 @@ export async function POST(
       })
 
     } catch (enqueueError: any) {
-      console.error("❌ LAUNCH: Enqueueing failed:", enqueueError)
+      logger.error({ error: enqueueError }, "LAUNCH: Enqueueing failed")
       // Only revert if we haven't successfully started the process
       await prisma.campaign.update({
         where: { id: campaignId },
@@ -381,7 +352,7 @@ export async function POST(
     }
 
   } catch (error) {
-    console.error("❌ POST /api/campaigns/[id]/launch - CRITICAL ERROR:", error)
+    logger.error({ error }, "LAUNCH: POST /api/campaigns/[id]/launch - CRITICAL ERROR")
     return NextResponse.json(
       { error: "Failed to launch campaign", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

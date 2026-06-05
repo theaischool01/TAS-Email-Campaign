@@ -15,11 +15,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Parallel execution for better performance
-    const [summary, growthTrend, topCampaigns, recentActivity] = await Promise.all([
+    const [summary, growthTrend, topCampaigns, recentActivity, recentCampaigns] = await Promise.all([
       DashboardService.getStatsSummary(session, prisma),
       DashboardService.getContactGrowthTrend(session, prisma),
       DashboardService.getTopCampaigns(session, prisma),
-      DashboardService.getRecentActivity(session, prisma)
+      DashboardService.getRecentActivity(session, prisma),
+      prisma.campaign.findMany({
+        where: { 
+          createdBy: session.user.id,
+          status: { in: ['SENT', 'SENDING', 'SCHEDULED'] }
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          sentAt: true,
+          totalSent: true,
+          totalOpened: true,
+          totalClicked: true,
+          recipientCount: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      })
     ])
 
     return NextResponse.json({
@@ -28,7 +46,8 @@ export async function GET(request: NextRequest) {
         summary,
         growthTrend,
         topCampaigns,
-        recentActivity
+        recentActivity,
+        recentCampaigns
       }
     })
   } catch (error) {

@@ -4,7 +4,7 @@ const prisma = new PrismaClient()
 
 async function seedTemplates() {
   const adminUser = await prisma.user.findFirst({
-    where: { role: 'SUPER_ADMIN' }
+    where: { role: 'ADMIN' }
   })
 
   if (!adminUser) {

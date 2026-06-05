@@ -32,24 +32,19 @@ export async function GET(
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
 
-    // Check if user can access this contact (SUPER_ADMIN can access all, others only if in their lists)
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    if (!isSuperAdmin) {
-      // For non-admin users, check if contact is in their contact lists
-      const contactListIds = contact.lists?.map((list: any) => list.contactList?.id) || []
-      const userLists = await prisma.contactList.findMany({
-        where: {
-          id: { in: contactListIds },
-          ownerId: session.user.id
-        },
-        select: { id: true }
-      })
+    // Check if user can access this contact (only if in their lists)
+    const contactListIds = contact.lists?.map((list: any) => list.contactList?.id) || []
+    const userLists = await prisma.contactList.findMany({
+      where: {
+        id: { in: contactListIds },
+        ownerId: session.user.id
+      },
+      select: { id: true }
+    })
 
-      const hasAccess = userLists.length > 0
-      if (!hasAccess) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 })
-      }
+    const hasAccess = userLists.length > 0
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     return NextResponse.json(contact)
@@ -92,18 +87,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
 
-    // Check if user can access this contact (SUPER_ADMIN can access all, others only if in their lists)
-    const isSuperAdmin = session.user.role === "SUPER_ADMIN"
-    
-    if (!isSuperAdmin) {
-      // For non-admin users, check if contact is in their contact lists
-      const hasAccess = contact.lists?.some((list: any) => 
-        list.contactList?.ownerId === session.user.id
-      )
+    // Check if user can access this contact (only if in their lists)
+    const hasAccess = contact.lists?.some((list: any) => 
+      list.contactList?.ownerId === session.user.id
+    )
 
-      if (!hasAccess) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 })
-      }
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
     // Delete contact (cascade will handle list memberships)

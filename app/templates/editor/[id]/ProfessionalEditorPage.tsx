@@ -55,9 +55,7 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
   const [activeBlockCategory, setActiveBlockCategory] = useState("basic")
   const [selectedMergeTag, setSelectedMergeTag] = useState("")
 
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
-  const canEdit = isAdmin || (isManager && template?.createdBy === session?.user?.id)
+  const canEdit = template?.createdBy === session?.user?.id && !(template as any)?.isSystem
 
   const mergeTags = [
     { tag: "first_name", label: "First Name", description: "Contact's first name" },

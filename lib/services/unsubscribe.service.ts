@@ -20,10 +20,66 @@ export class UnsubscribeService {
   }
 
   /**
-   * Decodes a token back into its data
+   * Decodes a token back into its data, verifying signature and performing database-backed legacy checks
    */
-  static decodeToken(token: string): UnsubscribeTokenData | null {
-    return UnsubscribeTokenService.decodeToken(token)
+  static async decodeToken(token: string): Promise<UnsubscribeTokenData | null> {
+    const data = UnsubscribeTokenService.decodeToken(token)
+    if (!data) return null
+
+    // Backward compatibility: If the token does not contain a "." (unsigned legacy token)
+    // The token service sets _isLegacy=true on legacy tokens for explicit signaling
+    if (!token.includes('.') || data._isLegacy) {
+      console.warn(`[LEGACY TOKEN WARNING] Unsigned legacy token decoded: ${token}`)
+      const { cid, cam, em } = data
+
+      try {
+        if (cid && cid !== 'unknown') {
+          // Case 1: cid is present and valid
+          const contact = await prisma.contact.findUnique({
+            where: { id: cid }
+          })
+          if (!contact) {
+            console.warn(`[LEGACY TOKEN REJECTED] Contact ID ${cid} not found for legacy token`)
+            return null
+          }
+          if (contact.email !== em) {
+            console.warn(`[LEGACY TOKEN REJECTED] Email mismatch for contact ${cid}: token has ${em}, DB has ${contact.email}`)
+            return null
+          }
+        } else if (cam && em) {
+          // Case 2: cid is missing/unknown, but cam and em exist. Check CampaignActivityLog to prevent forgery
+          const contact = await prisma.contact.findFirst({
+            where: { email: em }
+          })
+          if (!contact) {
+            console.warn(`[LEGACY TOKEN REJECTED] Contact with email ${em} not found for legacy token`)
+            return null
+          }
+
+          // Check if an EMAIL_SENT activity exists for this campaign and contact
+          const sentLog = await prisma.campaignActivityLog.findFirst({
+            where: {
+              campaignId: cam,
+              contactId: contact.id,
+              action: 'EMAIL_SENT'
+            }
+          })
+          if (!sentLog) {
+            console.warn(`[LEGACY TOKEN REJECTED] Forgery attempt or no sent email found for campaign ${cam} and email ${em}`)
+            return null
+          }
+        } else {
+          // Lacks sufficient identifiers to validate, reject to prevent email-only forgery
+          console.warn(`[LEGACY TOKEN REJECTED] Token lacks sufficient context: cid=${cid}, cam=${cam}, em=${em}`)
+          return null
+        }
+      } catch (error) {
+        console.error(`[LEGACY TOKEN ERROR] Database error during legacy verification:`, error)
+        return null
+      }
+    }
+
+    return data
   }
 
   /**
@@ -34,7 +90,7 @@ export class UnsubscribeService {
     source: 'footer_link' | 'gmail_one_click' | 'preferences_center',
     metadata: { ip?: string, userAgent?: string } = {}
   ) {
-    const data = this.decodeToken(token)
+    const data = await this.decodeToken(token)
     if (!data) return { success: false, error: "Invalid token" }
 
     const { cid, cam, em } = data
@@ -117,7 +173,7 @@ export class UnsubscribeService {
    * Gets all lists the contact belongs to
    */
   static async getContactLists(token: string) {
-    const data = this.decodeToken(token)
+    const data = await this.decodeToken(token)
     if (!data) return null
 
     const { cid, em } = data
@@ -158,7 +214,7 @@ export class UnsubscribeService {
    * (NO LOGGING HERE - handled by page for bulk updates)
    */
   static async toggleListSubscription(token: string, listId: string, subscribe: boolean) {
-    const data = this.decodeToken(token)
+    const data = await this.decodeToken(token)
     if (!data) return { success: false, error: "Invalid token" }
 
     const { cid, em } = data
@@ -207,7 +263,7 @@ export class UnsubscribeService {
    * Log a preference update event
    */
   static async logPreferenceUpdate(token: string, metadata: any = {}) {
-    const data = this.decodeToken(token)
+    const data = await this.decodeToken(token)
     if (!data) return
 
     const { cid, cam, em } = data
@@ -249,7 +305,7 @@ export class UnsubscribeService {
    * Performs the re-subscribe action
    */
   static async resubscribe(token: string) {
-    const data = this.decodeToken(token)
+    const data = await this.decodeToken(token)
     if (!data) return { success: false, error: "Invalid token" }
 
     const { cid, em, cam } = data

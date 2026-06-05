@@ -63,6 +63,8 @@ interface TemplateBuilderProps {
   templateId?: string
   onSaved?: (templateId: string) => void
   onCancel?: () => void
+  showSaveAndUse?: boolean
+  onSaveAndUse?: (templateId: string) => void
 }
 
 interface TemplateBlock {
@@ -73,7 +75,7 @@ interface TemplateBlock {
   children?: TemplateBlock[]
 }
 
-export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }: TemplateBuilderProps) {
+export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, showSaveAndUse, onSaveAndUse }: TemplateBuilderProps) {
   const { data: session } = useSession()
   const router = useRouter()
   const [template, setTemplate] = useState<EmailTemplate | null>(null)
@@ -83,6 +85,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
   const [showHTML, setShowHTML] = useState(false)
   const [unsavedChanges, setUnsavedChanges] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [saveType, setSaveType] = useState<"library" | "use" | null>(null)
   const [blocks, setBlocks] = useState<TemplateBlock[]>([])
   const [selectedBlock, setSelectedBlock] = useState<TemplateBlock | null>(null)
   const [templateName, setTemplateName] = useState("")
@@ -90,9 +93,10 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
   const [templateDescription, setTemplateDescription] = useState("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const isAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isManager = session?.user?.role === "CAMPAIGN_MANAGER"
-  const canEdit = isAdmin || (isManager && (mode === "create" || template?.createdBy === session?.user?.id))
+  // Debounce timer ref for HTML code editor sync
+  const htmlSyncTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const canEdit = mode === "create" || (template?.createdBy === session?.user?.id && !(template as any)?.isSystem)
 
   useEffect(() => {
     if (mode === "create") {
@@ -138,7 +142,27 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
         } else {
           console.warn("No JSON data found, using empty blocks")
         }
-        
+
+        // Fallback: if no valid blocks were restored from JSON,
+        // but the template has raw HTML (e.g. seeded templates),
+        // wrap it in a single html block so the canvas is not blank.
+        if (normalizedBlocks.length === 0 && data.html && data.html.trim() !== '') {
+          const htmlBlock: TemplateBlock = {
+            id: 'restored-html-' + Date.now(),
+            type: 'html',
+            content: { html: data.html },
+            styles: {}
+          }
+          normalizedBlocks = [htmlBlock]
+          console.log('Template loaded: using HTML fallback block')
+        }
+
+        console.log('Template loaded:', {
+          hasJson: !!data.json,
+          hasHtml: !!data.html,
+          blockCount: normalizedBlocks.length
+        })
+
         setBlocks(normalizedBlocks)
       } else {
         router.push("/templates")
@@ -196,17 +220,19 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
     }
   }
 
-  const handleSave = useCallback(async (isRetry = false) => {
+  const handleSave = useCallback(async (isRetry = false, targetType?: "library" | "use") => {
+    if (targetType) {
+      setSaveType(targetType)
+    }
     console.log("🔍 Save Debug:", {
       mode,
       canEdit,
-      isAdmin,
-      isManager,
       templateId,
       templateName,
       blocksLength: blocks.length,
       createdBy: template?.createdBy,
-      sessionUserId: session?.user?.id
+      sessionUserId: session?.user?.id,
+      targetType
     })
 
     if (!canEdit) {
@@ -252,10 +278,16 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
       if (response && response.ok) {
         setUnsavedChanges(false)
         setSaveStatus("saved")
-        setTimeout(() => setSaveStatus("idle"), 2000)
+        setTimeout(() => {
+          setSaveStatus("idle")
+          setSaveType(null)
+        }, 2000)
         
         const savedTemplate = await response.json()
-        if (onSaved) {
+        const resolvedType = targetType || saveType
+        if (resolvedType === "use" && onSaveAndUse) {
+          onSaveAndUse(savedTemplate.id)
+        } else if (onSaved) {
           onSaved(savedTemplate.id)
         } else if (mode === "create" || mode === "duplicate") {
           router.push(`/templates/editor/${savedTemplate.id}`)
@@ -265,12 +297,15 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
         const uniqueName = `${templateName} (${new Date().toLocaleTimeString()})`
         setTemplateName(uniqueName)
         setErrorMessage(`Name conflict! Auto-renamed to: ${uniqueName}. Retrying save...`)
-        handleSave(true)
+        handleSave(true, targetType)
       } else {
         const errorData = await response?.json().catch(() => ({}))
         setErrorMessage(errorData?.error || "Failed to save template")
         setSaveStatus("error")
-        setTimeout(() => setSaveStatus("idle"), 5000)
+        setTimeout(() => {
+          setSaveStatus("idle")
+          setSaveType(null)
+        }, 5000)
       }
     } catch (error: any) {
       console.error("Error saving template:", error)
@@ -699,7 +734,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
     )
   }
 
-  if (!canEdit && mode !== "create") {
+  if (!canEdit) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Card className="w-96">
@@ -848,18 +883,50 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
                 <Download className="h-4 w-4" />
               </Button>
               
-              <Button
-                onClick={() => handleSave()}
-                disabled={!canEdit || isSaving || (!Array.isArray(blocks) || blocks.length === 0)}
-                size="sm"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Save
-              </Button>
+              {showSaveAndUse ? (
+                <>
+                  <Button
+                    onClick={() => handleSave(false, "library")}
+                    disabled={!canEdit || isSaving || (!Array.isArray(blocks) || blocks.length === 0)}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    {isSaving && saveType === "library" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save to Library
+                  </Button>
+                  <Button
+                    onClick={() => handleSave(false, "use")}
+                    disabled={!canEdit || isSaving || (!Array.isArray(blocks) || blocks.length === 0)}
+                    size="sm"
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isSaving && saveType === "use" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    Save & Use
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  onClick={() => handleSave()}
+                  disabled={!canEdit || isSaving || (!Array.isArray(blocks) || blocks.length === 0)}
+                  size="sm"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -899,7 +966,20 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel }:
               <HtmlCodeEditor
                 html={generateHTML()}
                 onChange={(html) => {
-                  // Parse HTML back to blocks (simplified)
+                  // Debounce the block update so it doesn't re-render on every keystroke
+                  if (htmlSyncTimerRef.current) {
+                    clearTimeout(htmlSyncTimerRef.current)
+                  }
+                  htmlSyncTimerRef.current = setTimeout(() => {
+                    const newBlock: TemplateBlock = {
+                      id: 'html-' + Date.now(),
+                      type: 'html',
+                      content: { html },
+                      styles: {}
+                    }
+                    setBlocks([newBlock])
+                    htmlSyncTimerRef.current = null
+                  }, 300)
                   setUnsavedChanges(true)
                 }}
               />

@@ -4,10 +4,15 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function createAdminUser() {
-  const email = 'admin@example.com'
-  const password = 'admin123'
-  const name = 'Super Admin'
-  const role = 'SUPER_ADMIN'
+  const args = process.argv.slice(2)
+  const email = args[0] || 'saheelyadav67@gmail.com'
+  const password = args[1] || process.env.ADMIN_DEFAULT_PASSWORD
+  const name = args[2] || 'Admin'
+
+  if (!password) {
+    console.error('Error: Password required: provide as CLI arg or set ADMIN_DEFAULT_PASSWORD in .env')
+    process.exit(1)
+  }
 
   const hashedPassword = await bcrypt.hash(password, 12)
 
@@ -16,20 +21,22 @@ async function createAdminUser() {
     update: {
       password: hashedPassword,
       name,
-      role: 'SUPER_ADMIN'
+      role: 'ADMIN'
     },
     create: {
       email,
       password: hashedPassword,
       name,
-      role: 'SUPER_ADMIN'
+      role: 'ADMIN'
     }
   })
+
+
 
   console.log('✅ Admin user created/updated:', user.email)
   console.log('📧 Email:', email)
   console.log('🔑 Password:', password)
-  console.log('👤 Role:', role)
+  console.log('👤 Role: ADMIN')
 }
 
 createAdminUser()

@@ -51,7 +51,10 @@ export default function EditCampaignPage() {
 
       const response = await fetch(`/api/campaigns/${wizard.state.campaignId}/launch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          excludedContactIds: Object.values(wizard.state.excludedContacts || {}).flat()
+        })
       })
 
       console.log("📡 LAUNCH: Response status:", response.status, response.statusText)
@@ -186,6 +189,7 @@ export default function EditCampaignPage() {
                     selectedRecipients={wizard.state.selectedRecipients}
                     excludedRecipients={wizard.state.excludedRecipients}
                     onChange={wizard.updateRecipients}
+                    onExcludedContactsChange={wizard.updateExcludedContacts}
                     validationErrors={wizard.state.validationErrors}
                     onValidationChange={(isValid, errors) => {
                       // Validation is handled by the wizard hook
@@ -198,12 +202,15 @@ export default function EditCampaignPage() {
                     templates={wizard.templates}
                     onUpdate={wizard.updateTemplate}
                     validationErrors={wizard.state.validationErrors}
+                    goToStep={wizard.goToStep}
+                    refreshTemplates={wizard.refreshTemplates}
                   />
                 )}
                 {wizard.state.currentStep === 4 && (
                   <Step4Review
                     campaignDetails={wizard.state.campaignDetails}
                     selectedRecipients={wizard.state.selectedRecipients}
+                    excludedRecipients={wizard.state.excludedRecipients}
                     selectedTemplate={wizard.state.selectedTemplate}
                     contactLists={wizard.contactLists}
                     templates={wizard.templates}
@@ -211,6 +218,12 @@ export default function EditCampaignPage() {
                     status={wizard.state.status}
                     onFinish={handleFinish}
                     isLaunching={isLaunching}
+                    excludedContacts={wizard.state.excludedContacts}
+                    allContactLists={wizard.contactLists}
+                    onUpdateDetails={wizard.updateCampaignDetails}
+                    onUpdateRecipients={wizard.updateRecipients}
+                    onUpdateExcluded={wizard.updateExcludedContacts}
+                    onUpdateTemplate={wizard.updateTemplate}
                   />
                 )}
               </>

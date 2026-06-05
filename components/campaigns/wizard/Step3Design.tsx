@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Eye, Palette, Layout } from "lucide-react"
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import dynamic from "next/dynamic"
+import { toast } from "sonner"
 
 const TemplateBuilder = dynamic(
   () => import("@/components/templates/TemplateBuilder"),
@@ -21,16 +21,32 @@ interface Step3DesignProps {
   templates: any[]
   onUpdate: (templateId: string) => void
   validationErrors: Record<string, string>
+  goToStep?: (step: 1 | 2 | 3 | 4) => void
+  refreshTemplates?: () => Promise<void>
 }
 
 export function Step3Design({ 
   selectedTemplate, 
   templates, 
   onUpdate, 
-  validationErrors 
+  validationErrors,
+  goToStep,
+  refreshTemplates
 }: Step3DesignProps) {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [justSavedId, setJustSavedId] = useState<string | null>(null)
+
+  // Scroll to template card once list refreshes and template is available
+  useEffect(() => {
+    if (justSavedId) {
+      const element = document.getElementById(`template-card-${justSavedId}`)
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" })
+        setJustSavedId(null)
+      }
+    }
+  }, [justSavedId, templates])
 
   const categories = [
     { id: "all", name: "All Templates", icon: Layout },
@@ -42,6 +58,14 @@ export function Step3Design({
   const filteredTemplates = templates.filter(template => 
     selectedCategory === "all" || template.category === selectedCategory
   )
+
+  const handleConfirmSelection = () => {
+    if (selectedTemplate) {
+      goToStep?.(4)
+    } else {
+      toast.error("Please select a template first")
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -76,9 +100,10 @@ export function Step3Design({
         {filteredTemplates.map(template => (
           <Card 
             key={template.id} 
+            id={`template-card-${template.id}`}
             className={`cursor-pointer transition-all hover:shadow-md ${
               selectedTemplate === template.id 
-                ? "ring-2 ring-primary" 
+                ? "ring-2 ring-primary border-primary bg-primary/5" 
                 : ""
             }`}
             onClick={() => onUpdate(template.id)}
@@ -98,24 +123,42 @@ export function Step3Design({
             </CardHeader>
             <CardContent>
               <CardTitle className="text-lg mb-2">{template.name}</CardTitle>
-              <p className="text-sm text-muted-foreground mb-3">
+              <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
                 {template.description}
               </p>
               <div className="flex items-center justify-between">
                 <Badge variant="secondary">
                   {template.category}
                 </Badge>
-                <Button
-                  variant={selectedTemplate === template.id ? "default" : "outline"}
-                  size="sm"
-                >
-                  {selectedTemplate === template.id ? "Selected" : "Select"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {selectedTemplate === template.id && (
+                    <span className="text-primary font-bold text-sm">✓</span>
+                  )}
+                  <Button
+                    variant={selectedTemplate === template.id ? "default" : "outline"}
+                    size="sm"
+                  >
+                    {selectedTemplate === template.id ? "Selected" : "Select"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Use Template Action */}
+      {selectedTemplate && (
+        <div className="flex justify-end pt-4">
+          <Button 
+            size="lg" 
+            onClick={handleConfirmSelection}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+          >
+            Use This Template →
+          </Button>
+        </div>
+      )}
 
       {/* Validation Error */}
       {validationErrors.template && (
@@ -157,9 +200,38 @@ export function Step3Design({
             <div className="h-[800px] w-full border-t">
               <TemplateBuilder 
                 mode="create" 
-                onSaved={(id) => {
-                  onUpdate(id)
-                  setIsEditorOpen(false)
+                showSaveAndUse={true}
+                onSaved={async (id) => {
+                  toast.promise(
+                    (async () => {
+                      await refreshTemplates?.()
+                      onUpdate(id)
+                      setJustSavedId(id)
+                      setIsEditorOpen(false)
+                    })(),
+                    {
+                      loading: 'Saving to library...',
+                      success: 'Template saved to library',
+                      error: 'Failed to refresh library'
+                    }
+                  )
+                }}
+                onSaveAndUse={async (id) => {
+                  toast.promise(
+                    (async () => {
+                      await refreshTemplates?.()
+                      onUpdate(id)
+                      setIsEditorOpen(false)
+                      setTimeout(() => {
+                        goToStep?.(4)
+                      }, 200)
+                    })(),
+                    {
+                      loading: 'Saving and applying template...',
+                      success: 'Template saved and selected',
+                      error: 'Failed to apply template'
+                    }
+                  )
                 }}
                 onCancel={() => setIsEditorOpen(false)}
               />

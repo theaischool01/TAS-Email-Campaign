@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Search, Users, UserMinus, AlertCircle, CheckCircle2, Target, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,7 @@ interface Step2RecipientsProps {
   onChange: (selected: string[], excluded: string[], selectedSegments: string[]) => void
   validationErrors: Record<string, string>
   onValidationChange: (isValid: boolean, errors: Record<string, string>) => void
+  onExcludedContactsChange?: (excluded: Record<string, string[]>) => void
 }
 
 export function Step2Recipients({ 
@@ -41,11 +42,17 @@ export function Step2Recipients({
   excludedRecipients,
   onChange,
   validationErrors,
-  onValidationChange
+  onValidationChange,
+  onExcludedContactsChange
 }: Step2RecipientsProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'lists' | 'segments'>('lists')
   const [searchTerm, setSearchTerm] = useState("")
+
+  const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({})
+  const [listContacts, setListContacts] = useState<Record<string, any[]>>({})
+  const [loadingLists, setLoadingLists] = useState<Record<string, boolean>>({})
+  const [excludedContacts, setExcludedContacts] = useState<Record<string, string[]>>({})
 
   // Filter contact lists based on search
   const filteredLists = useMemo(() => {
@@ -97,6 +104,57 @@ export function Step2Recipients({
       onChange(selectedRecipients, newExcluded, selectedSegments)
     }
   }
+
+  const toggleExpandList = async (listId: string) => {
+    const isCurrentlyExpanded = !!expandedLists[listId]
+    setExpandedLists(prev => ({
+      ...prev,
+      [listId]: !isCurrentlyExpanded
+    }))
+
+    if (!isCurrentlyExpanded && !listContacts[listId] && !loadingLists[listId]) {
+      setLoadingLists(prev => ({ ...prev, [listId]: true }))
+      try {
+        const response = await fetch(`/api/contacts/lists/${listId}/contacts`)
+        if (response.ok) {
+          const data = await response.json()
+          setListContacts(prev => ({
+            ...prev,
+            [listId]: data
+          }))
+        }
+      } catch (error) {
+        console.error("Failed to fetch contacts for list", listId, error)
+      } finally {
+        setLoadingLists(prev => ({ ...prev, [listId]: false }))
+      }
+    }
+  }
+
+  const handleContactExcludeToggle = (listId: string, contactId: string, checked: boolean) => {
+    setExcludedContacts(prev => {
+      const currentExcluded = prev[listId] || []
+      let newExcluded: string[]
+      if (!checked) {
+        if (!currentExcluded.includes(contactId)) {
+          newExcluded = [...currentExcluded, contactId]
+        } else {
+          newExcluded = currentExcluded
+        }
+      } else {
+        newExcluded = currentExcluded.filter(id => id !== contactId)
+      }
+      
+      return {
+        ...prev,
+        [listId]: newExcluded
+      }
+    })
+  }
+
+  useEffect(() => {
+    onExcludedContactsChange?.(excludedContacts)
+  }, [excludedContacts])
 
   const isListSelected = (id: string) => selectedRecipients.includes(id)
   const isListExcluded = (id: string) => excludedRecipients.includes(id)
@@ -164,43 +222,100 @@ export function Step2Recipients({
                   isListSelected(list.id) && "border-blue-500 bg-blue-50/50",
                   (isListExcluded(list.id) || isInactive || isEmpty) && "opacity-60 bg-gray-50"
                 )}>
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <Checkbox
-                        checked={isListSelected(list.id)}
-                        onCheckedChange={(checked: boolean) => handleListToggle(list.id, checked)}
-                        disabled={isListExcluded(list.id) || isInactive || isEmpty}
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={cn("font-medium", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
-                          <Badge variant={isInactive ? "destructive" : "secondary"}>
-                            {list.activeCount || 0} / {list.memberCount || 0} active
-                          </Badge>
-                          {isListExcluded(list.id) && <Badge variant="destructive">Excluded</Badge>}
-                          {isInactive && (
-                            <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
-                              <AlertCircle className="h-3 w-3 mr-1" /> No active members
+                  <CardContent className="p-0">
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4 flex-1">
+                        <Checkbox
+                          checked={isListSelected(list.id)}
+                          onCheckedChange={(checked: boolean) => handleListToggle(list.id, checked)}
+                          disabled={isListExcluded(list.id) || isInactive || isEmpty}
+                        />
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={cn("font-medium", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
+                            <Badge variant={isInactive ? "destructive" : "secondary"}>
+                              {list.activeCount || 0} / {list.memberCount || 0} active
                             </Badge>
-                          )}
-                          {isEmpty && (
-                            <Badge variant="outline" className="text-gray-400 border-gray-200">
-                              Empty
-                            </Badge>
-                          )}
+                            {excludedContacts[list.id]?.length > 0 && (
+                              <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 font-semibold">
+                                ({excludedContacts[list.id].length} excluded)
+                              </Badge>
+                            )}
+                            {isListExcluded(list.id) && <Badge variant="destructive">Excluded</Badge>}
+                            {isInactive && (
+                              <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
+                                <AlertCircle className="h-3 w-3 mr-1" /> No active members
+                              </Badge>
+                            )}
+                            {isEmpty && (
+                              <Badge variant="outline" className="text-gray-400 border-gray-200">
+                                Empty
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500">{list.description}</p>
                         </div>
-                        <p className="text-sm text-gray-500">{list.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleExclusionToggle(list.id, !isListExcluded(list.id))}
+                          className={isListExcluded(list.id) ? "text-blue-600" : "text-orange-600"}
+                          disabled={isInactive || isEmpty}
+                        >
+                          {isListExcluded(list.id) ? "Include" : "Exclude"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleExpandList(list.id)}
+                          className="p-1 h-8 w-8 text-gray-500 hover:text-gray-900"
+                          disabled={isInactive || isEmpty}
+                          title="Expand/Collapse Contacts"
+                        >
+                          <span 
+                            className="text-xs transition-transform duration-200 block" 
+                            style={{ transform: expandedLists[list.id] ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                          >
+                            ▶
+                          </span>
+                        </Button>
                       </div>
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleExclusionToggle(list.id, !isListExcluded(list.id))}
-                      className={isListExcluded(list.id) ? "text-blue-600" : "text-orange-600"}
-                      disabled={isInactive || isEmpty}
-                    >
-                      {isListExcluded(list.id) ? "Include" : "Exclude"}
-                    </Button>
+                    {expandedLists[list.id] && (
+                      <div className="p-4 bg-gray-50/50 border-t space-y-3">
+                        {loadingLists[list.id] ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-500 justify-center py-4">
+                            <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+                            Loading contacts...
+                          </div>
+                        ) : (listContacts[list.id] || []).length === 0 ? (
+                          <div className="text-sm text-gray-500 text-center py-2">No contacts in this list.</div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2">
+                            {(listContacts[list.id] || []).map(contact => {
+                              const isContactExcluded = (excludedContacts[list.id] || []).includes(contact.id)
+                              return (
+                                <div key={contact.id} className="flex items-center gap-3 p-2 bg-white rounded border text-sm">
+                                  <Checkbox
+                                    checked={!isContactExcluded}
+                                    onCheckedChange={(checked: boolean) => 
+                                      handleContactExcludeToggle(list.id, contact.id, checked)
+                                    }
+                                  />
+                                  <span className="truncate">
+                                    {contact.firstName || ""} {contact.lastName || ""} 
+                                    {(contact.firstName || contact.lastName) ? " — " : ""}
+                                    <span className="text-gray-500">{contact.email}</span>
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )

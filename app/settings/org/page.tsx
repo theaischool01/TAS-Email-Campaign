@@ -28,10 +28,6 @@ export default function OrgSettingsPage() {
   })
 
   useEffect(() => {
-    if (session?.user?.role !== "SUPER_ADMIN" && session?.user?.role !== undefined) {
-      router.push("/dashboard")
-      return
-    }
     fetchSettings()
   }, [session])
 

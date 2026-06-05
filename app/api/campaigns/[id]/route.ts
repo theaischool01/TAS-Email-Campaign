@@ -393,10 +393,9 @@ export async function DELETE(
     }
 
     // Check if campaign can be deleted
-    const isSuperAdmin = session.user.role === 'SUPER_ADMIN'
     const isFinished = existingCampaign.totalSent >= existingCampaign.recipientCount
     
-    if (existingCampaign.status === 'SENDING' && !isFinished && !isSuperAdmin) {
+    if (existingCampaign.status === 'SENDING' && !isFinished) {
       console.log("❌ Campaign cannot be deleted while active sending")
       return NextResponse.json(
         { error: "Cannot delete campaign while it is actively being sent. Please pause or cancel it first, or wait for it to finish." },

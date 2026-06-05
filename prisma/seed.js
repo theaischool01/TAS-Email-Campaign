@@ -1,43 +1,11 @@
-require('dotenv').config()
-const { PrismaClient } = require('@prisma/client')
-const bcrypt = require('bcryptjs')
-
-const prisma = new PrismaClient()
-
 async function main() {
-  const email = 'admin@example.com'
-  const password = 'admin123'
-  const name = 'Super Admin'
-  const role = 'SUPER_ADMIN'
-
-  const hashedPassword = await bcrypt.hash(password, 12)
-
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {
-      password: hashedPassword,
-      name,
-      role: 'SUPER_ADMIN'
-    },
-    create: {
-      email,
-      password: hashedPassword,
-      name,
-      role: 'SUPER_ADMIN'
-    }
-  })
-
-  console.log('✅ Admin user created/updated:', user.email)
-  console.log('📧 Email:', email)
-  console.log('🔑 Password:', password)
-  console.log('👤 Role:', role)
+  console.log("Database seeded successfully.")
+  console.log("To create an admin user, run the following command:")
+  console.log("npx ts-node scripts/create-admin.ts <email> <password> <name>")
 }
 
 main()
   .catch((e) => {
     console.error(e)
     process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
   })
