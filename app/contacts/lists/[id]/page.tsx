@@ -56,7 +56,6 @@ export default function ContactListDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [showAddForm, setShowAddForm] = useState(false)
-  const [showImportForm, setShowImportForm] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -183,10 +182,12 @@ export default function ContactListDetailPage() {
                   className="pl-10 w-64"
                 />
               </div>
-              <Button onClick={() => setShowImportForm(true)} variant="outline">
-                <Upload className="h-4 w-4 mr-2" />
-                Import
-              </Button>
+              <Link href="/contacts/import">
+                <Button variant="outline">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
+                </Button>
+              </Link>
               <Button onClick={() => setShowAddForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Contact
@@ -327,35 +328,6 @@ export default function ContactListDetailPage() {
                   <Button type="submit">Add Contact</Button>
                 </div>
               </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Import Modal */}
-      {showImportForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <CardTitle>Import Contacts</CardTitle>
-              <CardDescription>
-                Import contacts from CSV file
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                  <p className="text-lg font-medium text-gray-900">CSV Import Coming Soon</p>
-                  <p className="text-sm text-gray-600">This feature will be available in the next update.</p>
-                </div>
-                
-                <div className="flex justify-end">
-                  <Button variant="outline" onClick={() => setShowImportForm(false)}>
-                    Close
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>

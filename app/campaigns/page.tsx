@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 
 export default function CampaignsPage() {
   const router = useRouter()
@@ -133,7 +134,7 @@ export default function CampaignsPage() {
   const isViewer = false
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <DashboardLayout>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
@@ -356,6 +357,6 @@ export default function CampaignsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </DashboardLayout>
   )
 }

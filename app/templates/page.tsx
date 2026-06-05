@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { 
@@ -243,7 +244,7 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <DashboardLayout>
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
@@ -416,6 +417,6 @@ export default function TemplatesPage() {
           })}
         </div>
       )}
-    </div>
+    </DashboardLayout>
   )
 }
