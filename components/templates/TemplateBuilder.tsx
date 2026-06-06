@@ -31,6 +31,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmailTemplate } from "@/types/template"
+import { Sidebar } from "@/components/layout/sidebar"
+
 
 // Dynamic imports for performance
 const BlockPalette = dynamic(
@@ -115,6 +117,10 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
       const response = await fetch(`/api/templates/${templateId}`)
       if (response.ok) {
         const data = await response.json()
+        if (data.id !== templateId) {
+          router.replace(`/templates/editor/${data.id}`)
+          return
+        }
         setTemplate(data)
         setTemplateName(data.name)
         setTemplateCategory(data.category || "")
@@ -666,6 +672,12 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
         block.id === blockId ? { ...block, ...updates } : block
       )
     })
+    setSelectedBlock(prevSelected => {
+      if (prevSelected && prevSelected.id === blockId) {
+        return { ...prevSelected, ...updates }
+      }
+      return prevSelected
+    })
     setUnsavedChanges(true)
   }, [])
 
@@ -751,7 +763,9 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <Sidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
       {/* Top Toolbar */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex justify-between items-center">
@@ -1002,6 +1016,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
         <div className="w-80 bg-white border-l border-gray-200">
           {selectedBlock ? (
             <StylePanel
+              key={selectedBlock.id}
               block={selectedBlock}
               onUpdateBlock={updateBlock}
             />
@@ -1022,6 +1037,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

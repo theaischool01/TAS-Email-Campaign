@@ -74,6 +74,23 @@ const TemplateCard = React.memo<{
           </Badge>
         </div>
         
+        {/* Type Badge overlay */}
+        <div className="absolute top-3 right-3 z-10">
+          {template.isSystem ? (
+            <Badge variant="outline" className="bg-white/95 text-slate-700 border-slate-300 hover:bg-white backdrop-blur shadow-sm font-bold text-[10px] uppercase">
+              Default Template
+            </Badge>
+          ) : template.systemTemplateId ? (
+            <Badge className="bg-blue-600/90 text-white hover:bg-blue-600 backdrop-blur shadow-sm border-none font-bold text-[10px] uppercase">
+              Customized
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-600/90 text-white hover:bg-emerald-600 backdrop-blur shadow-sm border-none font-bold text-[10px] uppercase">
+              My Template
+            </Badge>
+          )}
+        </div>
+        
         {/* Miniature Live Preview via Iframe - Adjusted for full height visibility */}
         <div className="absolute inset-0 pointer-events-none transform origin-top-left scale-[0.4] w-[250%] h-[250%] p-2">
           <iframe 
@@ -364,7 +381,22 @@ export default function TemplatesPage() {
                 <CardContent className="p-6">
                   <div className="flex justify-between items-center">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-2">{template.name}</h3>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold">{template.name}</h3>
+                        {template.isSystem ? (
+                          <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-300 font-bold text-[9px] uppercase">
+                            Default Template
+                          </Badge>
+                        ) : template.systemTemplateId ? (
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none font-bold text-[9px] uppercase">
+                            Customized
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none font-bold text-[9px] uppercase">
+                            My Template
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex gap-4 text-sm text-gray-600">
                         {template.category && (
                           <Badge variant="secondary">{template.category}</Badge>

@@ -47,9 +47,11 @@ function ImageBlock({ block, isSelected, onUpdateBlock, onSelectBlock }: ImageBl
     active: boolean
     handle: string
     startX: number
+    startY: number
     startWidth: number
+    startHeight: number
     aspectRatio: number
-  }>({ active: false, handle: '', startX: 0, startWidth: 0, aspectRatio: 1 })
+  }>({ active: false, handle: '', startX: 0, startY: 0, startWidth: 0, startHeight: 0, aspectRatio: 1 })
 
   // Compute display dimensions
   const imgWidth = block.content?.widthUnit === 'px'
@@ -79,55 +81,79 @@ function ImageBlock({ block, isSelected, onUpdateBlock, onSelectBlock }: ImageBl
       ? img.naturalWidth / img.naturalHeight
       : (resizeState.current.aspectRatio || 2)
 
-    // Current rendered px width
+    // Current rendered dimensions
     const currentPxWidth = img ? img.getBoundingClientRect().width : (block.content?.width ?? 300)
+    const currentPxHeight = img ? img.getBoundingClientRect().height : (block.content?.height || 150)
 
     resizeState.current = {
       active: true,
       handle,
       startX: e.clientX,
+      startY: e.clientY,
       startWidth: currentPxWidth,
+      startHeight: currentPxHeight,
       aspectRatio: ar,
     }
-  }, [block.content?.width])
+  }, [block.content?.width, block.content?.height])
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!resizeState.current.active) return
-      const { handle, startX, startWidth, aspectRatio } = resizeState.current
+      const { handle, startX, startY, startWidth, startHeight, aspectRatio } = resizeState.current
 
-      const deltaX = handle === 'tl' || handle === 'bl'
-        ? startX - e.clientX   // left handles: drag left = grow
-        : e.clientX - startX   // right handles: drag right = grow
-
-      const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
-      const newHeight = Math.round(newWidth / aspectRatio)
-
-      // Live-update the img element directly for smooth feedback (no React re-render per px)
-      if (imgRef.current) {
-        imgRef.current.style.width = newWidth + 'px'
-        imgRef.current.style.height = newHeight + 'px'
+      if (handle === 'l' || handle === 'r') {
+        const deltaX = handle === 'l' ? startX - e.clientX : e.clientX - startX
+        const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+        if (imgRef.current) {
+          imgRef.current.style.width = newWidth + 'px'
+        }
+      } else if (handle === 't' || handle === 'b') {
+        const deltaY = handle === 't' ? startY - e.clientY : e.clientY - startY
+        const newHeight = Math.max(30, startHeight + deltaY)
+        if (imgRef.current) {
+          imgRef.current.style.height = newHeight + 'px'
+        }
+      } else {
+        const deltaX = handle === 'tl' || handle === 'bl'
+          ? startX - e.clientX
+          : e.clientX - startX
+        const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+        const newHeight = Math.round(newWidth / aspectRatio)
+        if (imgRef.current) {
+          imgRef.current.style.width = newWidth + 'px'
+          imgRef.current.style.height = newHeight + 'px'
+        }
       }
     }
 
     const onMouseUp = (e: MouseEvent) => {
       if (!resizeState.current.active) return
-      const { handle, startX, startWidth, aspectRatio } = resizeState.current
+      const { handle, startX, startY, startWidth, startHeight, aspectRatio } = resizeState.current
       resizeState.current.active = false
 
-      const deltaX = handle === 'tl' || handle === 'bl'
-        ? startX - e.clientX
-        : e.clientX - startX
+      let finalWidth = startWidth
+      let finalHeight: number | 'auto' = startHeight
 
-      const newWidth = Math.min(600, Math.max(50, startWidth + deltaX))
-      const newHeight = Math.round(newWidth / aspectRatio)
+      if (handle === 'l' || handle === 'r') {
+        const deltaX = handle === 'l' ? startX - e.clientX : e.clientX - startX
+        finalWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+        finalHeight = block.content?.height || 'auto'
+      } else if (handle === 't' || handle === 'b') {
+        const deltaY = handle === 't' ? startY - e.clientY : e.clientY - startY
+        finalHeight = Math.max(30, startHeight + deltaY)
+        finalWidth = block.content?.width ?? 300
+      } else {
+        const deltaX = handle === 'tl' || handle === 'bl' ? startX - e.clientX : e.clientX - startX
+        finalWidth = Math.min(600, Math.max(50, startWidth + deltaX))
+        finalHeight = Math.round(finalWidth / aspectRatio)
+      }
 
       onUpdateBlock(block.id, {
         content: {
           ...block.content,
-          width: Math.round(newWidth),
+          width: Math.round(finalWidth),
           widthUnit: 'px',
-          height: newHeight,
+          height: finalHeight === 'auto' ? 'auto' : Math.round(finalHeight),
         }
       })
     }
@@ -231,9 +257,10 @@ function ImageBlock({ block, isSelected, onUpdateBlock, onSelectBlock }: ImageBl
           }}
         />
 
-        {/* 4 corner resize handles — only when selected */}
+        {/* 4 corner + 4 side resize handles — only when selected */}
         {isSelected && (
           <>
+            {/* Corners */}
             <div
               style={handleStyle({ top: '-5px', left: '-5px' }, HANDLE_CURSORS['tl'])}
               onMouseDown={(e) => startResize(e, 'tl')}
@@ -249,6 +276,23 @@ function ImageBlock({ block, isSelected, onUpdateBlock, onSelectBlock }: ImageBl
             <div
               style={handleStyle({ bottom: '-5px', right: '-5px' }, HANDLE_CURSORS['br'])}
               onMouseDown={(e) => startResize(e, 'br')}
+            />
+            {/* Sides */}
+            <div
+              style={handleStyle({ top: '-5px', left: 'calc(50% - 5px)' }, 'n-resize')}
+              onMouseDown={(e) => startResize(e, 't')}
+            />
+            <div
+              style={handleStyle({ bottom: '-5px', left: 'calc(50% - 5px)' }, 's-resize')}
+              onMouseDown={(e) => startResize(e, 'b')}
+            />
+            <div
+              style={handleStyle({ top: 'calc(50% - 5px)', left: '-5px' }, 'w-resize')}
+              onMouseDown={(e) => startResize(e, 'l')}
+            />
+            <div
+              style={handleStyle({ top: 'calc(50% - 5px)', right: '-5px' }, 'e-resize')}
+              onMouseDown={(e) => startResize(e, 'r')}
             />
           </>
         )}
@@ -534,8 +578,9 @@ export default function CanvasEditor({
       >
         {/* Block Controls */}
         <div
-          className={`absolute top-2 right-2 flex gap-1 ${isSelected ? 'opacity-100' : 'opacity-0'} hover:opacity-100 transition-all duration-200`}
+          className={`absolute top-2 right-2 flex gap-1 ${isSelected ? 'opacity-100' : 'opacity-0'} hover:opacity-100 transition-all duration-200 z-40`}
           onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Movement Controls */}
           <div className="flex flex-col gap-1 bg-white rounded-md shadow-sm border border-gray-200 p-1">
@@ -596,7 +641,7 @@ export default function CanvasEditor({
         {/* Drag Handle */}
         {isSelected && (
           <div
-            className="absolute top-2 left-2 cursor-move bg-white rounded-md shadow-sm border border-gray-200 p-1 hover:bg-gray-50 transition-colors"
+            className="absolute top-2 left-2 cursor-move bg-white rounded-md shadow-sm border border-gray-200 p-1 hover:bg-gray-50 transition-colors z-40"
             onMouseDown={(e) => {
               e.stopPropagation()
               setDraggedBlockId(block.id)

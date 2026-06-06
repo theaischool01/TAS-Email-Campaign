@@ -10,7 +10,7 @@ const TemplateBuilder = dynamic(
     ssr: false,
     loading: () => (
       <div className="h-screen flex items-center justify-center">
-        <div className="animate-pulse">Loading template builder...</div>
+        <div className="animate-pulse">Loading template editor...</div>
       </div>
     )
   }

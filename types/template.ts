@@ -6,10 +6,12 @@ export interface EmailTemplate {
   thumbnail?: string
   html: string
   json?: string
-  createdBy: string
+  createdBy: string | null
   isPublic: boolean
   createdAt: string
   updatedAt: string
+  isSystem?: boolean
+  systemTemplateId?: string | null
   user?: {
     id: string
     name: string

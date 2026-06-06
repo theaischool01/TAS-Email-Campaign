@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, forwardRef, useImperativeHandle, useState, useCallback } from "react"
 import grapesjs from "grapesjs"
-import "grapesjs-preset-newsletter"
+import newsletterPlugin from "grapesjs-preset-newsletter"
+import "grapesjs/dist/css/grapes.min.css"
+
 
 interface ProfessionalGrapesJSEditorProps {
   initialHtml?: string
@@ -10,6 +12,7 @@ interface ProfessionalGrapesJSEditorProps {
   onSave?: () => Promise<void>
   onChange?: () => void
   onBlockAdd?: (blockType: string) => void
+  onSelectionChange?: (selected: boolean) => void
 }
 
 export interface ProfessionalGrapesJSEditorRef {
@@ -25,7 +28,7 @@ export interface ProfessionalGrapesJSEditorRef {
 }
 
 const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, ProfessionalGrapesJSEditorProps>(
-  ({ initialHtml, initialJson, onSave, onChange, onBlockAdd }, ref) => {
+  ({ initialHtml, initialJson, onSave, onChange, onBlockAdd, onSelectionChange }, ref) => {
     const editorRef = useRef<any>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [isInitialized, setIsInitialized] = useState(false)
@@ -231,14 +234,14 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
 
     useEffect(() => {
       if (!containerRef.current || isInitialized) return
+      let active = true
 
       try {
         // Initialize GrapesJS with newsletter preset
         const editor = grapesjs.init({
           container: containerRef.current,
           fromElement: false,
-          components: initialJson || [],
-          plugins: ['gjs-preset-newsletter'],
+          plugins: [newsletterPlugin],
           pluginsOpts: {
             'gjs-preset-newsletter': {
               blocks: [],
@@ -263,13 +266,13 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
           },
           storageManager: false,
           canvas: {
-            styles: [
-              'body { margin: 0; padding: 0; font-family: Arial, sans-serif; }',
-              'table { border-collapse: collapse; width: 100%; }',
-              'img { max-width: 100%; height: auto; }',
-              'a { text-decoration: none; }',
-              'p { margin: 0 0 10px 0; }'
-            ]
+            styles: []
+          },
+          selectorManager: {
+            custom: true
+          },
+          styleManager: {
+            custom: true
           }
         })
 
@@ -280,10 +283,47 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
         // Add custom blocks
         createCustomBlocks(editor)
 
-        // Set initial content if provided
-        if (initialHtml) {
-          editor.setComponents(initialHtml)
-        }
+        // Inject canvas styles on frame load to avoid URL loading 400 errors
+        editor.on('canvas:frame:load', () => {
+          const doc = editor.Canvas.getDocument()
+          if (doc) {
+            const style = doc.createElement('style')
+            style.textContent = `
+              body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+              table { border-collapse: collapse; width: 100%; }
+              img { max-width: 100%; height: auto; }
+              a { text-decoration: none; }
+              p { margin: 0 0 10px 0; }
+            `
+            doc.head.appendChild(style)
+          }
+        })
+
+        // Flag to prevent auto-save during initial loading
+        let isLoadingContent = false
+
+        // Load content after init
+        isLoadingContent = true
+        setTimeout(() => {
+          if (!active) return
+          if (initialJson) {
+            try {
+              const parsed = typeof initialJson === 'string' 
+                ? JSON.parse(initialJson) 
+                : initialJson
+              if (parsed && parsed.pages) {
+                editor.loadProjectData(parsed)
+              } else if (initialHtml) {
+                editor.setComponents(initialHtml)
+              }
+            } catch {
+              if (initialHtml) editor.setComponents(initialHtml)
+            }
+          } else if (initialHtml) {
+            editor.setComponents(initialHtml)
+          }
+          isLoadingContent = false
+        }, 100)
 
         // Handle changes with debouncing
         let changeTimeout: NodeJS.Timeout
@@ -297,6 +337,7 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
         // Auto-save with longer debounce
         let saveTimeout: NodeJS.Timeout
         const debouncedSave = () => {
+          if (isLoadingContent) return  // Don't save during loading
           clearTimeout(saveTimeout)
           saveTimeout = setTimeout(() => {
             if (onSave) onSave()
@@ -316,11 +357,20 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
         editor.on('style:update', debouncedChange)
         editor.on('storage:start', debouncedChange)
 
+        const updateSelection = () => {
+          if (onSelectionChange) {
+            onSelectionChange(editor.getSelected() !== null)
+          }
+        }
+        editor.on('component:selected', updateSelection)
+        editor.on('component:deselected', updateSelection)
+
       } catch (error) {
         console.error('Error initializing GrapesJS:', error)
       }
 
       return () => {
+        active = false
         if (editorRef.current) {
           try {
             editorRef.current.destroy()
@@ -332,7 +382,7 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
           setIsInitialized(false)
         }
       }
-    }, [initialHtml, initialJson, onChange, onSave, onBlockAdd, createCustomBlocks])
+    }, [onChange, onSave, onBlockAdd, createCustomBlocks, onSelectionChange])
 
     // Expose methods via ref
     useImperativeHandle(ref, () => ({
@@ -369,11 +419,32 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
     }))
 
     return (
-      <div 
-        ref={containerRef} 
-        className="h-full w-full grapesjs-container"
-        style={{ minHeight: '500px' }}
-      />
+      <div className="h-full w-full relative">
+        <style>{`
+          .gjs-pn-panels,
+          .gjs-pn-views-container,
+          .gjs-pn-views,
+          .gjs-pn-commands,
+          .gjs-pn-options {
+            display: none !important;
+          }
+          .gjs-editor {
+            background: transparent !important;
+          }
+          .gjs-cv-canvas {
+            width: 100% !important;
+            height: 100% !important;
+            top: 0 !important;
+            left: 0 !important;
+            position: absolute !important;
+          }
+        `}</style>
+        <div 
+          ref={containerRef} 
+          className="h-full w-full grapesjs-container"
+          style={{ minHeight: '100%' }}
+        />
+      </div>
     )
   }
 )

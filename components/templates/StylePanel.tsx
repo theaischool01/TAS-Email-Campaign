@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { useUploadThing } from "@/lib/uploadthing"
 import { Settings, Type, Palette, Grid3x3, AlignLeft, AlignCenter, AlignRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,12 @@ export default function StylePanel({ block, onUpdateBlock }: StylePanelProps) {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  // Keep state synchronized with block prop updates
+  useEffect(() => {
+    setLocalContent(block.content)
+    setLocalStyles(block.styles)
+  }, [block.content, block.styles])
 
   const { startUpload } = useUploadThing("imageUploader", {
     onClientUploadComplete: (res: { url: string }[] | undefined) => {

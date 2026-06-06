@@ -142,6 +142,7 @@ model EmailTemplate {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   isSystem  Boolean    @default(false)
+  systemTemplateId String?
   campaigns Campaign[]
   user      User?      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 

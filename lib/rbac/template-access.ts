@@ -22,11 +22,11 @@ export class TemplateAccessControl {
       throw new Error("No session found")
     }
 
-    // Visibility filter: show templates where createdBy === session.user.id OR isSystem === true
+    // Visibility filter: show templates where isSystem === true OR createdBy === session.user.id
     return {
       OR: [
-        { createdBy: session.user.id },
-        { isSystem: true }
+        { isSystem: true },
+        { createdBy: session.user.id }
       ]
     } as any
   }

@@ -37,6 +37,55 @@ export async function GET(
       return NextResponse.json({ error: "Template not found" }, { status: 404 })
     }
 
+    if (template.isSystem) {
+      // Find personal copy first
+      const personalCopy = await prisma.emailTemplate.findFirst({
+        where: {
+          createdBy: session.user.id,
+          systemTemplateId: template.id
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
+        }
+      })
+
+      if (personalCopy) {
+        return NextResponse.json(personalCopy)
+      }
+
+      // Auto-create personal copy
+      const newCopy = await prisma.emailTemplate.create({
+        data: {
+          name: template.name,
+          html: template.html,
+          json: template.json,
+          category: template.category,
+          isSystem: false,
+          systemTemplateId: template.id,
+          createdBy: session.user.id
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          }
+        }
+      })
+
+      return NextResponse.json(newCopy)
+    }
+
     // Check if user can access this template
     if (!canAccessResource(session, template.createdBy)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
@@ -81,7 +130,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { name, category, html, json, isPublic } = body
+    const { name, description, category, html, json, isPublic } = body
 
     const updatedTemplate = await prisma.emailTemplate.update({
       where: { id },
