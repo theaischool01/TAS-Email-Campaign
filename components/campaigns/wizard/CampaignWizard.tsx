@@ -370,7 +370,7 @@ export function useCampaignWizard() {
 
   // Autosave functionality - with minimum threshold and race condition protection
   const autosave = useCallback(async () => {
-    if (!session || !state.isDirty || state.autosaveStatus === 'saving' || state.status !== 'DRAFT') return
+    if (!session || !autosavePayload || state.autosaveStatus === 'saving' || state.status !== 'DRAFT') return
 
     // CRITICAL: Block autosave during hydration/initialization
     if (!hydrationCompleteRef.current) {
@@ -388,14 +388,12 @@ export function useCampaignWizard() {
     const hasMinimumData = autosavePayload.campaignDetails.name?.trim() && 
                           autosavePayload.campaignDetails.subject?.trim()
     
-    const isCreatingDraft = !state.campaignId
-    const shouldSkipCreate = isCreatingDraft && !hasMinimumData
-
-    if (shouldSkipCreate) {
-      console.log(" AUTOSAVE DEBUG: Request skipped - minimum threshold not met", {
+    const isCreatingDraft = !autosavePayload.campaignId
+    
+    if (!hasMinimumData) {
+      console.log("🚫 AUTOSAVE DEBUG: Skipped - name and subject required", {
         hasName: !!autosavePayload.campaignDetails.name?.trim(),
-        hasSubject: !!autosavePayload.campaignDetails.subject?.trim(),
-        isCreatingDraft
+        hasSubject: !!autosavePayload.campaignDetails.subject?.trim()
       })
       return
     }
@@ -404,9 +402,9 @@ export function useCampaignWizard() {
       console.log(" AUTOSAVE DEBUG: Starting autosave", {
         mode: isCreatingDraft ? 'CREATE' : 'UPDATE',
         hasMinimumData,
-        campaignId: state.campaignId,
-        currentMode: state.mode,
-        hasCampaignId: !!state.campaignId
+        campaignId: autosavePayload.campaignId,
+        currentMode: autosavePayload.mode,
+        hasCampaignId: !!autosavePayload.campaignId
       })
 
       // Set lock and status
@@ -438,7 +436,7 @@ export function useCampaignWizard() {
       let response
       const autosaveUrl = isCreatingDraft 
         ? '/api/campaigns' 
-        : `/api/campaigns/${state.campaignId}`
+        : `/api/campaigns/${autosavePayload.campaignId}`
       
       console.log("🌐 AUTOSAVE FETCH:", {
         url: autosaveUrl,
@@ -463,6 +461,41 @@ export function useCampaignWizard() {
       }
 
       if (!response.ok) {
+        if (response.status === 409) {
+          // Campaign name already exists — fetch its ID 
+          // and recover by switching to edit mode
+          const existingRes = await fetch(
+            `/api/campaigns?name=${encodeURIComponent(
+              autosavePayload.campaignDetails.name
+            )}`
+          )
+          if (existingRes.ok) {
+            const existingData = await existingRes.json()
+            const campaignsList = existingData?.data?.campaigns || existingData?.campaigns || []
+            const existingId = campaignsList?.[0]?.id
+            if (existingId) {
+              setState(prev => ({
+                ...prev,
+                campaignId: existingId,
+                mode: 'edit',
+                autosaveStatus: 'saved',
+                lastSavedAt: new Date(),
+                isDirty: false
+              }))
+              window.history.replaceState(
+                null, 
+                '', 
+                `/campaigns/${existingId}/edit`
+              )
+              return
+            }
+          }
+          // If recovery fails, show name conflict message
+          setState(prev => ({ ...prev, autosaveStatus: 'error' }))
+          toast.error('A campaign with this name already exists. Please use a different name.')
+          return
+        }
+
         const errorData = await response.json().catch(() => ({}))
         console.error(" AUTOSAVE DEBUG: Save failed with status:", response.status)
         console.error(" AUTOSAVE DEBUG: Error response:", errorData)
@@ -523,7 +556,11 @@ export function useCampaignWizard() {
       // Update URL if this was a create operation
       if (isCreatingDraft) {
         console.log(" AUTOSAVE DEBUG: Updating URL to edit mode")
-        router.replace(`/campaigns/${savedCampaign.id}/edit`)
+        window.history.replaceState(
+          null, 
+          '', 
+          `/campaigns/${savedCampaign.id}/edit`
+        )
         return // CRITICAL: Early return to prevent duplicate execution
       }
 
@@ -535,7 +572,7 @@ export function useCampaignWizard() {
       // Always clear the autosave lock
       autosaveInFlightRef.current = false
     }
-  }, [session, router, autosavePayload])
+  }, [session, autosavePayload])
 
   // Debounced autosave - RE-ENABLED with stable dependencies
   useEffect(() => {

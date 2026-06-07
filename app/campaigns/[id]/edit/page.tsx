@@ -239,6 +239,7 @@ export default function EditCampaignPage() {
               onFinish={handleFinish}
               canGoPrevious={wizard.state.currentStep > 1}
               canGoNext={wizard.validateCurrentStep()}
+              isNextLoading={wizard.state.autosaveStatus === 'saving'}
               showFinish={wizard.state.currentStep === 4}
               isFinishLoading={isLaunching}
               validationErrors={wizard.state.validationErrors}

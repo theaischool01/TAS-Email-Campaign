@@ -22,6 +22,7 @@ const createCampaignSchema = z.object({
 
 const campaignFiltersSchema = z.object({
   search: z.string().optional(),
+  name: z.string().optional(),
   status: z.enum(['DRAFT', 'SCHEDULED', 'SENDING', 'SENT', 'PAUSED', 'CANCELLED', 'FAILED']).optional(),
   dateRange: z.object({
     start: z.string().datetime(),
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const queryParams = {
       search: searchParams.get('search') || undefined,
+      name: searchParams.get('name') || undefined,
       status: searchParams.get('status') as any || undefined,
       tags: searchParams.get('tags')?.split(',').filter(Boolean) || undefined,
       creator: searchParams.get('creator') || undefined,
@@ -71,6 +73,11 @@ export async function GET(request: NextRequest) {
 
     // Build the where clause
     let whereClause: any = { ...visibilityFilter }
+
+    // Add name filter
+    if (validatedParams.name) {
+      whereClause.name = validatedParams.name
+    }
 
     // Add search filter
     if (validatedParams.search) {
