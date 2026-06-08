@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -47,11 +48,16 @@ function LoginForm() {
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* LEFT PANEL — Branding */}
-      <div className="hidden lg:flex w-1/2 bg-[#1a1f2e] flex-col items-center justify-center p-12 relative">
-        {/* Top-left Brand Header */}
-        <div className="absolute top-8 left-12 flex items-center gap-2">
-          <Mail className="h-6 w-6 text-blue-500 shrink-0" />
-          <span className="text-lg font-bold text-white tracking-tight">MailFlow</span>
+      <div className="hidden lg:flex w-1/2 bg-[#0d1117] flex-col items-center justify-center p-12 relative">
+        {/* Top-left Logo */}
+        <div className="absolute top-8 left-12">
+          <Image
+            src="/theaischool_LOGO.webp"
+            alt="The AI School"
+            width={280}
+            height={80}
+            className="object-contain brightness-0 invert"
+          />
         </div>
 
         {/* Center content */}
@@ -66,15 +72,15 @@ function LoginForm() {
           {/* Feature highlights */}
           <div className="mt-8 space-y-3">
             <div className="flex items-center gap-2.5 text-slate-300 text-sm">
-              <CheckCircle className="text-blue-500 w-4 h-4 shrink-0" />
+              <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Drag-and-drop email builder</span>
             </div>
             <div className="flex items-center gap-2.5 text-slate-300 text-sm">
-              <CheckCircle className="text-blue-500 w-4 h-4 shrink-0" />
+              <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Real-time open & click tracking</span>
             </div>
             <div className="flex items-center gap-2.5 text-slate-300 text-sm">
-              <CheckCircle className="text-blue-500 w-4 h-4 shrink-0" />
+              <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Smart audience segmentation</span>
             </div>
           </div>
@@ -82,7 +88,7 @@ function LoginForm() {
 
         {/* Copyright Footer */}
         <span className="text-slate-600 text-xs absolute bottom-8 left-12">
-          © 2026 MailFlow. All rights reserved.
+          © 2026 THE AI SCHOOL. All rights reserved.
         </span>
       </div>
 

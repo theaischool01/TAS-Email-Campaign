@@ -132,41 +132,6 @@ export function StepNavigation({
         </div>
       </div>
 
-      {/* Progress Steps */}
-      <div className="mt-4 flex items-center justify-center gap-2">
-        {[1, 2, 3, 4].map((step) => (
-          <div
-            key={step}
-            className={cn(
-              "flex items-center",
-              step < currentStep && "text-green-600",
-              step === currentStep && "text-blue-600",
-              step > currentStep && "text-gray-400"
-            )}
-          >
-            <div
-              className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2",
-                step < currentStep && "bg-green-500 border-green-500 text-white font-bold",
-                step === currentStep && "bg-blue-600 border-blue-600 text-white font-bold",
-                step > currentStep && "bg-white border-slate-300 text-slate-400"
-              )}
-            >
-              {step < currentStep ? "✓" : step}
-            </div>
-            
-            {step < 4 && (
-              <div
-                className={cn(
-                  "w-8 h-0.5 mx-1",
-                  step < currentStep && "bg-green-400",
-                  step >= currentStep && "bg-slate-200"
-                )}
-              ></div>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { 
@@ -14,14 +14,23 @@ import {
   User,
   LogOut,
   Menu,
-  ChevronRight
+  ChevronRight,
+  List
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campaigns", href: "/campaigns", icon: Mail },
-  { name: "Contacts", href: "/contacts", icon: Users },
+  {
+    name: "Contacts",
+    href: "/contacts",
+    icon: Users,
+    children: [
+      { name: "All Contacts", href: "/contacts?tab=all", icon: User },
+      { name: "Manage Lists", href: "/contacts?tab=lists", icon: List },
+    ],
+  },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Settings", href: "/settings/org", icon: Settings },
 ]
@@ -29,7 +38,9 @@ const navigation = [
 export function Sidebar() {
   const { data: session } = useSession()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [collapsed, setCollapsed] = useState(false)
+  const [openMenus, setOpenMenus] = useState<string[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed")
@@ -37,6 +48,14 @@ export function Sidebar() {
       setCollapsed(JSON.parse(saved))
     }
   }, [])
+
+  useEffect(() => {
+    if (pathname.startsWith("/contacts")) {
+      setOpenMenus((prev) =>
+        prev.includes("Contacts") ? prev : [...prev, "Contacts"]
+      )
+    }
+  }, [pathname])
 
   const toggleCollapse = () => {
     const nextState = !collapsed
@@ -95,23 +114,86 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col px-2 py-4 overflow-y-auto">
         <ul role="list" className="flex flex-col space-y-1.5">
           {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+            const isActive =
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`) ||
+              pathname.startsWith(item.href + "?")
+            const isOpen = openMenus.includes(item.name)
+            const hasChildren = !!item.children
+
             return (
               <li key={item.name}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    isActive
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-400 hover:text-white hover:bg-slate-800",
-                    "group flex items-center rounded-lg p-2 text-sm leading-6 font-semibold transition-all duration-150",
-                    collapsed ? "justify-center" : "gap-x-3"
-                  )}
-                  title={collapsed ? item.name : undefined}
-                >
-                  <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                  {!collapsed && <span>{item.name}</span>}
-                </Link>
+                {hasChildren ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setOpenMenus((prev) =>
+                          prev.includes(item.name)
+                            ? prev.filter((n) => n !== item.name)
+                            : [...prev, item.name]
+                        )
+                      }}
+                      className={cn(
+                        isActive
+                          ? "bg-blue-600 text-white"
+                          : "text-slate-400 hover:text-white hover:bg-slate-800",
+                        "w-full group flex items-center rounded-lg p-2 text-sm leading-6 font-semibold transition-all duration-150",
+                        collapsed ? "justify-center" : "gap-x-3"
+                      )}
+                      title={collapsed ? item.name : undefined}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                      {!collapsed && (
+                        <span className="flex-1 text-left">{item.name}</span>
+                      )}
+                    </button>
+                    {isOpen && !collapsed && (
+                      <ul className="mt-1 ml-4 space-y-1 border-l border-slate-700/50 pl-3">
+                        {item.children.map((child) => {
+                          const tab = searchParams.get("tab")
+                          const isChildActive =
+                            (child.href.includes("tab=all") &&
+                              pathname === "/contacts" &&
+                              tab === "all") ||
+                            (child.href.includes("tab=lists") &&
+                              pathname === "/contacts" &&
+                              (tab === "lists" || !tab))
+                          return (
+                            <li key={child.name}>
+                              <Link
+                                href={child.href}
+                                className={cn(
+                                  isChildActive
+                                    ? "text-white bg-slate-700"
+                                    : "text-slate-400 hover:text-white hover:bg-slate-800",
+                                  "flex items-center gap-x-2 rounded-lg px-2 py-1.5 text-xs font-medium transition-all duration-150"
+                                )}
+                              >
+                                <child.icon className="h-3.5 w-3.5 shrink-0" />
+                                {child.name}
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      isActive
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800",
+                      "group flex items-center rounded-lg p-2 text-sm leading-6 font-semibold transition-all duration-150",
+                      collapsed ? "justify-center" : "gap-x-3"
+                    )}
+                    title={collapsed ? item.name : undefined}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    {!collapsed && <span>{item.name}</span>}
+                  </Link>
+                )}
               </li>
             )
           })}

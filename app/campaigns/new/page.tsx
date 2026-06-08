@@ -155,21 +155,15 @@ export default function NewCampaignPage() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="border-b bg-card px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <WizardHeader
-                  title={wizard.state.campaignDetails.name || "New Campaign"}
-                  subtitle={`Step ${wizard.state.currentStep} of 4`}
-                  autosaveStatus={wizard.state.autosaveStatus}
-                  isDirty={wizard.state.isDirty}
-                  mode={wizard.state.mode}
-                  campaignId={wizard.state.campaignId}
-                  onSave={wizard.autosave}
-                />
-              </div>
-            </div>
-          </div>
+          <WizardHeader
+            title={wizard.state.campaignDetails.name || "New Campaign"}
+            subtitle={`Step ${wizard.state.currentStep} of 4`}
+            autosaveStatus={wizard.state.autosaveStatus}
+            isDirty={wizard.state.isDirty}
+            mode={wizard.state.mode}
+            campaignId={wizard.state.campaignId}
+            onSave={wizard.autosave}
+          />
 
           {/* Step Content */}
           <div className="flex-1 overflow-auto p-6">
@@ -243,22 +237,20 @@ export default function NewCampaignPage() {
           </div>
 
           {/* Navigation */}
-          <div className="border-t bg-card px-6 py-4">
-            <StepNavigation
-              currentStep={wizard.state.currentStep}
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onFinish={handleFinish}
-              canGoPrevious={wizard.state.currentStep > 1}
-              canGoNext={wizard.validateCurrentStep()}
-              isNextLoading={wizard.state.autosaveStatus === 'saving'}
-              showFinish={wizard.state.currentStep === 4}
-              isFinishLoading={isLaunching}
-              validationErrors={wizard.state.validationErrors}
-              hasInteracted={wizard.hasInteracted}
-              submitAttempted={wizard.submitAttempted}
-            />
-          </div>
+          <StepNavigation
+            currentStep={wizard.state.currentStep}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onFinish={handleFinish}
+            canGoPrevious={wizard.state.currentStep > 1}
+            canGoNext={wizard.validateCurrentStep()}
+            isNextLoading={wizard.state.autosaveStatus === 'saving'}
+            showFinish={wizard.state.currentStep === 4}
+            isFinishLoading={isLaunching}
+            validationErrors={wizard.state.validationErrors}
+            hasInteracted={wizard.hasInteracted}
+            submitAttempted={wizard.submitAttempted}
+          />
         </div>
       </div>
     </div>
