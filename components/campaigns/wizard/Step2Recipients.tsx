@@ -161,7 +161,7 @@ export function Step2Recipients({
   const isSegmentSelected = (id: string) => selectedSegments.includes(id)
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-3xl mx-auto px-4 sm:px-0 space-y-6">
       {/* Header */}
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Choose Recipients</h2>
@@ -222,21 +222,21 @@ export function Step2Recipients({
               
               return (
                 <Card key={list.id} className={cn(
-                  "border border-slate-200 rounded-xl mb-2 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer shadow-none",
+                  "border border-slate-200 rounded-xl mb-2 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer shadow-none overflow-hidden",
                   isListSelected(list.id) && "border-blue-500 bg-blue-50/50",
                   (isListExcluded(list.id) || isInactive || isEmpty) && "opacity-60 bg-gray-50"
                 )}>
-                  <CardContent className="p-0">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4 flex-1">
+                  <CardContent className="p-0 overflow-hidden">
+                    <div className="p-4 flex flex-col gap-4 md:flex-row md:items-center justify-between min-w-0">
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
                         <Checkbox
                           checked={isListSelected(list.id)}
                           onCheckedChange={(checked: boolean) => handleListToggle(list.id, checked)}
                           disabled={isListExcluded(list.id) || isInactive || isEmpty}
                         />
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={cn("text-sm font-semibold text-slate-800", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
+                        <div className="min-w-0 w-full">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className={cn("text-sm font-semibold text-slate-800 truncate", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
                             <Badge variant={isInactive ? "destructive" : "secondary"} className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-2">
                               {list.activeCount || 0} / {list.memberCount || 0} active
                             </Badge>
@@ -260,7 +260,7 @@ export function Step2Recipients({
                           <p className="text-sm text-gray-500">{list.description}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex-shrink-0 min-w-0 flex items-center gap-2">
                         <Button 
                           variant="ghost" 
                           size="sm"
