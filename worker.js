@@ -300,6 +300,7 @@ async function processQueue() {
   isPollingActive = true;
 
   // Recurring ping every 4 minutes to keep Neon PostgreSQL connection alive
+  /*
   setInterval(async () => {
     try {
       await prisma.$queryRaw`SELECT 1`;
@@ -308,6 +309,7 @@ async function processQueue() {
       logger.error({ error: err.message }, '🔌 Database connection keep-alive ping failed');
     }
   }, 4 * 60 * 1000);
+  */
 
   let qUrl = null;
 
