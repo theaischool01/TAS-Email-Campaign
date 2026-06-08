@@ -116,11 +116,23 @@ export function useCampaignWizard() {
   // Determine mode from URL
   useEffect(() => {
     const isEdit = params.id && params.id !== 'new'
-    setState(prev => ({
-      ...prev,
-      mode: isEdit ? 'edit' : 'create',
-      campaignId: isEdit ? params.id as string : undefined
-    }))
+    if (isEdit) {
+      setState(prev => ({
+        ...prev,
+        mode: 'edit',
+        campaignId: params.id as string
+      }))
+    } else {
+      setState(prev => {
+        // GUARD: Don't reset if campaignId was already set by 409 recovery
+        if (prev.campaignId) return prev
+        return {
+          ...prev,
+          mode: 'create',
+          campaignId: undefined
+        }
+      })
+    }
   }, [params])
 
   // Load campaign data for editing

@@ -164,29 +164,33 @@ export function Step2Recipients({
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Choose Recipients</h2>
-        <p className="text-gray-600">Select the lists or segments you want to target</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Choose Recipients</h2>
+        <p className="text-slate-500 text-sm mb-6">Select the lists or segments you want to target</p>
       </div>
 
       {/* Tab Switcher */}
       <div className="flex justify-center">
-        <div className="inline-flex p-1 bg-gray-100 rounded-lg">
+        <div className="inline-flex p-1 bg-slate-100 rounded-xl gap-1">
           <Button 
             variant={activeTab === 'lists' ? 'default' : 'ghost'} 
             size="sm"
             onClick={() => setActiveTab('lists')}
-            className="px-6"
+            className={activeTab === 'lists' 
+              ? "flex items-center gap-2 px-5 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold transition-all" 
+              : "flex items-center gap-2 px-5 py-2 rounded-lg text-slate-500 text-sm font-medium hover:bg-white transition-all"}
           >
-            <Users className="h-4 w-4 mr-2" />
+            <Users className="h-4 w-4" />
             Contact Lists ({contactLists.length})
           </Button>
           <Button 
             variant={activeTab === 'segments' ? 'default' : 'ghost'} 
             size="sm"
             onClick={() => setActiveTab('segments')}
-            className="px-6"
+            className={activeTab === 'segments' 
+              ? "flex items-center gap-2 px-5 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold transition-all" 
+              : "flex items-center gap-2 px-5 py-2 rounded-lg text-slate-500 text-sm font-medium hover:bg-white transition-all"}
           >
-            <Target className="h-4 w-4 mr-2" />
+            <Target className="h-4 w-4" />
             Segments ({segments.length})
           </Button>
         </div>
@@ -199,7 +203,7 @@ export function Step2Recipients({
           placeholder={`Search ${activeTab === 'lists' ? 'lists' : 'segments'}...`}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+          className="pl-9 text-sm rounded-xl border-slate-200 bg-slate-50 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
         />
       </div>
 
@@ -218,7 +222,7 @@ export function Step2Recipients({
               
               return (
                 <Card key={list.id} className={cn(
-                  "transition-all",
+                  "border border-slate-200 rounded-xl mb-2 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer shadow-none",
                   isListSelected(list.id) && "border-blue-500 bg-blue-50/50",
                   (isListExcluded(list.id) || isInactive || isEmpty) && "opacity-60 bg-gray-50"
                 )}>
@@ -232,8 +236,8 @@ export function Step2Recipients({
                         />
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={cn("font-medium", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
-                            <Badge variant={isInactive ? "destructive" : "secondary"}>
+                            <span className={cn("text-sm font-semibold text-slate-800", (isInactive || isEmpty) && "text-gray-400")}>{list.name}</span>
+                            <Badge variant={isInactive ? "destructive" : "secondary"} className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-2">
                               {list.activeCount || 0} / {list.memberCount || 0} active
                             </Badge>
                             {excludedContacts[list.id]?.length > 0 && (
@@ -334,7 +338,7 @@ export function Step2Recipients({
           ) : (
             filteredSegments.map((segment) => (
               <Card key={segment.id} className={cn(
-                "transition-all",
+                "border border-slate-200 rounded-xl mb-2 hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer shadow-none",
                 isSegmentSelected(segment.id) && "border-blue-500 bg-blue-50/50"
               )}>
                 <CardContent className="p-4 flex items-center gap-4">
@@ -366,14 +370,14 @@ export function Step2Recipients({
 
       {/* Validation Error */}
       {validationErrors.recipients && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="rounded-xl border-red-200 bg-red-50">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{validationErrors.recipients}</AlertDescription>
         </Alert>
       )}
 
       {/* Tips */}
-      <Alert>
+      <Alert className="rounded-xl border-slate-200 bg-slate-50">
         <CheckCircle2 className="h-4 w-4" />
         <AlertDescription>
           <strong>Smart Targeting:</strong> You can combine multiple lists and segments. The system automatically deduplicates contacts and respects all unsubscriptions.

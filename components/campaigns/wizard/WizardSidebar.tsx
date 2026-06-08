@@ -85,13 +85,13 @@ export function WizardSidebar({
   }
 
   return (
-    <div className="w-80 bg-white border-r border-gray-200 p-6">
+    <div className="w-80 bg-white border-r border-gray-200 p-6 flex flex-col h-full">
       {/* Header */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest px-4 pt-5 pb-3">
           Campaign Setup
         </h2>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm px-4">
           {autosaveStatus === 'saving' && (
             <>
               <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
@@ -133,31 +133,25 @@ export function WizardSidebar({
               disabled={status === 'pending'}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors",
-                status === 'active' && "bg-blue-50 text-blue-700 border border-blue-200",
+                status === 'active' && "bg-blue-50 text-blue-700 border border-blue-100 rounded-xl mx-2",
                 status === 'completed' && !hasError && "text-green-700 hover:bg-green-50",
                 status === 'pending' && "text-gray-400 cursor-not-allowed",
-                hasError && "text-red-600 bg-red-50 border border-red-200"
+                hasError && "text-red-600 bg-red-50 border border-red-100 rounded-xl mx-2"
               )}
             >
               {/* Step Icon */}
               <div className="relative">
                 {status === 'completed' && !hasError ? (
-                  <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                    <Check className="w-3 h-3 text-white" />
+                  <div className="w-8 h-8 rounded-lg bg-green-500 text-white flex items-center justify-center shrink-0">
+                    <Check className="w-4 h-4" />
+                  </div>
+                ) : status === 'active' ? (
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4" />
                   </div>
                 ) : (
-                  <div className={cn(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                    status === 'active' && "border-blue-500 bg-blue-500",
-                    status === 'pending' && "border-gray-300 bg-white",
-                    hasError && "border-red-500 bg-red-500"
-                  )}>
-                    <Icon className={cn(
-                      "w-2.5 h-2.5",
-                      status === 'active' && "text-white",
-                      status === 'pending' && "text-gray-400",
-                      hasError && "text-white"
-                    )} />
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4" />
                   </div>
                 )}
               </div>
@@ -167,9 +161,9 @@ export function WizardSidebar({
                 <div className="flex items-center gap-2">
                   <p className={cn(
                     "font-medium text-sm",
-                    status === 'active' && "text-blue-700",
-                    status === 'completed' && !hasError && "text-green-700",
-                    status === 'pending' && "text-gray-400",
+                    status === 'active' && "text-sm font-semibold text-blue-700",
+                    status === 'completed' && !hasError && "text-sm font-medium text-slate-600",
+                    status === 'pending' && "text-sm font-medium text-slate-400",
                     hasError && "text-red-600"
                   )}>
                     {step.title}
@@ -180,9 +174,9 @@ export function WizardSidebar({
                 </div>
                 <p className={cn(
                   "text-xs",
-                  status === 'active' && "text-blue-600",
-                  status === 'completed' && !hasError && "text-green-600",
-                  status === 'pending' && "text-gray-400",
+                  status === 'active' && "text-xs text-blue-500",
+                  status === 'completed' && !hasError && "text-xs text-slate-400",
+                  status === 'pending' && "text-xs text-slate-300",
                   hasError && "text-red-500"
                 )}>
                   {step.description}
@@ -200,27 +194,47 @@ export function WizardSidebar({
 
       {/* Progress Bar */}
       <div className="mt-8 pt-8 border-t border-gray-200">
-        <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-          <span>Progress</span>
-          <span>{Math.round((currentStep / 4) * 100)}%</span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-500">Progress</span>
+          <span className="text-xs font-semibold text-blue-600">{Math.round((currentStep / 4) * 100)}%</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="w-full h-1.5 rounded-full bg-slate-100">
           <div 
-            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+            className="h-1.5 bg-blue-500 rounded-full transition-all duration-500"
             style={{ width: `${(currentStep / 4) * 100}%` }}
           ></div>
         </div>
       </div>
 
       {/* Tips */}
-      <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-        <h3 className="font-medium text-blue-900 text-sm mb-2">Tips</h3>
-        <ul className="text-xs text-blue-700 space-y-1">
-          <li>• Your work is automatically saved</li>
-          <li>• You can navigate between steps</li>
-          <li>• Draft campaigns can be edited anytime</li>
-          <li>• Test your campaign before sending</li>
-        </ul>
+      <div className="px-4 pb-5 mt-auto">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2.5">Tips</p>
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <div className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+            <p className="text-xs text-slate-500">
+              Your work is automatically saved
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+            <p className="text-xs text-slate-500">
+              You can navigate between steps
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+            <p className="text-xs text-slate-500">
+              Draft campaigns can be edited anytime
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+            <p className="text-xs text-slate-500">
+              Test your campaign before sending
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )

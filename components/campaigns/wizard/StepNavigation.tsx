@@ -63,16 +63,16 @@ export function StepNavigation({
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white px-6 py-4">
+    <div className="border-t border-slate-200 bg-white px-8 py-3.5 shrink-0">
       <div className="flex items-center justify-between">
         {/* Left Section - Step Info */}
         <div className="flex items-center gap-4">
           <div>
-            <h3 className="text-sm font-medium text-gray-900">
+            <h3 className="text-sm font-medium text-slate-600">
               Step {currentStep} of 4: {getStepTitle(currentStep)}
             </h3>
             {shouldShowError && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="text-xs text-red-500 mt-0.5 flex items-center gap-1">
                 Please fix the errors above before continuing
               </p>
             )}
@@ -83,10 +83,9 @@ export function StepNavigation({
         <div className="flex items-center gap-3">
           {/* Previous Button */}
           <Button
-            variant="outline"
             onClick={onPrevious}
             disabled={!canGoPrevious || isNextLoading || isFinishLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl transition-all disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" />
             Previous
@@ -97,7 +96,7 @@ export function StepNavigation({
             <Button
               onClick={onFinish}
               disabled={!canGoNext || hasErrors || isFinishLoading}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+              className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-all disabled:opacity-40"
             >
               {isFinishLoading ? (
                 <>
@@ -115,7 +114,7 @@ export function StepNavigation({
             <Button
               onClick={onNext}
               disabled={!canGoNext || hasErrors || isNextLoading}
-              className="flex items-center gap-2"
+              className="flex items-center gap-1.5 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isNextLoading ? (
                 <>
@@ -148,9 +147,9 @@ export function StepNavigation({
             <div
               className={cn(
                 "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2",
-                step < currentStep && "bg-green-100 border-green-600 text-green-600",
-                step === currentStep && "bg-blue-100 border-blue-600 text-blue-600",
-                step > currentStep && "bg-white border-gray-300 text-gray-400"
+                step < currentStep && "bg-green-500 border-green-500 text-white font-bold",
+                step === currentStep && "bg-blue-600 border-blue-600 text-white font-bold",
+                step > currentStep && "bg-white border-slate-300 text-slate-400"
               )}
             >
               {step < currentStep ? "✓" : step}
@@ -160,8 +159,8 @@ export function StepNavigation({
               <div
                 className={cn(
                   "w-8 h-0.5 mx-1",
-                  step < currentStep && "bg-green-600",
-                  step >= currentStep && "bg-gray-300"
+                  step < currentStep && "bg-green-400",
+                  step >= currentStep && "bg-slate-200"
                 )}
               ></div>
             )}

@@ -102,11 +102,11 @@ export function Step1Details({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-slate-900">
           Campaign Details
         </h2>
-        <p className="text-gray-600">
+        <p className="text-slate-500 text-sm mt-1 mb-8">
           Set up the basic information for your email campaign
         </p>
       </div>
@@ -114,13 +114,13 @@ export function Step1Details({
       {/* Form */}
       <div className="space-y-6">
         {/* Campaign Name */}
-        <Card>
+        <Card className="border border-slate-200 rounded-2xl shadow-none mb-5">
           <CardHeader>
-            <CardTitle className="text-lg">Campaign Information</CardTitle>
+            <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Campaign Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="name" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="name" className="text-sm font-medium text-slate-700 mb-1.5">
                 Campaign Name <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -129,7 +129,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('name', e.target.value)}
                 onBlur={() => handleFieldBlur('name')}
                 placeholder="e.g., Summer Sale 2024"
-                className={`mt-1 ${fieldErrors.name ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.name ? 'border-red-500' : ''}`}
               />
               {fieldErrors.name && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -137,13 +137,13 @@ export function Step1Details({
                   {fieldErrors.name}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 Internal name to help you identify this campaign
               </p>
             </div>
 
             <div>
-              <Label htmlFor="subject" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="subject" className="text-sm font-medium text-slate-700 mb-1.5">
                 Subject Line <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -152,7 +152,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('subject', e.target.value)}
                 onBlur={() => handleFieldBlur('subject')}
                 placeholder="e.g., Don't miss our summer sale!"
-                className={`mt-1 ${fieldErrors.subject ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.subject ? 'border-red-500' : ''}`}
               />
               {fieldErrors.subject && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -160,13 +160,13 @@ export function Step1Details({
                   {fieldErrors.subject}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 This is what recipients will see in their inbox
               </p>
             </div>
 
             <div>
-              <Label htmlFor="previewText" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="previewText" className="text-sm font-medium text-slate-700 mb-1.5">
                 Preview Text
               </Label>
               <Input
@@ -175,7 +175,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('previewText', e.target.value)}
                 onBlur={() => handleFieldBlur('previewText')}
                 placeholder="e.g., See our latest deals and save big..."
-                className={`mt-1 ${fieldErrors.previewText ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.previewText ? 'border-red-500' : ''}`}
               />
               {fieldErrors.previewText && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -183,7 +183,7 @@ export function Step1Details({
                   {fieldErrors.previewText}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 Optional text that appears after the subject in most email clients
               </p>
             </div>
@@ -191,16 +191,16 @@ export function Step1Details({
         </Card>
 
         {/* Sender Information */}
-        <Card>
+        <Card className="border border-slate-200 rounded-2xl shadow-none mb-5">
           <CardHeader>
-            <CardTitle className="text-lg">Sender Information</CardTitle>
+            <CardTitle className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Sender Information</CardTitle>
             <p className="text-sm text-gray-600">
               Configure who this email will appear to be from
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="senderName" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="senderName" className="text-sm font-medium text-slate-700 mb-1.5">
                 Sender Name
               </Label>
               <Input
@@ -209,7 +209,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('senderName', e.target.value)}
                 onBlur={() => handleFieldBlur('senderName')}
                 placeholder="e.g., Your Company Name"
-                className={`mt-1 ${fieldErrors.senderName ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.senderName ? 'border-red-500' : ''}`}
               />
               {fieldErrors.senderName && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -217,13 +217,13 @@ export function Step1Details({
                   {fieldErrors.senderName}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 Leave blank to use your account name
               </p>
             </div>
 
             <div>
-              <Label htmlFor="senderEmail" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="senderEmail" className="text-sm font-medium text-slate-700 mb-1.5">
                 Sender Email
               </Label>
               <Input
@@ -233,7 +233,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('senderEmail', e.target.value)}
                 onBlur={() => handleFieldBlur('senderEmail')}
                 placeholder="e.g., campaigns@yourcompany.com"
-                className={`mt-1 ${fieldErrors.senderEmail ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.senderEmail ? 'border-red-500' : ''}`}
               />
               {fieldErrors.senderEmail && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -241,13 +241,13 @@ export function Step1Details({
                   {fieldErrors.senderEmail}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 Leave blank to use your account email
               </p>
             </div>
 
             <div>
-              <Label htmlFor="replyToEmail" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="replyToEmail" className="text-sm font-medium text-slate-700 mb-1.5">
                 Reply-To Email
               </Label>
               <Input
@@ -257,7 +257,7 @@ export function Step1Details({
                 onChange={(e) => handleFieldChange('replyToEmail', e.target.value)}
                 onBlur={() => handleFieldBlur('replyToEmail')}
                 placeholder="e.g., support@yourcompany.com"
-                className={`mt-1 ${fieldErrors.replyToEmail ? 'border-red-500' : ''}`}
+                className={`rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm mt-1 ${fieldErrors.replyToEmail ? 'border-red-500' : ''}`}
               />
               {fieldErrors.replyToEmail && (
                 <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
@@ -265,7 +265,7 @@ export function Step1Details({
                   {fieldErrors.replyToEmail}
                 </p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 Optional: Where replies to this campaign will be sent
               </p>
             </div>

@@ -56,7 +56,7 @@ export function WizardHeader({
   }
 
   return (
-    <div className="border-b border-gray-200 bg-white px-6 py-4">
+    <div className="border-b border-slate-200 bg-white px-6 py-3.5 shrink-0">
       <div className="flex items-center justify-between">
         {/* Left Section */}
         <div className="flex items-center gap-4">
@@ -64,18 +64,18 @@ export function WizardHeader({
             variant="ghost"
             size="sm"
             onClick={handleClose}
-            className="text-gray-600 hover:text-gray-900"
+            className="text-slate-500 hover:text-slate-800 flex items-center gap-1.5 text-sm font-medium hover:bg-slate-100 rounded-lg px-3 py-1.5 transition-all"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Campaigns
           </Button>
           
-          <div className="border-l border-gray-300 h-6"></div>
+          <div className="border-l border-slate-200 h-5"></div>
           
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+            <h1 className="text-base font-bold text-slate-900">{title}</h1>
             {subtitle && (
-              <p className="text-sm text-gray-600 mt-1">{subtitle}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
             )}
           </div>
         </div>
@@ -113,6 +113,7 @@ export function WizardHeader({
                   size="sm"
                   onClick={handleSave}
                   disabled={autosaveStatus === 'saving' || !isDirty}
+                  className="text-slate-600 border-slate-200 hover:border-slate-300 text-sm"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Save Draft
@@ -123,6 +124,7 @@ export function WizardHeader({
                   size="sm"
                   onClick={handleSaveAndClose}
                   disabled={autosaveStatus === 'saving'}
+                  className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold"
                 >
                   Save & Close
                 </Button>
@@ -143,8 +145,8 @@ export function WizardHeader({
 
       {/* Draft Indicator */}
       {mode === 'edit' && campaignId && (
-        <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
-          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
           <span>Editing draft campaign</span>
         </div>
       )}

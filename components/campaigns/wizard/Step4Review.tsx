@@ -438,8 +438,8 @@ export function Step4Review({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-2">Review Campaign</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-2xl font-bold text-slate-900 mb-1">Review Campaign</h2>
+        <p className="text-slate-500 text-sm mb-6">
           Review your campaign details before launching.
         </p>
       </div>
@@ -447,9 +447,9 @@ export function Step4Review({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-6">
           {/* Campaign Details */}
-          <Card className={cn(activeEditSection === 'details' && "bg-blue-50/50 border-blue-200")}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="flex items-center gap-2">
+          <Card className={cn("border border-slate-200 rounded-2xl shadow-none mb-4", activeEditSection === 'details' && "bg-blue-50/50 border-blue-200")}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b border-slate-100">
+              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <Mail className="h-5 w-5" />
                 Campaign Details
               </CardTitle>
@@ -459,13 +459,14 @@ export function Step4Review({
                   size="sm"
                   onClick={handleEditDetailsClick}
                   disabled={activeEditSection !== null}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 h-auto p-0"
                 >
                   <Pencil className="h-4 w-4 mr-1" />
                   Edit
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               {activeEditSection === 'details' ? (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -530,30 +531,30 @@ export function Step4Review({
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium text-muted-foreground">Subject</label>
-                    <p className="font-medium text-lg">{campaignDetails.subject}</p>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">Subject</label>
+                    <p className="text-sm font-medium text-slate-800 mt-0.5 text-lg">{campaignDetails.subject}</p>
                   </div>
                   {campaignDetails.previewText && (
                     <div className="md:col-span-2">
-                      <label className="text-sm font-medium text-muted-foreground">Preview Text</label>
-                      <p className="font-medium">{campaignDetails.previewText}</p>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">Preview Text</label>
+                      <p className="text-sm font-medium text-slate-800 mt-0.5">{campaignDetails.previewText}</p>
                     </div>
                   )}
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Campaign Name</label>
-                    <p className="font-medium">{campaignDetails.name}</p>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">Campaign Name</label>
+                    <p className="text-sm font-medium text-slate-800 mt-0.5">{campaignDetails.name}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Sender Name</label>
-                    <p className="font-medium">{campaignDetails.senderName || '-'}</p>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">Sender Name</label>
+                    <p className="text-sm font-medium text-slate-800 mt-0.5">{campaignDetails.senderName || '-'}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Sender Email</label>
-                    <p className="font-medium">{campaignDetails.senderEmail || '-'}</p>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">Sender Email</label>
+                    <p className="text-sm font-medium text-slate-800 mt-0.5">{campaignDetails.senderEmail || '-'}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Reply-To Email</label>
-                    <p className="font-medium">{campaignDetails.replyToEmail || '-'}</p>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">Reply-To Email</label>
+                    <p className="text-sm font-medium text-slate-800 mt-0.5">{campaignDetails.replyToEmail || '-'}</p>
                   </div>
                 </div>
               )}
@@ -561,9 +562,9 @@ export function Step4Review({
           </Card>
  
           {/* Recipients */}
-          <Card className={cn(activeEditSection === 'recipients' && "bg-blue-50/50 border-blue-200")}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="flex items-center gap-2">
+          <Card className={cn("border border-slate-200 rounded-2xl shadow-none mb-4", activeEditSection === 'recipients' && "bg-blue-50/50 border-blue-200")}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b border-slate-100">
+              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <Users className="h-5 w-5" />
                 Recipients
               </CardTitle>
@@ -573,13 +574,14 @@ export function Step4Review({
                   size="sm"
                   onClick={handleEditRecipientsClick}
                   disabled={activeEditSection !== null}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 h-auto p-0"
                 >
                   <Pencil className="h-4 w-4 mr-1" />
                   Edit
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               {activeEditSection === 'recipients' ? (
                 <div className="space-y-4">
                   <div className="relative">
@@ -753,9 +755,9 @@ export function Step4Review({
         </div>
  
         {/* Email Preview */}
-        <Card className={cn("flex flex-col overflow-hidden h-[600px] lg:h-auto", activeEditSection === 'template' && "bg-blue-50/50 border-blue-200")}>
-          <CardHeader className="bg-muted border-b py-3 flex-row justify-between items-center space-y-0">
-            <CardTitle className="flex items-center gap-2 text-base">
+        <Card className={cn("flex flex-col overflow-hidden h-[600px] lg:h-auto border border-slate-200 rounded-2xl shadow-none mb-4", activeEditSection === 'template' && "bg-blue-50/50 border-blue-200")}>
+          <CardHeader className="bg-muted border-b pb-3 border-b border-slate-100 flex-row justify-between items-center space-y-0">
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Palette className="h-4 w-4" />
               Email Preview
             </CardTitle>
@@ -768,7 +770,7 @@ export function Step4Review({
                     size="sm"
                     onClick={handleEditTemplateClick}
                     disabled={activeEditSection !== null}
-                    className="h-8"
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 h-auto p-0"
                   >
                     <Pencil className="h-4 w-4 mr-1" />
                     Edit
@@ -916,10 +918,10 @@ export function Step4Review({
       <Separator />
 
       {/* Launch Actions */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 mt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h3 className="font-medium text-lg">Ready to Launch?</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className="text-white font-bold text-lg">Ready to Launch?</h3>
+          <p className="text-blue-200 text-sm mt-0.5">
             Your campaign will be sent to {totalRecipients.toLocaleString()} recipients.
           </p>
         </div>
@@ -927,12 +929,12 @@ export function Step4Review({
           
           <Popover open={schedulePopoverOpen} onOpenChange={setSchedulePopoverOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2" disabled={isLaunching || isScheduling}>
+              <Button variant="outline" className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold border border-white/30 transition-all" disabled={isLaunching || isScheduling}>
                 <CalendarClock className="h-4 w-4" />
                 Schedule
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80" align="end">
+            <PopoverContent className="z-50 w-80" align="end" side="top" sideOffset={8}>
               <div className="space-y-4">
                 <h4 className="font-medium">Schedule Campaign</h4>
                 <div className="space-y-2">
@@ -1038,7 +1040,7 @@ export function Step4Review({
             onClick={onFinish}
             disabled={isLaunching || isScheduling || !selectedTemplate}
             size="lg"
-            className="flex items-center gap-2 sm:ml-4 bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="flex items-center gap-2 sm:ml-4 bg-white text-blue-600 text-sm font-bold hover:bg-blue-50 transition-all px-5 py-2.5 rounded-xl"
           >
             {isLaunching ? (
               <>

@@ -9,11 +9,12 @@ import { useCampaignWizard } from "@/components/campaigns/wizard/CampaignWizard"
 import { WizardSidebar } from "@/components/campaigns/wizard/WizardSidebar"
 import { WizardHeader } from "@/components/campaigns/wizard/WizardHeader"
 import { StepNavigation } from "@/components/campaigns/wizard/StepNavigation"
+import { Sidebar } from "@/components/layout/sidebar"
 import { Step1Details } from "@/components/campaigns/wizard/Step1Details"
 import { Step2Recipients } from "@/components/campaigns/wizard/Step2Recipients"
 import { Step3Design } from "@/components/campaigns/wizard/Step3Design"
 import { Step4Review } from "@/components/campaigns/wizard/Step4Review"
-import { Loader2, ArrowLeft } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { SendProgress } from "@/components/campaigns/wizard/SendProgress"
 import type { WizardStep } from "@/components/campaigns/wizard/CampaignWizard"
 
@@ -136,6 +137,7 @@ export default function NewCampaignPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex h-screen">
+        <Sidebar />
         {/* Sidebar */}
         <div className="w-64 border-r bg-card">
           <WizardSidebar
@@ -156,15 +158,6 @@ export default function NewCampaignPage() {
           <div className="border-b bg-card px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBack}
-                  className="flex items-center gap-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to Campaigns
-                </Button>
                 <WizardHeader
                   title={wizard.state.campaignDetails.name || "New Campaign"}
                   subtitle={`Step ${wizard.state.currentStep} of 4`}
