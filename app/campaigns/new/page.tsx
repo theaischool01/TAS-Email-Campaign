@@ -166,7 +166,7 @@ export default function NewCampaignPage() {
           />
 
           {/* Step Content */}
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 overflow-auto p-6 pb-24">
             {showProgress && campaignIdForProgress ? (
               <div className="flex flex-col items-center justify-center min-h-[400px]">
                 <SendProgress 

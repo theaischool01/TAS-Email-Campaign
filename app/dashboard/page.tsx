@@ -104,9 +104,9 @@ export default async function DashboardPage() {
 
     return (
       <DashboardLayout>
-        <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
+        <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 dark:bg-transparent">
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 dark:bg-transparent">
             <div>
               <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                 {greeting}, {firstName}!
@@ -262,7 +262,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* Activity Feed */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 border border-transparent dark:border-slate-800 dark:bg-slate-900">
               <RecentActivity activities={recentActivity} />
             </div>
           </div>

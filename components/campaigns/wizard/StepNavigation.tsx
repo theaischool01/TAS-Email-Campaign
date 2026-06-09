@@ -63,7 +63,7 @@ export function StepNavigation({
   }
 
   return (
-    <div className="border-t border-slate-200 bg-white px-8 py-3.5 shrink-0">
+    <div className="sticky bottom-4 z-20 border-t border-slate-200 bg-white px-8 py-3.5 shrink-0">
       <div className="flex items-center justify-between">
         {/* Left Section - Step Info */}
         <div className="flex items-center gap-4">

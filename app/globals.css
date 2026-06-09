@@ -146,3 +146,107 @@
     --color-blue-950: #450a0a;
   }
 }
+
+/* ─── Dark Mode Overrides ─────────────────── */
+/* Forces all hardcoded Tailwind color utilities
+   to respect dark mode without touching pages */
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Backgrounds */
+.dark .bg-white {
+  background-color: oklch(0.205 0 0) !important;
+}
+.dark .bg-gray-50,
+.dark .bg-slate-50 {
+  background-color: oklch(0.178 0 0) !important;
+}
+.dark .bg-gray-100,
+.dark .bg-slate-100 {
+  background-color: oklch(0.232 0 0) !important;
+}
+.dark .bg-gray-200,
+.dark .bg-slate-200 {
+  background-color: oklch(0.269 0 0) !important;
+}
+
+/* Text */
+.dark .text-gray-900,
+.dark .text-slate-900 {
+  color: oklch(0.985 0 0) !important;
+}
+.dark .text-gray-800,
+.dark .text-slate-800 {
+  color: oklch(0.922 0 0) !important;
+}
+.dark .text-gray-700,
+.dark .text-slate-700 {
+  color: oklch(0.87 0 0) !important;
+}
+.dark .text-gray-600,
+.dark .text-slate-600 {
+  color: oklch(0.708 0 0) !important;
+}
+.dark .text-gray-500,
+.dark .text-slate-500 {
+  color: oklch(0.556 0 0) !important;
+}
+.dark .text-gray-400,
+.dark .text-slate-400 {
+  color: oklch(0.439 0 0) !important;
+}
+
+/* Borders */
+.dark .border-gray-200,
+.dark .border-slate-200 {
+  border-color: oklch(1 0 0 / 10%) !important;
+}
+.dark .border-gray-100,
+.dark .border-slate-100 {
+  border-color: oklch(1 0 0 / 7%) !important;
+}
+.dark .border-gray-300,
+.dark .border-slate-300 {
+  border-color: oklch(1 0 0 / 15%) !important;
+}
+
+/* Dividers */
+.dark .divide-gray-200 > * + * {
+  border-color: oklch(1 0 0 / 10%) !important;
+}
+
+/* Table header */
+.dark .bg-gray-50 thead,
+.dark thead.bg-gray-50 {
+  background-color: oklch(0.232 0 0) !important;
+}
+
+/* Shadows — soften in dark mode */
+.dark .shadow-sm {
+  box-shadow: 0 1px 3px 0 oklch(0 0 0 / 40%) !important;
+}
+
+/* Input fields */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: oklch(0.232 0 0);
+  color: oklch(0.985 0 0);
+  border-color: oklch(1 0 0 / 15%);
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: oklch(0.556 0 0);
+}
+
+/* Hover states on rows */
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-50:hover {
+  background-color: oklch(0.232 0 0) !important;
+}
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: oklch(0.269 0 0) !important;
+}

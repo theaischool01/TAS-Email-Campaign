@@ -47,16 +47,16 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pageTitle = getPageTitle(pathname)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0d1117]">
       {/* Collapsible Left Sidebar */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-[#0d1117]">
         {/* Top Header Bar */}
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+        <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center">
-            <h2 className="text-md font-bold text-slate-800 tracking-tight">{pageTitle}</h2>
+            <h2 className="text-md font-bold text-slate-800 dark:text-slate-100 tracking-tight">{pageTitle}</h2>
           </div>
 
           <div className="flex items-center space-x-4">
@@ -71,7 +71,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="h-7 w-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                 {initials}
               </div>
-              <span className="text-xs font-semibold text-slate-700 hidden sm:inline-block">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 hidden sm:inline-block">
                 {session?.user?.name || "Admin"}
               </span>
             </div>
@@ -79,7 +79,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Scrollable Main Wrapper */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 p-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0d1117] p-6">
           {children}
         </main>
       </div>

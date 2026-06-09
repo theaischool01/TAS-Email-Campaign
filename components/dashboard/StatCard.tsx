@@ -26,7 +26,7 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, trend, status 
   }
 
   return (
-    <div className="relative overflow-hidden group bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+    <div className="relative overflow-hidden group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
       {/* Background Decorative Gradient */}
       <div className={`absolute -right-4 -top-4 w-24 h-24 blur-3xl opacity-10 group-hover:opacity-20 transition-opacity rounded-full ${status === 'success' ? 'bg-emerald-500' : status === 'danger' ? 'bg-rose-500' : 'bg-blue-500'}`} />
       
@@ -41,12 +41,12 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, trend, status 
                 {trend.isUp ? <ArrowUpIcon className="w-3 h-3 mr-1" /> : <ArrowDownIcon className="w-3 h-3 mr-1" />}
                 {trend.value}%
               </span>
-              <span className="text-xs text-slate-400 font-medium">{trend.label}</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">{trend.label}</span>
             </div>
           )}
         </div>
 
-        <div className={`p-3 rounded-xl ${getStatusClasses()}`}>
+        <div className={`p-3 rounded-xl ${getStatusClasses()} dark:bg-slate-800`}>
           {icon || <div className="w-6 h-6" />}
         </div>
       </div>

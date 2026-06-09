@@ -45,7 +45,7 @@ const SearchInput = React.memo<{
         placeholder="Search templates..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="pl-10"
+        className="pl-10 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
       />
     </div>
   )
@@ -64,7 +64,7 @@ const TemplateCard = React.memo<{
   const canDelete = template.createdBy === session?.user?.id && !template.isSystem
 
   return (
-    <Card key={template.id} className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 overflow-hidden flex flex-col h-full bg-white">
+    <Card key={template.id} className="group hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 overflow-hidden flex flex-col h-full bg-white dark:bg-slate-900 dark:border-slate-800">
       {/* Visual Preview Section - Increased height and improved scaling */}
       <div className="relative h-64 w-full bg-slate-50 overflow-hidden border-b">
         {/* Category Badge overlay */}
@@ -121,10 +121,10 @@ const TemplateCard = React.memo<{
       <CardHeader className="p-4 pb-2">
         <div className="flex justify-between items-start gap-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-base font-bold truncate text-gray-900 group-hover:text-blue-600 transition-colors">
+            <CardTitle className="text-base font-bold truncate text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">
               {template.name}
             </CardTitle>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1 dark:text-slate-500">
               Updated {new Date(template.updatedAt).toLocaleDateString()}
             </p>
           </div>
@@ -154,8 +154,8 @@ const TemplateCard = React.memo<{
         </div>
       </CardHeader>
       
-      <CardContent className="p-4 pt-0 mt-auto">
-        <div className="flex items-center gap-2 text-[11px] text-gray-400 font-medium">
+      <CardContent className="p-4 pt-0 mt-auto dark:bg-slate-900">
+        <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-slate-400 font-medium">
           <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
           Created by {template.user?.name || 'System'}
         </div>
@@ -265,12 +265,12 @@ export default function TemplatesPage() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Email Templates</h1>
-          <p className="text-muted-foreground mt-1">Create and manage your email template library</p>
+          <h1 className="text-3xl font-bold tracking-tight dark:text-white">Email Templates</h1>
+          <p className="text-muted-foreground mt-1 dark:text-slate-400">Create and manage your email template library</p>
         </div>
         {canCreate && (
           <Link href="/templates/new">
-            <Button className="w-full md:w-auto">
+            <Button className="w-full md:w-auto dark:bg-red-600 dark:text-white dark:hover:bg-red-700 dark:border-0">
               <Plus className="h-4 w-4 mr-2" />
               New Template
             </Button>
@@ -285,7 +285,7 @@ export default function TemplatesPage() {
         <div className="flex gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button variant="outline" className="flex items-center gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
                 <Filter className="h-4 w-4" />
                 {selectedCategory || "All Categories"}
               </Button>
@@ -306,11 +306,11 @@ export default function TemplatesPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <div className="border border-slate-200 rounded-lg p-0.5 flex bg-slate-50">
+          <div className="border border-slate-200 rounded-lg p-0.5 flex bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
             <Button 
               variant={viewMode === "grid" ? "secondary" : "ghost"} 
               size="icon" 
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 dark:text-slate-400 dark:hover:bg-slate-800"
               onClick={() => setViewMode("grid")}
             >
               <Grid className="h-4 w-4" />
@@ -318,7 +318,7 @@ export default function TemplatesPage() {
             <Button 
               variant={viewMode === "list" ? "secondary" : "ghost"} 
               size="icon" 
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 dark:text-slate-400 dark:hover:bg-slate-800"
               onClick={() => setViewMode("list")}
             >
               <List className="h-4 w-4" />
@@ -377,12 +377,12 @@ export default function TemplatesPage() {
           {filteredTemplates.map((template) => {
             const canDelete = template.createdBy === session?.user?.id && !(template as any).isSystem
             return (
-              <Card key={template.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.01] border border-gray-200">
+              <Card key={template.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.01] border border-gray-200 dark:bg-slate-900 dark:border-slate-800">
                 <CardContent className="p-6">
                   <div className="flex justify-between items-center">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-lg font-semibold">{template.name}</h3>
+                        <h3 className="text-lg font-semibold dark:text-white">{template.name}</h3>
                         {template.isSystem ? (
                           <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-300 font-bold text-[9px] uppercase">
                             Default Template

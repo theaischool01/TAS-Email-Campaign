@@ -31,7 +31,7 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
 
   if (!campaigns || campaigns.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-500 italic shadow-sm">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-500 italic shadow-sm">
         No campaigns sent yet
       </div>
     )
@@ -62,10 +62,10 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-slate-900">Recent Campaigns</h3>
+        <h3 className="font-bold text-slate-900 dark:text-white">Recent Campaigns</h3>
         <Link href="/campaigns" className="text-xs text-blue-600 hover:underline font-semibold">
           View All
         </Link>
@@ -77,7 +77,7 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
           <select 
             value={selectedId} 
             onChange={(e) => setSelectedId(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
+            className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm w-full max-w-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             {campaigns.map(c => (
               <option key={c.id} value={c.id}>
@@ -92,16 +92,16 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
           {/* Status badge */}
           <div className="flex items-center space-x-2">
             <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-            <span className="text-xs font-semibold text-slate-500">{statusText}</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{statusText}</span>
           </div>
 
           {/* Big number */}
-          <div className="mt-2 text-2xl font-extrabold text-slate-900 tracking-tight">
+          <div className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {totalSent.toLocaleString()} Messages Sent
           </div>
 
           {/* Progress Bar */}
-          <div className="w-full h-3 bg-slate-100 rounded-full mt-3 overflow-hidden">
+          <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full mt-3 overflow-hidden">
             <div 
               className="h-full bg-blue-500 rounded-full transition-all duration-300"
               style={{ width: `${Math.min(parseFloat(openRate), 100)}%` }}
@@ -112,15 +112,15 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 text-xs font-semibold">
             <div className="flex items-center space-x-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
-              <span className="text-slate-700">{openRate}% - Opened</span>
+              <span className="text-slate-700 dark:text-slate-300">{openRate}% - Opened</span>
             </div>
             <div className="flex items-center space-x-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-slate-800"></span>
-              <span className="text-slate-700">{clickRate}% - Clicked</span>
+              <span className="text-slate-700 dark:text-slate-300">{clickRate}% - Clicked</span>
             </div>
             <div className="flex items-center space-x-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
-              <span className="text-slate-700">{unopenedRate}% - Unopened</span>
+              <span className="text-slate-700 dark:text-slate-300">{unopenedRate}% - Unopened</span>
             </div>
           </div>
         </div>
@@ -129,7 +129,7 @@ export function RecentCampaignsWidget({ campaigns }: RecentCampaignsWidgetProps)
         <div className="pt-2 flex justify-end">
           <Link 
             href={`/campaigns/${selectedCampaign.id}/report`}
-            className="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors"
+            className="border border-blue-500 text-blue-500 dark:border-blue-400 dark:text-blue-400 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
           >
             View Reports
           </Link>

@@ -137,20 +137,20 @@ export default function CampaignsPage() {
     <DashboardLayout>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Campaigns</h1>
+          <p className="text-muted-foreground dark:text-slate-400 mt-1">
             {isViewer ? "View and track email marketing performance" : "Manage and track your email marketing campaigns"}
           </p>
         </div>
         {!isViewer && (
-          <Button onClick={() => router.push('/campaigns/new')} className="w-full md:w-auto">
+          <Button onClick={() => router.push('/campaigns/new')} className="w-full md:w-auto bg-red-600 hover:bg-red-700 text-white border-0 dark:bg-red-600 dark:hover:bg-red-700">
             <Plus className="h-4 w-4 mr-2" /> New Campaign
           </Button>
         )}
       </div>
 
       {/* Filters */}
-      <Card className="mb-8">
+      <Card className="mb-8 dark:bg-slate-900 dark:border-slate-800">
         <CardContent className="pt-6">
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -191,7 +191,7 @@ export default function CampaignsPage() {
                   <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="date"
-                    className="pl-9"
+                    className="pl-9 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     value={filters.startDate}
                     onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value, page: 1 }))}
                   />
@@ -203,7 +203,7 @@ export default function CampaignsPage() {
                   <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="date"
-                    className="pl-9"
+                    className="pl-9 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     value={filters.endDate}
                     onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value, page: 1 }))}
                   />
@@ -215,7 +215,7 @@ export default function CampaignsPage() {
                   <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Filter by tags (comma separated)"
-                    className="pl-9"
+                    className="pl-9 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     value={filters.tags}
                     onChange={(e) => setFilters(prev => ({ ...prev, tags: e.target.value, page: 1 }))}
                   />
@@ -227,19 +227,19 @@ export default function CampaignsPage() {
       </Card>
 
       {/* Table */}
-      <Card>
+      <Card className="dark:bg-slate-900 dark:border-slate-800">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="py-4 px-4 font-semibold text-sm">Campaign Name</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-center">Status</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-center">Recipients</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-center">Date</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-center">Open Rate</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-center">Click Rate</th>
-                  <th className="py-4 px-4 font-semibold text-sm text-right">Actions</th>
+                <tr className="border-b border-slate-200 bg-muted/30 dark:border-slate-800">
+                  <th className="py-4 px-4 font-semibold text-sm dark:text-slate-400">Campaign Name</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center dark:text-slate-400">Status</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center dark:text-slate-400">Recipients</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center dark:text-slate-400">Date</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center dark:text-slate-400">Open Rate</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-center dark:text-slate-400">Click Rate</th>
+                  <th className="py-4 px-4 font-semibold text-sm text-right dark:text-slate-400">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,10 +266,10 @@ export default function CampaignsPage() {
                       : 0;
                       
                     return (
-                      <tr key={campaign.id} className="border-b hover:bg-muted/10 transition-colors">
+                      <tr key={campaign.id} className="border-b dark:border-slate-800 hover:bg-muted/10 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="py-4 px-4">
-                          <div className="font-bold text-sm">{campaign.name}</div>
-                          <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">{campaign.subject}</div>
+                          <div className="font-bold text-sm dark:text-white">{campaign.name}</div>
+                          <div className="text-[10px] text-muted-foreground dark:text-slate-400 truncate max-w-[200px]">{campaign.subject}</div>
                         </td>
                         <td className="py-4 px-4 text-center">
                           <div className="flex flex-col items-center gap-1">
@@ -278,10 +278,10 @@ export default function CampaignsPage() {
                             </Badge>
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-center text-sm">
+                        <td className="py-4 px-4 text-center text-sm dark:text-slate-300">
                           {campaign.recipientCount?.toLocaleString() || '0'}
                         </td>
-                        <td className="py-4 px-4 text-center text-sm whitespace-nowrap">
+                        <td className="py-4 px-4 text-center text-sm whitespace-nowrap dark:text-slate-300">
                           {campaign.sentAt 
                             ? format(new Date(campaign.sentAt), 'PP')
                             : campaign.scheduledAt
@@ -289,14 +289,14 @@ export default function CampaignsPage() {
                             : '-'
                           }
                         </td>
-                        <td className="py-4 px-4 text-center text-sm font-medium">
+                        <td className="py-4 px-4 text-center text-sm font-medium dark:text-slate-300">
                           {campaign.status === 'SENT' || campaign.totalOpened > 0 ? (
                             <span className={openRate > 0 ? 'text-blue-600' : 'text-muted-foreground'}>
                               {openRate.toFixed(1)}%
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="py-4 px-4 text-center text-sm font-medium">
+                        <td className="py-4 px-4 text-center text-sm font-medium dark:text-slate-300">
                           {campaign.status === 'SENT' || campaign.totalClicked > 0 ? (
                             <span className={clickRate > 0 ? 'text-green-600' : 'text-muted-foreground'}>
                               {clickRate.toFixed(1)}%
@@ -308,7 +308,7 @@ export default function CampaignsPage() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              className="text-xs font-bold"
+                              className="text-xs font-bold text-slate-700 dark:text-slate-300 dark:hover:bg-slate-700 dark:border-slate-700"
                               onClick={() => router.push(`/campaigns/${campaign.id}/report`)}
                               disabled={campaign.status === 'DRAFT'}
                             >
