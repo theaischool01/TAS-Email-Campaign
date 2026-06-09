@@ -85,7 +85,9 @@ export function Sidebar() {
         {!collapsed && (
           <div className="flex items-center gap-2">
             <Mail className="h-6 w-6 text-blue-500 shrink-0" />
-            <span className="text-lg font-bold text-white tracking-tight">MailFlow</span>
+            <div>
+              <span className="text-lg font-bold text-white tracking-tight">MailFlow</span>
+            </div>
           </div>
         )}
         {collapsed && (

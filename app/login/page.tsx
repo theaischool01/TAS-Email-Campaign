@@ -46,9 +46,9 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-white">
       {/* LEFT PANEL — Branding */}
-      <div className="hidden lg:flex w-1/2 bg-[#0d1117] flex-col items-center justify-center p-12 relative">
+      <div className="hidden lg:flex w-1/2 bg-white flex-col items-center justify-center p-12 relative">
         {/* Top-left Logo */}
         <div className="absolute top-8 left-12">
           <Image
@@ -56,30 +56,34 @@ function LoginForm() {
             alt="The AI School"
             width={280}
             height={80}
-            className="object-contain brightness-0 invert"
+            className="object-contain"
           />
         </div>
 
         {/* Center content */}
         <div className="max-w-md">
-          <h1 className="font-bold text-4xl text-white leading-tight">
-            Send smarter campaigns.
+          <h1 className="font-bold text-slate-900 leading-tight" style={{ fontSize: 'clamp(2.5rem, 4vw, 3.5rem)' }}>
+            Scale Email Campaigns
+            <br />
+            with{" "}
+            <span className="text-red-600">AI</span>
+            {" "}Automation.
           </h1>
-          <p className="text-slate-400 mt-4 text-lg max-w-sm leading-relaxed">
-            Reach the right people at the right time with powerful email automation.
+          <p className="text-slate-600 mt-5 text-lg max-w-sm leading-relaxed">
+            Track Opens. Track Clicks. Grow Faster.
           </p>
 
           {/* Feature highlights */}
           <div className="mt-8 space-y-3">
-            <div className="flex items-center gap-2.5 text-slate-300 text-sm">
+            <div className="flex items-center gap-2.5 text-slate-700 text-sm">
               <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Drag-and-drop email builder</span>
             </div>
-            <div className="flex items-center gap-2.5 text-slate-300 text-sm">
+            <div className="flex items-center gap-2.5 text-slate-700 text-sm">
               <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Real-time open & click tracking</span>
             </div>
-            <div className="flex items-center gap-2.5 text-slate-300 text-sm">
+            <div className="flex items-center gap-2.5 text-slate-700 text-sm">
               <CheckCircle className="text-red-500 w-4 h-4 shrink-0" />
               <span>Smart audience segmentation</span>
             </div>
@@ -87,13 +91,13 @@ function LoginForm() {
         </div>
 
         {/* Copyright Footer */}
-        <span className="text-slate-600 text-xs absolute bottom-8 left-12">
+        <span className="text-slate-400 text-xs absolute bottom-8 left-12">
           © 2026 THE AI SCHOOL. All rights reserved.
         </span>
       </div>
 
       {/* RIGHT PANEL — Form */}
-      <div className="flex-1 flex items-center justify-center bg-slate-50 p-8">
+      <div className="flex-1 flex items-center justify-center bg-[#0d1117] p-8">
         <div className="w-full max-w-md">
           {/* Card Wrapper */}
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">

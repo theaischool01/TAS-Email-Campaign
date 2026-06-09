@@ -128,3 +128,21 @@
     @apply font-sans;
   }
 }
+
+@layer base {
+  :root {
+    /* AI School Brand Color Overrides */
+    /* Remaps Tailwind blue palette → AI School red */
+    --color-blue-50: #fef2f2;
+    --color-blue-100: #fee2e2;
+    --color-blue-200: #fecaca;
+    --color-blue-300: #fca5a5;
+    --color-blue-400: #f87171;
+    --color-blue-500: #ef4444;
+    --color-blue-600: #D32F2F;
+    --color-blue-700: #B71C1C;
+    --color-blue-800: #991b1b;
+    --color-blue-900: #7f1d1d;
+    --color-blue-950: #450a0a;
+  }
+}

@@ -320,7 +320,22 @@ export default function ContactListDetailPage() {
                   <Label htmlFor="email">Email *</Label>
                   <Input id="email" name="email" type="email" placeholder="john@example.com" required />
                 </div>
-                
+
+                <div>
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" name="phone" placeholder="+1 (555) 000-0000" />
+                </div>
+
+                <div>
+                  <Label htmlFor="company">Company</Label>
+                  <Input id="company" name="company" placeholder="Acme Corp" />
+                </div>
+
+                <div>
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" name="city" placeholder="New York" />
+                </div>
+
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
                     Cancel

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Type, Image, Square, Layout, Grid3x3, Share2, Code, Settings } from "lucide-react"
+import { Plus, Type, Image, Square, Layout, Grid3x3, Share2, Code, Settings, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -38,6 +38,18 @@ interface BlockItem {
 
 export default function BlockPalette({ onAddBlock, selectedBlock, isInserting, pendingBlockType }: BlockPaletteProps) {
   const [activeCategory, setActiveCategory] = useState("basic")
+  const [copiedTag, setCopiedTag] = useState<string | null>(null)
+
+  const handleCopyTag = async (tag: string) => {
+    const tagText = `{{${tag}}}`
+    try {
+      await navigator.clipboard.writeText(tagText)
+      setCopiedTag(tag)
+      setTimeout(() => setCopiedTag(null), 2000)
+    } catch (error) {
+      console.error("Failed to copy tag:", error)
+    }
+  }
 
   const blockCategories: BlockCategory[] = [
     {
@@ -263,16 +275,33 @@ export default function BlockPalette({ onAddBlock, selectedBlock, isInserting, p
           ].map((mergeTag) => (
             <div
               key={mergeTag.tag}
-              className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer text-sm group"
-              onClick={() => {
-                // This will be handled by the parent component
-                console.log('Insert merge tag:', mergeTag.tag)
-              }}
+              className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 text-sm group"
             >
-              <code className="bg-gray-200 px-1 rounded text-xs group-hover:bg-gray-300 transition-colors">
-                {"{{" + mergeTag.tag + "}}"}
-              </code>
-              <span className="ml-2 text-gray-600">{mergeTag.label}</span>
+              <div
+                className="flex items-center cursor-pointer flex-1"
+                onClick={() => {
+                  console.log('Insert merge tag:', mergeTag.tag)
+                }}
+              >
+                <code className="bg-gray-200 px-1 rounded text-xs group-hover:bg-gray-300 transition-colors">
+                  {"{{" + mergeTag.tag + "}}"}
+                </code>
+                <span className="ml-2 text-gray-600">{mergeTag.label}</span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCopyTag(mergeTag.tag)
+                }}
+                className="ml-2 p-1 rounded hover:bg-gray-200 transition-colors opacity-0 group-hover:opacity-100"
+                title="Copy to clipboard"
+              >
+                {copiedTag === mergeTag.tag ? (
+                  <Check className="h-3 w-3 text-green-600" />
+                ) : (
+                  <Copy className="h-3 w-3 text-gray-500" />
+                )}
+              </button>
             </div>
           ))}
         </div>
