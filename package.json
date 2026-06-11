@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "node worker.js & next start",
+    "worker:start": "prisma generate && node worker.js",
     "lint": "eslint"
   },
   "dependencies": {

@@ -537,27 +537,36 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
       }
     }
 
-    // Stale worker check
-    const staleMinutes = parseInt(process.env.WORKER_STALE_TIMEOUT_MINUTES || '5', 10);
-    const staleWorkerThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
-    await prisma.workerHeartbeat.updateMany({
-      where: {
-        status: { in: ['HEALTHY', 'STARTING'] },
-        lastSeenAt: { lt: staleWorkerThreshold }
-      },
-      data: { status: 'FAILED' }
-    });
+    // Stale worker check (safe — heartbeat table may not exist on first deploy)
+    try {
+      const staleMinutes = parseInt(process.env.WORKER_STALE_TIMEOUT_MINUTES || '5', 10);
+      const staleWorkerThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+      await prisma.workerHeartbeat.updateMany({
+        where: {
+          status: { in: ['HEALTHY', 'STARTING'] },
+          lastSeenAt: { lt: staleWorkerThreshold }
+        },
+        data: { status: 'FAILED' }
+      });
 
-    // Cleanup old heartbeat records (older than 30 days and not healthy)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    await prisma.workerHeartbeat.deleteMany({
-      where: {
-        status: { not: 'HEALTHY' },
-        lastSeenAt: { lt: thirtyDaysAgo }
-      }
-    });
+      // Cleanup old heartbeat records (older than 30 days and not healthy)
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await prisma.workerHeartbeat.deleteMany({
+        where: {
+          status: { not: 'HEALTHY' },
+          lastSeenAt: { lt: thirtyDaysAgo }
+        }
+      });
+    } catch (heartbeatErr) {
+      logger.warn({
+        message: heartbeatErr instanceof Error ? heartbeatErr.message : String(heartbeatErr)
+      }, 'Worker heartbeat stale-check skipped (table may not be migrated yet)');
+    }
   } catch (error) {
-    logger.error({ error }, '❌ Scheduler Error');
+    logger.error({
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, '❌ Scheduler Error');
   }
 });
 
@@ -579,9 +588,13 @@ async function registerWorkerStartup() {
         uptimeSeconds: Math.round(process.uptime())
       }
     });
-    logger.info({ workerId: WORKER_ID }, 'Worker registered in heartbeat database');
+    logger.info({ workerId: WORKER_ID }, 'Worker startup heartbeat registered successfully');
   } catch (err) {
-    logger.error({ error: err.message }, 'Failed to register worker startup heartbeat');
+    // Non-fatal: heartbeat is observability only — worker continues regardless
+    logger.warn({
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined
+    }, 'Worker heartbeat registration skipped — table may not be migrated yet. Worker will continue.');
   }
 }
 
@@ -591,9 +604,12 @@ async function setWorkerHealthy() {
       where: { id: WORKER_ID },
       data: { status: 'HEALTHY' }
     });
-    logger.info({ workerId: WORKER_ID }, 'Worker status set to HEALTHY');
+    logger.info({ workerId: WORKER_ID }, 'Worker status changed to HEALTHY');
   } catch (err) {
-    logger.error({ error: err.message }, 'Failed to update worker status to HEALTHY');
+    // Non-fatal: heartbeat is observability only — worker continues regardless
+    logger.warn({
+      message: err instanceof Error ? err.message : String(err)
+    }, 'Worker HEALTHY status update skipped — heartbeat table may not be migrated yet.');
   }
 }
 
@@ -611,8 +627,12 @@ function startHeartbeatInterval() {
           uptimeSeconds: Math.round(process.uptime())
         }
       });
+      logger.info({ workerId: WORKER_ID }, 'Worker heartbeat updated successfully');
     } catch (err) {
-      logger.error({ error: err.message }, 'Failed to send worker heartbeat update');
+      // Non-fatal: heartbeat is observability only — worker continues regardless
+      logger.warn({
+        message: err instanceof Error ? err.message : String(err)
+      }, 'Worker heartbeat update skipped — heartbeat table may not be migrated yet.');
     }
   }, 60000);
 }
