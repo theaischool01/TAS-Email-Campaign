@@ -147,7 +147,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 👨‍💻 Author
+## 👨💻 Author
 
 **Saheel Yadav**
 - [LinkedIn](https://www.linkedin.com/in/saheel-yadav-ai-ml/)
