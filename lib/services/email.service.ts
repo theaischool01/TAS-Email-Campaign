@@ -1,6 +1,10 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2"
 import nodemailer from "nodemailer"
 import { UnsubscribeService } from "./unsubscribe.service"
+import { prisma as prismaClient } from "@/app/lib/prisma"
+import { decrypt } from "../security/encryption"
+
+const prisma = prismaClient as any
 
 // ─── SES Client ──────────────────────────────────────────────────────────────
 
@@ -13,6 +17,8 @@ const sesClient = new SESv2Client({
 })
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+import logger from '@/lib/logger'
 
 export interface EmailRecipient {
   email: string
@@ -30,6 +36,7 @@ export interface SendEmailParams {
   replyTo?: string
   campaignId?: string
   contactId?: string
+  userId?: string
 }
 
 export interface BulkSendResult {
@@ -109,8 +116,8 @@ const transporter = nodemailer.createTransport({
  */
 export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000"
-  const fromEmail = params.fromEmail || process.env.SES_FROM_EMAIL || "noreply@example.com"
-  const fromName = params.fromName || "Email Campaign Platform"
+  const fromEmail = process.env.DEFAULT_FROM_EMAIL || process.env.SES_FROM_EMAIL || "official@campaign.theaischool.co"
+  const fromName = process.env.DEFAULT_FROM_NAME || "THE AI SCHOOL"
   const contactId = params.to.contactId || params.contactId || 'unknown'
   const encodedEmail = encodeURIComponent(params.to.email)
 
@@ -136,7 +143,9 @@ export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
   const listUnsubscribeUrl = `${baseUrl}/api/unsubscribe?uid=${uid}`
   const footerUnsubscribeUrl = `${baseUrl}/unsubscribe?uid=${uid}`
   
-  await transporter.sendMail({
+  const currentTransporter = transporter
+
+  await currentTransporter.sendMail({
     from: `"${fromName}" <${fromEmail}>`,
     to: params.to.email,
     subject: personalize(params.subject, params.to),
@@ -164,6 +173,7 @@ export async function sendBulkEmails(
     campaignId?: string
     batchSize?: number
     delayMs?: number
+    userId?: string
   } = {}
 ): Promise<BulkSendResult> {
   const batchSize = options.batchSize || 10   // send 10 at a time
@@ -190,10 +200,16 @@ export async function sendBulkEmails(
             fromEmail: options.fromEmail,
             replyTo: options.replyTo,
             campaignId: options.campaignId,
+            userId: options.userId,
           })
           result.totalSent++
         } catch (error) {
-          console.error(`❌ EMAIL: Failed to send to ${recipient.email}:`, error)
+          logger.error({
+            campaignId: options.campaignId,
+            recipientEmail: recipient.email,
+            errorName: (error as Error).name,
+            errorMessage: (error as Error).message
+          }, 'Bulk email send failed for recipient')
           result.totalFailed++
           result.failedEmails.push(recipient.email)
         }

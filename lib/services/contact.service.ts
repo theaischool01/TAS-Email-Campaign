@@ -1,6 +1,7 @@
 import { Session } from "next-auth"
 import { PrismaClient } from '@prisma/client'
 import { ContactAccessControl } from '@/lib/rbac/contact-access'
+import logger from '@/lib/logger'
 
 /**
  * Centralized contact data service for consistent RBAC across the platform
@@ -16,12 +17,7 @@ export class ContactService {
       where: filter
     })
     
-    console.log("📊 Dashboard Contact Count:", {
-      filter,
-      count,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count }, 'Dashboard contact count fetched')
     
     return count
   }
@@ -84,17 +80,7 @@ export class ContactService {
       members: undefined // Remove members array to keep response light
     }))
     
-    console.log("🔧 Contact Lists Service Debug:", {
-      filter: whereClause,
-      count: transformedLists.length,
-      firstList: transformedLists[0] ? {
-        id: transformedLists[0].id,
-        name: transformedLists[0].name,
-        memberCount: transformedLists[0].memberCount,
-        activeCount: transformedLists[0].activeCount,
-        ownerId: transformedLists[0].ownerId
-      } : null
-    })
+    logger.debug({ userId: session?.user?.id, count: transformedLists.length }, 'Contact lists fetched')
     
     return transformedLists
   }

@@ -5,6 +5,8 @@
  * privacy proxy, etc.) are NOT bots — they represent real human opens.
  * Only flag actual web crawlers, security scanners, and link prefetchers.
  */
+import logger from '@/lib/logger'
+
 export function isBotUserAgent(userAgent: string, ip?: string): boolean {
   if (!userAgent) return true; // Empty UA is usually a bot
   
@@ -61,7 +63,7 @@ export function isBotUserAgent(userAgent: string, ip?: string): boolean {
   const isMatched = botPatterns.some(pattern => pattern.test(userAgent));
   
   if (isMatched) {
-    console.log(`[BOT-DETECTION] Blocked bot: ${userAgent}`);
+    logger.debug({ userAgent }, 'Bot/crawler user agent detected and blocked');
   }
 
   return isMatched;

@@ -172,9 +172,41 @@ export default async function PreferencesPage(props: {
   searchParams: Promise<{ uid?: string }>
 }) {
   const searchParams = await props.searchParams
+  const { uid } = searchParams
   const { prisma } = await import("@/app/lib/prisma")
-  const settings = await prisma.settings.findUnique({ where: { id: 'system' } })
-  const orgName = settings?.orgName || "M9 Analytics"
+  const { UnsubscribeService } = await import("@/lib/services/unsubscribe.service")
+
+  let orgName = "M9 Analytics"
+  if (uid) {
+    const data = await UnsubscribeService.decodeToken(uid)
+    if (data) {
+      const { cid, cam } = data
+      let creatorId: string | null = null
+      
+      if (cid && cid !== 'unknown') {
+        const contact = await prisma.contact.findUnique({
+          where: { id: cid },
+          select: { userId: true }
+        })
+        if (contact) creatorId = contact.userId
+      }
+      
+      if (!creatorId && cam) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: cam },
+          select: { createdBy: true }
+        })
+        if (campaign) creatorId = campaign.createdBy
+      }
+
+      if (creatorId) {
+        const settings = await prisma.settings.findUnique({ where: { userId: creatorId } })
+        if (settings?.orgName) {
+          orgName = settings.orgName
+        }
+      }
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">

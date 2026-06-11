@@ -3,12 +3,35 @@ import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import logger from "@/lib/logger"
+import { seedDefaultTemplatesForUser } from "@/lib/services/default-template.service"
 
 const prisma = prismaClient as any
 
+import { enforceRateLimit, getClientIp, handleRateLimitError } from "@/lib/security/rate-limit"
+
 export async function POST(request: NextRequest) {
   try {
-    // 1. Verify the x-developer-secret header matches the environment secret
+    // 1. Enforce Rate Limiting
+    const ip = getClientIp(request)
+    try {
+      await enforceRateLimit("admin", `admin:${ip}`)
+    } catch (limitErr) {
+      const errorRes = handleRateLimitError(limitErr)
+      if (errorRes) return errorRes
+    }
+
+    // 2. Prevent Bootstrap if Admin Already Exists
+    const existingAdmin = await prisma.user.findFirst({
+      where: { role: "ADMIN" }
+    })
+    if (existingAdmin) {
+      return NextResponse.json(
+        { error: "Forbidden - Administrator account already configured" },
+        { status: 403 }
+      )
+    }
+
+    // 3. Verify the x-developer-secret header matches the environment secret
     const developerSecret = process.env.DEVELOPER_SECRET
     if (!developerSecret) {
       return NextResponse.json(
@@ -58,41 +81,28 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    // 4. Create admin with role 'ADMIN'
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        name,
-        role: "ADMIN"
-      }
-    })
-
-    // 5. Copy system templates on admin creation
-    const systemTemplates = await prisma.emailTemplate.findMany({
-      where: { isSystem: true }
-    })
-
-    for (const template of systemTemplates) {
-      await prisma.emailTemplate.create({
+    // 4. Create admin and seed default templates in a single transaction
+    const user = await prisma.$transaction(async (tx: any) => {
+      const newUser = await tx.user.create({
         data: {
-          name: template.name,
-          category: template.category,
-          thumbnail: template.thumbnail,
-          html: template.html,
-          json: template.json,
-          createdBy: user.id,
-          isPublic: template.isPublic,
-          isSystem: false
+          email,
+          password: hashedPassword,
+          name,
+          role: "ADMIN"
         }
       })
-    }
 
-    logger.info(`[ADMIN-SETUP] ADMIN created successfully: ${email}`)
+      // Seed default templates for this user using the transaction client
+      await seedDefaultTemplatesForUser(newUser.id, tx)
+
+      return newUser
+    })
+
+    logger.info(`[ADMIN-SETUP] ADMIN created successfully and templates seeded: ${email}`)
 
     return NextResponse.json({
       success: true,
-      message: "Admin user created and system templates seeded successfully.",
+      message: "Admin user created and default templates seeded successfully.",
       user: {
         email: user.email,
         name: user.name,

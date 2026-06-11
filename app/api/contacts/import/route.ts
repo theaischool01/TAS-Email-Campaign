@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
+import { enforceRateLimit, getClientIp, handleRateLimitError } from "@/lib/security/rate-limit"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 // @ts-ignore
 import Papa from "papaparse"
@@ -15,6 +16,16 @@ export async function POST(request: NextRequest) {
 
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Enforce dual rate limiting: User quota & IP quota
+    const ip = getClientIp(request)
+    try {
+      await enforceRateLimit("csvImportUser", `import:user:${session.user.id}`)
+      await enforceRateLimit("csvImportIp", `import:ip:${ip}`)
+    } catch (limitErr) {
+      const errorRes = handleRateLimitError(limitErr)
+      if (errorRes) return errorRes
     }
 
     const formData = await request.formData()
@@ -76,83 +87,142 @@ export async function POST(request: NextRequest) {
       total: rows.length,
       added: 0,
       duplicates: 0,
+      failed: 0,
       ignored: 0,
     }
 
-    const contactIds: string[] = []
+    const BATCH_SIZE = 1000;
 
-    for (const row of rows) {
-      // --- Email ---
-      const rawEmail = emailCol ? (row[emailCol] ?? "").trim().toLowerCase() : ""
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const chunk = rows.slice(i, i + BATCH_SIZE);
+      const validRows: Array<{
+        email: string;
+        firstName: string | null;
+        lastName: string | null;
+      }> = [];
 
-      if (!rawEmail || !emailRegex.test(rawEmail)) {
-        counts.ignored++
-        continue
+      // Phase 1: Filter & Normalize batch rows
+      for (const row of chunk) {
+        const rawEmail = emailCol ? (row[emailCol] ?? "").trim().toLowerCase() : "";
+        if (!rawEmail || !emailRegex.test(rawEmail)) {
+          counts.ignored++;
+          continue;
+        }
+
+        let firstName: string | null = null;
+        let lastName: string | null = null;
+
+        if (nameCol && row[nameCol]) {
+          const parts = row[nameCol].trim().split(/\s+/);
+          firstName = parts[0] || null;
+          lastName = parts.slice(1).join(" ") || null;
+        } else {
+          if (firstNameCol && row[firstNameCol]) {
+            firstName = row[firstNameCol].trim() || null;
+          }
+          if (lastNameCol && row[lastNameCol]) {
+            lastName = row[lastNameCol].trim() || null;
+          }
+        }
+
+        validRows.push({
+          email: rawEmail,
+          firstName,
+          lastName,
+        });
       }
 
-      // --- Duplicate check ---
-      const existing = await prisma.contact.findUnique({
-        where: { email: rawEmail },
-      })
+      if (validRows.length === 0) continue;
 
-      if (existing) {
-        counts.duplicates++
-        // Still add to list if not already a member
-        const alreadyMember = await prisma.contactListMember.findFirst({
-          where: { contactListId: targetListId, contactId: existing.id },
-        })
-        if (!alreadyMember) {
-          contactIds.push(existing.id)
-        }
-        continue
-      }
-
-      // --- Name parsing ---
-      let firstName: string | null = null
-      let lastName: string | null = null
-
-      if (nameCol && row[nameCol]) {
-        const parts = row[nameCol].trim().split(/\s+/)
-        firstName = parts[0] || null
-        lastName = parts.slice(1).join(" ") || null
-      } else {
-        if (firstNameCol && row[firstNameCol]) {
-          firstName = row[firstNameCol].trim() || null
-        }
-        if (lastNameCol && row[lastNameCol]) {
-          lastName = row[lastNameCol].trim() || null
-        }
-      }
-
-      // --- Create contact ---
       try {
-        const newContact = await prisma.contact.create({
-          data: {
-            email: rawEmail,
-            firstName,
-            lastName,
-            status: "ACTIVE",
-            source: "IMPORT",
+        const emails = validRows.map(r => r.email);
+
+        // Fetch existing contacts in DB for this batch
+        const existingContacts = await prisma.contact.findMany({
+          where: {
+            userId: session.user.id,
+            email: { in: emails }
           },
-        })
+          select: {
+            id: true,
+            email: true
+          }
+        });
 
-        contactIds.push(newContact.id)
-        counts.added++
-      } catch {
-        // Unique constraint race condition — treat as duplicate
-        counts.duplicates++
+        const existingMap = new Map<string, { id: string; email: string }>(
+          existingContacts.map((c: any) => [c.email.toLowerCase(), c])
+        );
+
+        // Separate new contacts vs existing duplicates
+        const newContactsData: any[] = [];
+        const existingIdsToLink: string[] = [];
+
+        for (const row of validRows) {
+          const matched = existingMap.get(row.email);
+          if (matched) {
+            counts.duplicates++;
+            existingIdsToLink.push(matched.id);
+          } else {
+            newContactsData.push({
+              email: row.email,
+              userId: session.user.id,
+              firstName: row.firstName,
+              lastName: row.lastName,
+              status: "ACTIVE",
+              source: "IMPORT"
+            });
+          }
+        }
+
+        // Run transaction for this batch
+        await prisma.$transaction(async (tx: any) => {
+          // 1. Create missing contacts
+          if (newContactsData.length > 0) {
+            await tx.contact.createMany({
+              data: newContactsData,
+              skipDuplicates: true
+            });
+          }
+
+          // 2. Fetch all contacts IDs for the chunk
+          const contacts = await tx.contact.findMany({
+            where: {
+              userId: session.user.id,
+              email: { in: emails }
+            },
+            select: {
+              id: true,
+              email: true
+            }
+          });
+
+          // 3. Build membership arrays
+          const memberships = contacts.map((c: any) => ({
+            contactListId: targetListId,
+            contactId: c.id
+          }));
+
+          // 4. Bulk insert memberships
+          if (memberships.length > 0) {
+            await tx.contactListMember.createMany({
+              data: memberships,
+              skipDuplicates: true
+            });
+          }
+
+          counts.added += newContactsData.length;
+        });
+
+        // Clear references to let garbage collection free heap
+        existingMap.clear();
+        newContactsData.length = 0;
+        existingIdsToLink.length = 0;
+        emails.length = 0;
+
+      } catch (batchErr) {
+        console.error(`❌ Import failed for batch index ${i}:`, batchErr);
+        counts.failed += chunk.length;
       }
-    }
-
-    // Bulk-add all new contacts to the target list
-    if (contactIds.length > 0) {
-      await prisma.contactListMember.createMany({
-        data: contactIds.map((contactId) => ({
-          contactListId: targetListId,
-          contactId,
-        })),
-        skipDuplicates: true,
-      })
     }
 
     return NextResponse.json({

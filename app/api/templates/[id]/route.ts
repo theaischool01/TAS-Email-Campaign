@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { canAccessResource } from "@/lib/rbac-filters"
+import { sanitizeEmailHTML } from "@/lib/security/html-sanitizer"
 
 const prisma = prismaClient as any
 
@@ -137,7 +138,7 @@ export async function PUT(
       data: {
         ...(name && { name }),
         ...(category && { category }),
-        ...(html && { html }),
+        ...(html && { html: sanitizeEmailHTML(html) }),
         ...(json !== undefined && { json }),
         ...(isPublic !== undefined && { isPublic })
       }

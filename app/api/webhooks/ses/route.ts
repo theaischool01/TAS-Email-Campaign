@@ -59,6 +59,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: "Missing campaignId" })
       }
 
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { createdBy: true }
+      })
+      if (!campaign) {
+        logger.warn({ campaignId }, "[SES WEBHOOK] Campaign not found in database");
+        return NextResponse.json({ message: "Campaign not found" })
+      }
+      const campaignOwnerId = campaign.createdBy
+
       if (eventType === 'Open') {
         const ua = message.open?.userAgent || ''
         const ip = message.open?.ipAddress || ''
@@ -134,14 +144,23 @@ export async function POST(request: NextRequest) {
             if (isHardBounce) {
               // Hard bounce — mark BOUNCED immediately + add to suppression
               await prisma.contact.updateMany({
-                where: { email },
+                where: { email, userId: campaignOwnerId },
                 data: { status: 'BOUNCED' }
               });
 
               await prisma.suppressionList.upsert({
-                where: { email },
+                where: {
+                  userId_email: {
+                    userId: campaignOwnerId,
+                    email
+                  }
+                },
                 update: { reason: `SES Permanent Bounce (${bounce.bounceSubType})` },
-                create: { email, reason: `SES Permanent Bounce (${bounce.bounceSubType})` }
+                create: {
+                  userId: campaignOwnerId,
+                  email,
+                  reason: `SES Permanent Bounce (${bounce.bounceSubType})`
+                }
               });
 
               logger.warn({ email, bounceSubType: bounce.bounceSubType }, 
@@ -150,7 +169,7 @@ export async function POST(request: NextRequest) {
             } else if (isSoftBounce) {
               // Soft bounce — increment counter, only suppress after 3
               const contact = await prisma.contact.findFirst({
-                where: { email },
+                where: { email, userId: campaignOwnerId },
                 select: { id: true, softBounceCount: true }
               });
 
@@ -168,9 +187,18 @@ export async function POST(request: NextRequest) {
                   });
 
                   await prisma.suppressionList.upsert({
-                    where: { email },
+                    where: {
+                      userId_email: {
+                        userId: campaignOwnerId,
+                        email
+                      }
+                    },
                     update: { reason: `SES Soft Bounce x3 (${bounce.bounceSubType})` },
-                    create: { email, reason: `SES Soft Bounce x3 (${bounce.bounceSubType})` }
+                    create: {
+                      userId: campaignOwnerId,
+                      email,
+                      reason: `SES Soft Bounce x3 (${bounce.bounceSubType})`
+                    }
                   });
 
                   logger.warn({ email, softBounceCount: newCount }, 
@@ -228,7 +256,7 @@ export async function POST(request: NextRequest) {
 
           if (!existingComplaint) {
             await prisma.contact.updateMany({
-              where: { email },
+              where: { email, userId: campaignOwnerId },
               data: { status: 'COMPLAINED' }
             });
 
@@ -253,9 +281,18 @@ export async function POST(request: NextRequest) {
 
             // Add to suppression list for complaints
             await prisma.suppressionList.upsert({
-              where: { email },
+              where: {
+                userId_email: {
+                  userId: campaignOwnerId,
+                  email
+                }
+              },
               update: { reason: `SES Complaint (${complaint.complaintFeedbackType})` },
-              create: { email, reason: `SES Complaint (${complaint.complaintFeedbackType})` }
+              create: {
+                userId: campaignOwnerId,
+                email,
+                reason: `SES Complaint (${complaint.complaintFeedbackType})`
+              }
             });
 
             // Calculate complaint rate and alert if threshold exceeded
@@ -356,9 +393,18 @@ export async function POST(request: NextRequest) {
           const contact = await prisma.contact.findUnique({ where: { id: contactId } });
           if (contact) {
             await prisma.suppressionList.upsert({
-              where: { email: contact.email },
+              where: {
+                userId_email: {
+                  userId: contact.userId,
+                  email: contact.email
+                }
+              },
               update: { reason: 'SES Native Unsubscribe' },
-              create: { email: contact.email, reason: 'SES Native Unsubscribe' }
+              create: {
+                userId: contact.userId,
+                email: contact.email,
+                reason: 'SES Native Unsubscribe'
+              }
             });
           }
         }

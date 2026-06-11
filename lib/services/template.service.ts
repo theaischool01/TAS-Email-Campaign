@@ -1,6 +1,7 @@
 import { Session } from "next-auth"
 import { PrismaClient } from '@prisma/client'
 import { TemplateAccessControl } from '@/lib/rbac/template-access'
+import logger from '@/lib/logger'
 
 /**
  * Centralized template data service for consistent RBAC across the platform
@@ -16,12 +17,7 @@ export class TemplateService {
       where: filter
     })
     
-    console.log("📊 Dashboard Template Count:", {
-      filter,
-      count,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count }, 'Dashboard template count fetched')
     
     return count
   }
@@ -98,13 +94,8 @@ export class TemplateService {
       }
     })
     
-    console.log("🔧 Template Service Debug:", {
-      userId: session?.user?.id,
-      userRole: session?.user?.role,
-      filter: JSON.stringify(whereClause),
-      count: templates.length,
-      templateOwners: templates.map(t => t.createdBy)
-    })
+    // PII-safe: log count only, not templateOwners array
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count: templates.length }, 'Templates fetched')
     
     return templates
   }

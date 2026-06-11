@@ -5,9 +5,19 @@ import { format } from "date-fns"
 import { Shield, Mail, AlertTriangle, UserX, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/lib/next-auth"
+import { redirect } from "next/navigation"
+
 export default async function SuppressionListPage() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    redirect("/api/auth/signin")
+  }
+
   const suppressedContacts = await (prisma as any).contact.findMany({
     where: {
+      userId: session.user.id,
       status: {
         in: ['BOUNCED', 'COMPLAINED', 'UNSUBSCRIBED']
       }

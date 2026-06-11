@@ -1,12 +1,83 @@
-const logger = require('./lib/worker-logger');
+const createLogger = require('./lib/worker-logger');
+let logger = createLogger(); // pre-init: workerId not yet available
 const { PrismaClient } = require('@prisma/client');
 // FORCE DEPLOY TIMESTAMP: 2026-05-11 00:39 AM
 const cron = require('node-cron');
+const { z } = require('zod');
+
+class InvalidCampaignError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidCampaignError';
+  }
+}
+
+class InvalidPayloadError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidPayloadError';
+  }
+}
+
+const QueuePayloadSchema = z.object({
+  campaignId: z.string().min(1),
+  userId: z.string().optional(),
+  recipient: z.object({
+    email: z.string().email(),
+    contactId: z.string().optional()
+  })
+});
+
+function isPermanentError(error) {
+  return (
+    error instanceof SyntaxError ||
+    error instanceof z.ZodError ||
+    error instanceof InvalidCampaignError ||
+    error instanceof InvalidPayloadError
+  );
+}
 const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand, ChangeMessageVisibilityCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
 const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+const Sentry = require('@sentry/node');
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.05 : 1.0,
+  sendDefaultPii: false,
+  environment: process.env.NODE_ENV || 'production',
+  release: process.env.APP_VERSION || '1.0.0',
+});
+
+// --- Graceful Shutdown & Lifecycle State ---
+const os = require('os');
+const HOSTNAME = os.hostname();
+const WORKER_ID = `${HOSTNAME}-${process.pid}-${Date.now()}`;
+
+// Re-initialize logger with full worker identity context.
+// Every log line from this point will automatically include
+// workerId, version, and environment without manual field passing.
+logger = createLogger({
+  workerId: WORKER_ID,
+  version: process.env.APP_VERSION || 'unknown',
+  environment: process.env.NODE_ENV || 'production',
+});
+
+Sentry.setTag('workerId', WORKER_ID);
+Sentry.setTag('service', 'email-campaign-worker');
+
+let isShuttingDown = false;
+let shutdownStarted = false;
+let activeMessages = 0;
+let successfulMessages = 0;
+let failedMessages = 0;
+
+let healthServer = null;
+let heartbeatInterval = null;
+let metricsInterval = null;
+let cacheCleanupInterval = null;
 
 // --- Startup env validation ---
 const REQUIRED_ENV_VARS = [
@@ -32,18 +103,24 @@ if (missingVars.length > 0) {
 const http = require('http');
 
 const UnsubscribeTokenService = require('./lib/services/unsubscribe-token');
+const { decrypt } = require('./lib/security/encryption');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
 const logPath = path.join(process.cwd(), 'worker-error.log');
-function logError(err) {
+async function logError(err) {
   const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] CRASH: ${err.stack || err}\n`;
+  const message = `[${timestamp}] CRASH: ${err?.stack || err}\n`;
   fs.appendFileSync(logPath, message);
   logger.error(message);
+  Sentry.captureException(err);
+  await Sentry.close(2000);
+  process.exit(1);
 }
 
 process.on('uncaughtException', logError);
-process.on('unhandledRejection', logError);
+process.on('unhandledRejection', (reason) => {
+  logError(reason instanceof Error ? reason : new Error(String(reason)));
+});
 
 logger.info('🚀 Worker is initializing...');
 fs.appendFileSync(logPath, `\n--- Worker Started at ${new Date().toISOString()} ---\n`);
@@ -71,6 +148,109 @@ http.createServer((req, res) => {
 });
 
 const prisma = new PrismaClient();
+
+// --- In-Memory Caches ---
+const campaignCache = new Map();
+const settingsCache = new Map();
+const suppressionCache = new Map();
+
+// --- Cached Fetch Helpers ---
+async function getCampaign(campaignId) {
+  const now = Date.now();
+  const cached = campaignCache.get(campaignId);
+  if (cached && cached.expiresAt > now) {
+    logger.info(`Campaign cache hit: ${campaignId}`);
+    return cached.data;
+  }
+
+  logger.info(`Campaign cache miss: ${campaignId}`);
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      senderEmail: true,
+      senderName: true,
+      subject: true,
+      totalSent: true,
+      totalFailed: true,
+      recipientCount: true,
+      createdBy: true,
+      template: {
+        select: {
+          html: true
+        }
+      }
+    }
+  });
+
+  if (campaign) {
+    campaignCache.set(campaignId, {
+      data: campaign,
+      expiresAt: now + 30000 // 30 seconds
+    });
+  }
+  return campaign;
+}
+
+async function getUserSettings(userId) {
+  const now = Date.now();
+  const cached = settingsCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    logger.info(`Settings cache hit: ${userId}`);
+    return cached.settings;
+  }
+
+  logger.info(`Settings cache miss: ${userId}`);
+  const settings = await prisma.settings.findUnique({
+    where: { userId }
+  });
+
+  if (settings) {
+    settingsCache.set(userId, {
+      settings,
+      expiresAt: now + 300000 // 5 minutes
+    });
+  }
+  return settings;
+}
+
+async function getSuppressionSet(userId) {
+  const now = Date.now();
+  const cached = suppressionCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    logger.info(`Suppression cache hit: ${userId}`);
+    return cached.emails;
+  }
+
+  logger.info(`Suppression cache miss: ${userId}`);
+  const suppressionList = await prisma.suppressionList.findMany({
+    where: { userId },
+    select: { email: true }
+  });
+
+  const emailsSet = new Set(suppressionList.map(s => s.email.toLowerCase()));
+  suppressionCache.set(userId, {
+    emails: emailsSet,
+    expiresAt: now + 120000 // 2 minutes
+  });
+  return emailsSet;
+}
+
+// Cleanup interval to avoid memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of campaignCache.entries()) {
+    if (val.expiresAt <= now) campaignCache.delete(key);
+  }
+  for (const [key, val] of settingsCache.entries()) {
+    if (val.expiresAt <= now) settingsCache.delete(key);
+  }
+  for (const [key, val] of suppressionCache.entries()) {
+    if (val.expiresAt <= now) suppressionCache.delete(key);
+  }
+}, 60000);
 const awsConfig = {
   region: process.env.AWS_REGION || "ap-south-1",
   credentials: {
@@ -80,9 +260,10 @@ const awsConfig = {
 };
 
 const sqsClient = new SQSClient(awsConfig);
-const sesClient = new SESv2Client(awsConfig);
 const nodemailer = require('nodemailer');
-const transporter = nodemailer.createTransport({
+
+const sesClient = new SESv2Client(awsConfig);
+const globalTransporter = nodemailer.createTransport({
   SES: { sesClient, SendEmailCommand }
 });
 
@@ -203,8 +384,25 @@ function classifyError(error) {
   return true;
 }
 
+function classifyFailureCode(error) {
+  const msg = error.message || '';
+  const code = error.code || '';
+  const status = error.$metadata?.httpStatusCode || error.statusCode || null;
+
+  if (code === 'MessageRejected' || msg.includes('not verified') || msg.includes('verified')) {
+    return 'SES_REJECTED';
+  }
+  if (code === 'InvalidParameterException' || msg.includes('invalid') || msg.includes('malformed')) {
+    return 'INVALID_ADDRESS';
+  }
+  if (status === 429 || code === 'Throttling' || msg.includes('throttl')) {
+    return 'RATE_LIMIT';
+  }
+  return 'SES_FAILED';
+}
+
 // ─── Scheduler ───────────────────────────────────────────────────────────────
-cron.schedule('* * * * *', async () => {
+const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
     const scheduledCampaigns = await prisma.campaign.findMany({
@@ -220,6 +418,7 @@ cron.schedule('* * * * *', async () => {
       logger.info(`🚀 Launching Campaign: ${campaign.name}`);
       // Fetch all suppressed emails to filter them out efficiently
       const suppressedEmails = await prisma.suppressionList.findMany({
+        where: { userId: campaign.createdBy },
         select: { email: true },
         take: 50000
       });
@@ -272,32 +471,160 @@ cron.schedule('* * * * *', async () => {
     }
 
     // Stale campaign check
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
-    const staleCampaigns = await prisma.campaign.findMany({
-      where: {
-        status: 'SENDING',
-        updatedAt: { lt: tenMinutesAgo }
-      },
-      select: { id: true, name: true, updatedAt: true }
-    })
+    const staleTimeoutMinutes = parseInt(process.env.CAMPAIGN_STALE_TIMEOUT_MINUTES || '15', 10);
+    const startGraceMinutes = parseInt(process.env.CAMPAIGN_START_GRACE_MINUTES || '5', 10);
 
-    for (const campaign of staleCampaigns) {
-      logger.warn({ updatedAt: campaign.updatedAt }, `⚠️ [STALE CAMPAIGN] ${campaign.name} stuck in SENDING since ${campaign.updatedAt}. Marking as FAILED.`)
-      await prisma.campaign.update({
-        where: { id: campaign.id },
-        data: { status: 'FAILED' }
-      })
-      logger.warn(`✅ [STALE CAMPAIGN] ${campaign.name} marked as FAILED`)
+    const staleThreshold = new Date(Date.now() - staleTimeoutMinutes * 60 * 1000);
+    const graceThreshold = new Date(Date.now() - startGraceMinutes * 60 * 1000);
+
+    const sendingCampaigns = await prisma.campaign.findMany({
+      where: { status: 'SENDING' },
+      select: { id: true, name: true, sentAt: true, createdAt: true }
+    });
+
+    if (sendingCampaigns.length > 0) {
+      const campaignIds = sendingCampaigns.map(c => c.id);
+      const activeDeliveries = await prisma.emailDelivery.findMany({
+        where: {
+          campaignId: { in: campaignIds },
+          updatedAt: { gte: staleThreshold }
+        },
+        select: { campaignId: true },
+        distinct: ['campaignId']
+      });
+      const activeCampaignIds = new Set(activeDeliveries.map(d => d.campaignId));
+
+      for (const campaign of sendingCampaigns) {
+        const startedAt = campaign.sentAt ?? campaign.createdAt;
+        if (startedAt >= graceThreshold) {
+          logger.debug({ campaignId: campaign.id, name: campaign.name, startedAt }, 'Campaign is in startup grace period, ignoring watchdog check.');
+          continue;
+        }
+
+        if (activeCampaignIds.has(campaign.id)) {
+          logger.debug({ campaignId: campaign.id, name: campaign.name }, 'Campaign is active (recent deliveries found).');
+          continue;
+        }
+
+        logger.warn(
+          { campaignId: campaign.id, name: campaign.name, startedAt, staleThreshold },
+          `⚠️ [STALE CAMPAIGN] ${campaign.name} has no delivery activity since ${staleThreshold}. Marking as FAILED.`
+        );
+
+        await prisma.$transaction([
+          prisma.campaign.update({
+            where: { id: campaign.id },
+            data: {
+              status: 'FAILED'
+            }
+          }),
+          prisma.campaignActivityLog.create({
+            data: {
+              campaignId: campaign.id,
+              actorId: 'system-watchdog',
+              action: 'CAMPAIGN_FAILED_TIMEOUT',
+              metadata: {
+                reason: 'NO_DELIVERY_ACTIVITY_TIMEOUT',
+                timeoutMinutes: staleTimeoutMinutes,
+                graceMinutes: startGraceMinutes,
+                lastCheckedAt: new Date().toISOString()
+              }
+            }
+          })
+        ]);
+
+        logger.warn(`✅ [STALE CAMPAIGN] ${campaign.name} marked as FAILED with timeout log`);
+      }
     }
+
+    // Stale worker check
+    const staleMinutes = parseInt(process.env.WORKER_STALE_TIMEOUT_MINUTES || '5', 10);
+    const staleWorkerThreshold = new Date(Date.now() - staleMinutes * 60 * 1000);
+    await prisma.workerHeartbeat.updateMany({
+      where: {
+        status: { in: ['HEALTHY', 'STARTING'] },
+        lastSeenAt: { lt: staleWorkerThreshold }
+      },
+      data: { status: 'FAILED' }
+    });
+
+    // Cleanup old heartbeat records (older than 30 days and not healthy)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    await prisma.workerHeartbeat.deleteMany({
+      where: {
+        status: { not: 'HEALTHY' },
+        lastSeenAt: { lt: thirtyDaysAgo }
+      }
+    });
   } catch (error) {
     logger.error({ error }, '❌ Scheduler Error');
   }
 });
 
+// --- Worker Heartbeat Instrumentation ---
+async function registerWorkerStartup() {
+  try {
+    await prisma.workerHeartbeat.create({
+      data: {
+        id: WORKER_ID,
+        hostname: HOSTNAME,
+        processId: process.pid,
+        status: 'STARTING',
+        version: process.env.APP_VERSION || 'development',
+        environment: process.env.NODE_ENV || 'production',
+        activeMessages: 0,
+        successfulMessages: 0,
+        failedMessages: 0,
+        memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        uptimeSeconds: Math.round(process.uptime())
+      }
+    });
+    logger.info({ workerId: WORKER_ID }, 'Worker registered in heartbeat database');
+  } catch (err) {
+    logger.error({ error: err.message }, 'Failed to register worker startup heartbeat');
+  }
+}
+
+async function setWorkerHealthy() {
+  try {
+    await prisma.workerHeartbeat.update({
+      where: { id: WORKER_ID },
+      data: { status: 'HEALTHY' }
+    });
+    logger.info({ workerId: WORKER_ID }, 'Worker status set to HEALTHY');
+  } catch (err) {
+    logger.error({ error: err.message }, 'Failed to update worker status to HEALTHY');
+  }
+}
+
+function startHeartbeatInterval() {
+  heartbeatInterval = setInterval(async () => {
+    try {
+      await prisma.workerHeartbeat.update({
+        where: { id: WORKER_ID },
+        data: {
+          status: isShuttingDown ? 'SHUTTING_DOWN' : 'HEALTHY',
+          memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+          activeMessages,
+          successfulMessages,
+          failedMessages,
+          uptimeSeconds: Math.round(process.uptime())
+        }
+      });
+    } catch (err) {
+      logger.error({ error: err.message }, 'Failed to send worker heartbeat update');
+    }
+  }, 60000);
+}
+
 // ─── Queue Processor ─────────────────────────────────────────────────────────
 async function processQueue() {
+  await registerWorkerStartup();
+  startHeartbeatInterval();
+
   logger.info('📬 Worker initialized and listening for messages...');
   isPollingActive = true;
+  await setWorkerHealthy();
 
   // Recurring ping every 4 minutes to keep Neon PostgreSQL connection alive
   /*
@@ -314,7 +641,7 @@ async function processQueue() {
   let qUrl = null;
 
   let waitTime = 20;
-  while (true) {
+  while (!isShuttingDown) {
     try {
       if (!qUrl) {
         qUrl = await getQueueUrl();
@@ -327,6 +654,11 @@ async function processQueue() {
         AttributeNames: ['ApproximateReceiveCount']
       }));
 
+      if (isShuttingDown) {
+        logger.info('Shutdown started while waiting for SQS long poll. Returning messages to queue.');
+        break;
+      }
+
       if (!response.Messages || response.Messages.length === 0) {
         waitTime = 20;
         continue;
@@ -335,58 +667,130 @@ async function processQueue() {
       waitTime = 0;
 
       for (const message of response.Messages) {
-        const { campaignId, recipient } = JSON.parse(message.Body);
-        console.log('PROCESSING MESSAGE:', recipient.email, 'contactId:', recipient.contactId)
-        const contactId = recipient.contactId || 'unknown';
-        const idPart = contactId && contactId !== 'unknown' ? contactId : recipient.email;
-        const lockId = `send:${campaignId}:${idPart}`;
-        console.log('LOCK ID:', lockId)
-        
+        if (isShuttingDown) {
+          logger.info('Skipping message processing due to active shutdown.');
+          continue;
+        }
+
+        activeMessages++;
         try {
-          // Attempt to create lock
+          let delivery = null;
+          let campaignId = null;
+          let recipient = null;
+          let contactId = null;
+          
+          // 1. JSON Parse
+          const parsedBody = JSON.parse(message.Body);
+          
+          // 2. Zod Payload Validation
+          const payload = QueuePayloadSchema.parse(parsedBody);
+          
+          campaignId = payload.campaignId;
+          recipient = payload.recipient;
+          contactId = recipient.contactId && recipient.contactId !== 'unknown' ? recipient.contactId : null;
+          const emailLower = recipient.email.toLowerCase();
+
+          // 3. Fetch Campaign
+          const campaign = await getCampaign(campaignId);
+          if (!campaign) {
+            throw new InvalidCampaignError(`Campaign not found: ${campaignId}`);
+          }
+
+          // 4. Validate campaign status
+          if (campaign.status !== 'SENDING') {
+            throw new InvalidCampaignError(`Campaign status is ${campaign.status} (not SENDING)`);
+          }
+
+          // 5. Resolve owner strictly from database creator
+          const ownerId = campaign.createdBy;
+          if (payload.userId && payload.userId !== campaign.createdBy) {
+            logger.warn({
+              campaignId: campaign.id,
+              suppliedUserId: payload.userId,
+              actualUserId: campaign.createdBy
+            }, "🛡️ SQS tenant mismatch detected! Using actual campaign creator ID as the owner.");
+          }
+
+          // 6. Create EmailDelivery lock (status=SENDING)
           try {
-            await prisma.campaignActivityLog.create({
+            delivery = await prisma.emailDelivery.create({
               data: {
-                id: lockId,
                 campaignId,
-                actorId: contactId,
-                contactId: contactId === 'unknown' ? null : contactId,
-                action: 'EMAIL_SEND_IN_PROGRESS',
-                metadata: { email: recipient.email, timestamp: new Date().toISOString() }
+                userId: ownerId,
+                contactId,
+                recipientEmail: emailLower,
+                status: 'SENDING',
+                startedAt: new Date()
               }
             });
           } catch (createError) {
             if (createError.code === 'P2002') {
-              console.log('LOCK COLLISION on:', lockId)
-              const existingLock = await prisma.campaignActivityLog.findUnique({
-                where: { id: lockId }
+              logger.warn(
+                {
+                  campaignId,
+                  recipientEmail: emailLower,
+                  sqsMessageId: message.MessageId
+                },
+                'Email delivery lock collision detected'
+              );
+              const existing = await prisma.emailDelivery.findUnique({
+                where: {
+                  campaignId_recipientEmail: {
+                    campaignId,
+                    recipientEmail: emailLower
+                  }
+                }
               });
 
-              if (!existingLock) {
-                throw new Error("Lock deleted mid-flight. Retry.");
+              if (!existing) {
+                throw new Error("Delivery record disappeared. Retry.");
               }
 
-              if (existingLock.action === 'EMAIL_SENT') {
+              if (existing.status === 'SENT') {
                 logger.info(`⏩ Email already sent for ${recipient.email}. Deleting SQS message.`);
                 await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
                 continue;
               }
 
-              if (existingLock.action === 'EMAIL_SEND_IN_PROGRESS') {
-                const lockAgeMs = Date.now() - new Date(existingLock.createdAt).getTime();
-                const STALE_LOCK_THRESHOLD = 5 * 60 * 1000;
+              if (existing.status === 'FAILED') {
+                if (existing.failureCode === 'TEMPORARY_ERROR') {
+                  logger.info(`🔄 Retrying previously failed delivery for ${recipient.email} (Attempt ${existing.retryCount + 1}).`);
+                  delivery = await prisma.emailDelivery.update({
+                    where: { id: existing.id },
+                    data: {
+                      status: 'SENDING',
+                      startedAt: new Date(),
+                      retryCount: { increment: 1 }
+                    }
+                  });
+                } else {
+                  logger.info(`⏩ Email delivery permanently failed previously for ${recipient.email} (Code: ${existing.failureCode}). Deleting SQS message.`);
+                  await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+                  continue;
+                }
+              } else if (existing.status === 'SENDING') {
+                const ageMs = Date.now() - new Date(existing.startedAt).getTime();
+                const STALE_THRESHOLD = 15 * 60 * 1000; // 15 minutes
 
-                if (lockAgeMs < STALE_LOCK_THRESHOLD) {
+                if (ageMs < STALE_THRESHOLD) {
+                  logger.info(`⏳ Lock is fresh for ${recipient.email} (age: ${Math.round(ageMs/1000)}s). Retrying later.`);
                   throw new Error(`Lock is fresh for ${recipient.email}. Retrying later.`);
                 } else {
-                  logger.warn(`⚠️ Stale lock detected for ${recipient.email}. Reclaiming.`);
-                  const updateRes = await prisma.campaignActivityLog.updateMany({
-                    where: { id: lockId, createdAt: existingLock.createdAt },
-                    data: { createdAt: new Date() }
+                  logger.warn(`⚠️ Stale delivery detected for ${recipient.email}. Setting status to FAILED and aborting (no resend).`);
+                  await prisma.emailDelivery.update({
+                    where: { id: existing.id },
+                    data: {
+                      status: 'FAILED',
+                      failureCode: 'STALE_DELIVERY',
+                      failureReason: 'STALE_DELIVERY_UNKNOWN_STATE'
+                    }
                   });
-                  if (updateRes.count === 0) {
-                    throw new Error("Stale lock reclamation race lost.");
-                  }
+                  await prisma.campaign.update({
+                    where: { id: campaignId },
+                    data: { totalFailed: { increment: 1 } }
+                  }).catch(() => {});
+                  await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+                  continue;
                 }
               }
             } else {
@@ -394,61 +798,30 @@ async function processQueue() {
             }
           }
 
-          const campaign = await prisma.campaign.findUnique({
-            where: { id: campaignId },
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              senderEmail: true,
-              senderName: true,
-              subject: true,
-              totalSent: true,
-              totalFailed: true,
-              recipientCount: true,
-              template: {
-                select: {
-                  html: true
-                }
-              }
-            }
-          });
-
-          if (!campaign || campaign.status !== 'SENDING') {
-            await prisma.campaignActivityLog.delete({ where: { id: lockId } }).catch(() => {});
-            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
-            continue;
-          }
-
-          // FINAL PROTECTION: Check if recipient unsubscribed or is suppressed right before sending
-          const contact = await prisma.contact.findFirst({
-            where: { email: recipient.email },
-            select: { status: true }
-          });
+          // FINAL PROTECTION: Check if recipient is suppressed using cached Set
+          const suppressionSet = await getSuppressionSet(campaign.createdBy);
           
-          const isSuppressed = await prisma.suppressionList.findUnique({
-            where: { email: recipient.email }
-          });
-
-          if ((contact && contact.status !== 'ACTIVE') || isSuppressed) {
-            logger.info(`⏩ Skipping ${recipient.email}: Contact is ${contact?.status || 'UNKNOWN'} or suppressed.`);
-            await prisma.campaignActivityLog.delete({ where: { id: lockId } }).catch(() => {});
-            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
-            
+          if (suppressionSet.has(recipient.email.toLowerCase())) {
+            logger.info(`⏩ Skipping ${recipient.email}: Contact is suppressed (cache check).`);
+            await prisma.emailDelivery.update({
+              where: { id: delivery.id },
+              data: {
+                status: 'FAILED',
+                failureCode: 'INVALID_ADDRESS',
+                failureReason: 'Contact is suppressed'
+              }
+            });
             // Increment failed/skipped count to ensure campaign completion logic works
             await prisma.campaign.update({
               where: { id: campaignId },
               data: { totalFailed: { increment: 1 } }
             });
+            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
             continue;
           }
 
-          let fromEmail = campaign.senderEmail || process.env.SES_FROM_EMAIL;
-          if (fromEmail.includes('example.com')) {
-            fromEmail = process.env.SES_FROM_EMAIL;
-          }
-          
-          const fromName = campaign.senderName || "Marketing Team";
+          const fromEmail = process.env.DEFAULT_FROM_EMAIL || process.env.SES_FROM_EMAIL || "official@campaign.theaischool.co";
+          const fromName = process.env.DEFAULT_FROM_NAME || "THE AI SCHOOL";
           const appUrl = process.env.NEXT_PUBLIC_APP_URL;
           
           if (!appUrl) {
@@ -457,13 +830,13 @@ async function processQueue() {
           
           // Secure Unsubscribe Token (uid)
           const uid = UnsubscribeTokenService.encodeToken({
-            cid: contactId,
+            cid: contactId || 'unknown',
             cam: campaignId,
             em: recipient.email
           });
 
           const footerUnsubscribeUrl = `${appUrl}/unsubscribe?uid=${uid}`;
-          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />`;
+          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId || 'unknown'}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />`;
           
           let emailHtml = campaign.template?.html || "No content";
           
@@ -481,7 +854,7 @@ async function processQueue() {
             }
             if (!url.startsWith('http')) return match;
             
-            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`;
+            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId || 'unknown'}?url=${encodeURIComponent(url)}`;
             return match.replace(url, trackingUrl);
           });
 
@@ -514,7 +887,7 @@ async function processQueue() {
             ? fullHtml.replace('</body>', `${unsubscribeBar}</body>`) 
             : `${fullHtml}${unsubscribeBar}`;
 
-          const sendResult = await transporter.sendMail({
+          const sendResult = await globalTransporter.sendMail({
             from: `"${fromName}" <${fromEmail}>`,
             to: recipient.email,
             subject: campaign.subject,
@@ -523,12 +896,12 @@ async function processQueue() {
               'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
               'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
               'X-Campaign-ID': campaignId,
-              'X-Contact-ID': contactId
+              'X-Contact-ID': contactId || 'unknown'
             },
             ses: {
               Tags: [
                 { Name: 'campaignId', Value: campaignId },
-                { Name: 'contactId', Value: contactId }
+                { Name: 'contactId', Value: contactId || 'unknown' }
               ]
             }
           });
@@ -542,9 +915,20 @@ async function processQueue() {
           for (let attempt = 1; attempt <= 5; attempt++) {
             try {
               const transactionResult = await prisma.$transaction(async (tx) => {
-                await tx.campaignActivityLog.update({
-                  where: { id: lockId },
+                await tx.emailDelivery.update({
+                  where: { id: delivery.id },
                   data: {
+                    status: 'SENT',
+                    sesMessageId: sendResult?.messageId || sendResult?.info?.messageId || 'unknown'
+                  }
+                });
+
+                // Write the sent activity log for compatibility/user visibility
+                await tx.campaignActivityLog.create({
+                  data: {
+                    campaignId,
+                    actorId: contactId || 'unknown',
+                    contactId,
                     action: 'EMAIL_SENT',
                     metadata: {
                       email: recipient.email,
@@ -568,7 +952,7 @@ async function processQueue() {
               globalLastProcessedAt = new Date().toISOString()
               break;
             } catch (dbError) {
-              logger.warn({ error: dbError.message }, `[DB RETRY] Attempt ${attempt} failed to update lock to EMAIL_SENT:`);
+              logger.warn({ error: dbError.message }, `[DB RETRY] Attempt ${attempt} failed to update delivery status to SENT:`);
               if (attempt < 5) {
                 await new Promise(r => setTimeout(r, 2000));
               }
@@ -576,23 +960,96 @@ async function processQueue() {
           }
 
           if (!dbSuccess) {
-            throw new Error(`Failed to commit EMAIL_SENT status to database after 5 attempts.`);
+            throw new Error(`Failed to commit SENT status to database after 5 attempts.`);
           }
 
           if (updatedCampaign && updatedCampaign.totalSent + updatedCampaign.totalFailed >= updatedCampaign.recipientCount) {
             await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'SENT' } });
           }
 
-          console.log('SUCCESS:', recipient.email)
+          const sesMessageId = sendResult?.messageId || sendResult?.info?.messageId || 'unknown';
+          logger.info(
+            {
+              campaignId,
+              recipientEmail: recipient.email,
+              sqsMessageId: message.MessageId,
+              deliveryId: delivery?.id,
+              sesMessageId
+            },
+            'Email delivered successfully'
+          );
+          successfulMessages++;
           await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
         } catch (innerError) {
-          console.log('FAILED:', recipient.email, innerError.message)
+          failedMessages++;
+          logger.error(
+            {
+              campaignId,
+              recipientEmail: recipient?.email ?? 'unknown',
+              sqsMessageId: message.MessageId,
+              deliveryId: delivery?.id,
+              errorName: innerError.name,
+              errorMessage: innerError.message,
+              stack: innerError.stack
+            },
+            'Email delivery failed'
+          );
+
+          // Sentry should only capture unexpected/infrastructure failures
+          const shouldReportToSentry = !(
+            innerError instanceof InvalidCampaignError ||
+            innerError instanceof InvalidPayloadError ||
+            innerError.name === 'ZodError' ||
+            (innerError.message && (
+              innerError.message.includes('Lock is fresh') ||
+              innerError.message.includes('not verified') ||
+              innerError.message.includes('suppressed')
+            ))
+          );
+
+          if (shouldReportToSentry) {
+            const recipientDomain = recipient && recipient.email ? recipient.email.split('@')[1] : 'unknown';
+            Sentry.withScope((scope) => {
+              scope.setTags({
+                campaignId: campaignId || 'unknown',
+                sqsMessageId: message.MessageId || 'unknown',
+                recipientDomain,
+                deliveryId: delivery?.id || 'unknown',
+                errorName: innerError.name || 'Error'
+              });
+              scope.setContext('email_job', {
+                campaignId,
+                sqsMessageId: message.MessageId,
+                recipientDomain,
+                deliveryId: delivery?.id
+              });
+              Sentry.captureException(innerError);
+            });
+          }
+
+          if (isPermanentError(innerError)) {
+            logger.error({ error: innerError.message, type: innerError.name || 'Error' }, `[PERMANENT FAILURE] Poison message detected:`);
+            
+            // Delete message from SQS immediately to prevent poison retry loops
+            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+            continue;
+          }
+
           const isRetryable = classifyError(innerError);
           
           if (isRetryable) {
-            logger.warn({ error: innerError.message }, `[RETRYABLE ERROR] SQS Message for ${recipient.email} will be retried:`);
-            // Release lock to allow immediate re-processing
-            await prisma.campaignActivityLog.delete({ where: { id: lockId } }).catch(() => {});
+            logger.warn({ error: innerError.message }, `[RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} will be retried:`);
+            
+            if (delivery) {
+              await prisma.emailDelivery.update({
+                where: { id: delivery.id },
+                data: {
+                  status: 'FAILED',
+                  failureCode: 'TEMPORARY_ERROR',
+                  failureReason: innerError.message
+                }
+              }).catch(() => {});
+            }
 
             // Adjust Visibility Timeout with exponential backoff
             const receiveCount = Number(message.Attributes?.ApproximateReceiveCount) || 1;
@@ -604,30 +1061,45 @@ async function processQueue() {
               VisibilityTimeout: backoffSeconds
             })).catch((visibilityErr) => logger.error({ error: visibilityErr.message }, "Failed to change visibility timeout:"));
           } else {
-            logger.error({ error: innerError.message }, `[NON-RETRYABLE ERROR] SQS Message for ${recipient.email} failed permanently:`);
-            // Release lock
-            await prisma.campaignActivityLog.delete({ where: { id: lockId } }).catch(() => {});
-
-            await prisma.campaign.update({
-              where: { id: campaignId },
-              data: { totalFailed: { increment: 1 } }
-            }).catch(() => {});
+            logger.error({ error: innerError.message }, `[NON-RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} failed permanently:`);
             
-            await prisma.campaignActivityLog.create({
-              data: {
-                campaignId,
-                action: 'SEND_FAILED',
-                actorId: 'system-worker',
-                metadata: { email: recipient.email, error: innerError.message }
-              }
-            }).catch(() => {});
+            if (delivery) {
+              await prisma.emailDelivery.update({
+                where: { id: delivery.id },
+                data: {
+                  status: 'FAILED',
+                  failureCode: classifyFailureCode(innerError),
+                  failureReason: innerError.message
+                }
+              }).catch(() => {});
+            }
+
+            if (campaignId) {
+              await prisma.campaign.update({
+                where: { id: campaignId },
+                data: { totalFailed: { increment: 1 } }
+              }).catch(() => {});
+              
+              await prisma.campaignActivityLog.create({
+                data: {
+                  campaignId,
+                  action: 'SEND_FAILED',
+                  actorId: contactId || 'system-worker',
+                  contactId,
+                  metadata: { email: recipient ? recipient.email : 'unknown', error: innerError.message }
+                }
+              }).catch(() => {});
+            }
 
             await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
           }
+        } finally {
+          activeMessages--;
         }
       }
     } catch (error) {
       logger.error({ error }, '❌ Queue Error:');
+      Sentry.captureException(error);
       await new Promise(r => setTimeout(r, 5000));
     }
   }
@@ -635,16 +1107,92 @@ async function processQueue() {
 
 processQueue();
 
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received — shutting down worker gracefully...')
-  await new Promise(r => setTimeout(r, 2000))
-  logger.info('Worker shutdown complete')
-  process.exit(0)
-})
+async function gracefulShutdown(signal) {
+  if (shutdownStarted) {
+    logger.warn(`Shutdown already in progress. Ignoring ${signal}`);
+    return;
+  }
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received — shutting down worker gracefully...')
-  await new Promise(r => setTimeout(r, 2000))
-  logger.info('Worker shutdown complete')
-  process.exit(0)
-})
+  shutdownStarted = true;
+  isShuttingDown = true;
+
+  logger.info(`Received ${signal}. Starting graceful shutdown.`);
+
+  // Stop heartbeat timer immediately to prevent sending new updates after setting isShuttingDown
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
+  // Update status to SHUTTING_DOWN in database
+  try {
+    await prisma.workerHeartbeat.update({
+      where: { id: WORKER_ID },
+      data: {
+        status: 'SHUTTING_DOWN',
+        lastSeenAt: new Date()
+      }
+    });
+    logger.info('Worker status updated to SHUTTING_DOWN in database.');
+  } catch (err) {
+    logger.error({ error: err.message }, 'Failed to update worker status to SHUTTING_DOWN');
+  }
+
+  // Stop new scheduled tasks
+  if (campaignWatchdogTask) {
+    campaignWatchdogTask.stop();
+  }
+
+  if (cacheCleanupInterval) {
+    clearInterval(cacheCleanupInterval);
+  }
+
+  if (metricsInterval) {
+    clearInterval(metricsInterval);
+  }
+
+  // Prevent infinite waiting
+  const timeoutSeconds = parseInt(
+    process.env.GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS || '60',
+    10
+  );
+
+  const forceExit = setTimeout(() => {
+    logger.error(`Graceful shutdown exceeded ${timeoutSeconds}s. Forcing exit.`);
+    process.exit(1);
+  }, timeoutSeconds * 1000);
+
+  forceExit.unref();
+
+  // Wait for active messages to finish
+  while (activeMessages > 0) {
+    logger.info(`Waiting for ${activeMessages} active messages to finish.`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  logger.info('All active messages completed. Closing resources.');
+
+  try {
+    if (healthServer) {
+      await new Promise(resolve => healthServer.close(resolve));
+    }
+
+    await prisma.$disconnect();
+    logger.info('Prisma disconnected successfully.');
+  } catch (error) {
+    logger.error({ error: error.message }, 'Error during worker shutdown.');
+  }
+
+  try {
+    await Sentry.close(2000);
+    logger.info('Sentry closed successfully.');
+  } catch (sentryErr) {
+    logger.error({ error: sentryErr.message }, 'Error closing Sentry.');
+  }
+
+  clearTimeout(forceExit);
+  logger.info('Worker shutdown completed successfully.');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

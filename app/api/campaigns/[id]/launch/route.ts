@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
+import { enforceRateLimit, handleRateLimitError } from "@/lib/security/rate-limit"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
 import { sendBulkEmails, EmailRecipient } from "@/lib/services/email.service"
@@ -22,34 +23,21 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    try {
+      await enforceRateLimit("campaignLaunch", `launch:${session.user.id}`)
+    } catch (limitErr) {
+      const errorRes = handleRateLimitError(limitErr)
+      if (errorRes) return errorRes
+    }
+
     const body = await request.json().catch(() => ({}))
     const excludedContactIds: string[] = body.excludedContactIds || []
 
-    // Fetch campaign with full relations
+    // Fetch campaign metadata
     let existingCampaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
-        recipientLists: {
-          include: {
-            contactList: {
-              include: {
-                members: {
-                  include: {
-                    contact: {
-                      select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                        status: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
+        recipientLists: true,
         recipientSegments: {
           include: { segment: true },
         },
@@ -180,55 +168,103 @@ export async function POST(
     )
 
     // Collect excluded contacts from excluded lists
-    let excludedListContactIds = new Set<string>()
+    const excludedContactIdsSet = new Set<string>()
     if (excludedContactListIds.length > 0) {
       const excludedMembers = await prisma.contactListMember.findMany({
         where: { contactListId: { in: excludedContactListIds } },
         select: { contactId: true },
       })
-      excludedListContactIds = new Set(excludedMembers.map((m: any) => m.contactId))
+      excludedMembers.forEach((m: any) => excludedContactIdsSet.add(m.contactId))
     }
 
-    const allContacts = (existingCampaign.recipientLists || []).flatMap(
-      (rl: any) => (rl.contactList?.members || []).map((m: any) => m.contact).filter(Boolean)
-    )
-
-    const filteredContacts = allContacts.filter(
-      (contact: any) => !excludedContactIds.includes(contact.id)
-    )
-
-    logger.info({ campaignId, excludedCount: excludedContactIds.length }, "LAUNCH: Excluded contacts filtered")
-
-    // Build unique recipients map (email → recipient data)
-    const recipientsMap = new Map<string, EmailRecipient>()
+    // Add manually excluded IDs from body
+    if (excludedContactIds && Array.isArray(excludedContactIds)) {
+      excludedContactIds.forEach((id: string) => excludedContactIdsSet.add(id))
+    }
 
     // Fetch suppression list for this campaign's run
     const suppressedEmails = await prisma.suppressionList.findMany({
+      where: { userId: existingCampaign.createdBy },
       select: { email: true }
     })
-    const suppressedSet = new Set(suppressedEmails.map((s: any) => s.email))
+    const suppressedSet = new Set(suppressedEmails.map((s: any) => s.email.trim().toLowerCase()))
 
-    for (const contact of filteredContacts) {
-      // Skip excluded, unsubscribed, bounced, complained, OR suppressed contacts
-      if (excludedListContactIds.has(contact.id)) continue
-      if (contact.status !== "ACTIVE") continue
-      if (suppressedSet.has(contact.email)) continue
-      
-      // Deduplicate by email
-      if (!recipientsMap.has(contact.email)) {
-        recipientsMap.set(contact.email, {
-          email: contact.email,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          contactId: contact.id
-        })
+    const targetListIds = (existingCampaign.recipientLists || []).map((rl: any) => rl.contactListId)
+
+    // Check for scheduling
+    const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
+    const isScheduled = scheduledAt && scheduledAt > new Date()
+
+    // Enqueue or Count via streaming loop
+    const processedEmails = new Set<string>()
+    let lastMemberId: string | null = null
+    let recipientCount = 0
+
+    const { QueueService } = await import("@/lib/services/queue.service")
+
+    logger.info({ campaignId, targetListIds }, "LAUNCH: Starting recipient stream loop")
+
+    while (true) {
+      const members: any[] = await prisma.contactListMember.findMany({
+        where: { contactListId: { in: targetListIds } },
+        take: 1000,
+        cursor: lastMemberId ? { id: lastMemberId } : undefined,
+        skip: lastMemberId ? 1 : 0,
+        select: {
+          id: true,
+          contact: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              status: true
+            }
+          }
+        },
+        orderBy: { id: "asc" }
+      })
+
+      if (members.length === 0) break
+
+      const batchMessages: any[] = []
+
+      for (const member of members) {
+        const contact = member.contact
+        if (!contact) continue
+        if (contact.status !== "ACTIVE") continue
+
+        const emailLower = contact.email.trim().toLowerCase()
+        if (suppressedSet.has(emailLower)) continue
+        if (excludedContactIdsSet.has(contact.id)) continue
+        if (processedEmails.has(emailLower)) continue
+
+        processedEmails.add(emailLower)
+        recipientCount++
+
+        if (!isScheduled) {
+          batchMessages.push({
+            campaignId,
+            userId: existingCampaign.createdBy,
+            recipient: {
+              email: contact.email,
+              firstName: contact.firstName || undefined,
+              lastName: contact.lastName || undefined,
+              contactId: contact.id || undefined
+            }
+          })
+        }
       }
+
+      if (!isScheduled && batchMessages.length > 0) {
+        logger.info({ campaignId, batchSize: batchMessages.length, totalProcessed: recipientCount }, "LAUNCH: Sending SQS batch")
+        await QueueService.enqueueBatch(batchMessages)
+      }
+
+      lastMemberId = members[members.length - 1].id
     }
 
-    const recipients = Array.from(recipientsMap.values())
-    const recipientCount = recipients.length
-
-    logger.info({ campaignId, recipientCount }, "LAUNCH: Eligible recipients found")
+    logger.info({ campaignId, recipientCount }, "LAUNCH: Recipient stream loop completed")
 
     if (recipientCount === 0) {
       logger.warn({ campaignId }, "LAUNCH: No active recipients found")
@@ -237,10 +273,6 @@ export async function POST(
         { status: 422 }
       )
     }
-
-    // ─── Check for scheduling ─────────────────────────────────────────────
-    const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
-    const isScheduled = scheduledAt && scheduledAt > new Date()
 
     if (isScheduled) {
       // ─── SCHEDULED SEND ──────────────────────────────────────────────────
@@ -280,7 +312,7 @@ export async function POST(
       })
     }
 
-    // ─── SEND NOW (Queueing) ──────────────────────────────────────────────
+    // ─── SEND NOW (Queueing Complete) ────────────────────────────────────────
 
     // ─── Mark campaign as SENDING ───────────────────────────────────────────
     await prisma.campaign.update({
@@ -294,62 +326,31 @@ export async function POST(
       },
     })
 
-    // ─── Enqueue emails via AWS SQS ────────────────────────────────────────
-    logger.info({ campaignId, recipientCount }, "LAUNCH: Enqueueing recipients")
-
+    // Log campaign launch activity
     try {
-      const messages = recipients.map(r => ({
-        campaignId,
-        recipient: {
-          email: r.email,
-          firstName: r.firstName || undefined,
-          lastName: r.lastName || undefined,
-          contactId: r.contactId || undefined
-        }
-      }))
-
-      const { QueueService } = await import("@/lib/services/queue.service")
-      await QueueService.enqueueBatch(messages)
-      logger.info({ campaignId }, "LAUNCH: All recipients enqueued")
-
-      // Separate activity logging so it doesn't break the launch if it fails
-      try {
-        await prisma.campaignActivityLog.create({
-          data: {
-            campaignId,
-            actorId: session.user.id,
-            action: "CAMPAIGN_LAUNCHED",
-            metadata: {
-              sentAt: new Date().toISOString(),
-              recipientCount,
-              launchedBy: session.user.id,
-            },
-          },
-        })
-      } catch (logError) {
-        logger.error({ error: logError }, "LAUNCH: Activity logging failed (non-critical)")
-      }
-
-      return NextResponse.json({
-        success: true,
+      await prisma.campaignActivityLog.create({
         data: {
-          status: "SENDING",
-          recipientCount,
+          campaignId,
+          actorId: session.user.id,
+          action: "CAMPAIGN_LAUNCHED",
+          metadata: {
+            sentAt: new Date().toISOString(),
+            recipientCount,
+            launchedBy: session.user.id,
+          },
         },
       })
-
-    } catch (enqueueError: any) {
-      logger.error({ error: enqueueError }, "LAUNCH: Enqueueing failed")
-      // Only revert if we haven't successfully started the process
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { status: "DRAFT" },
-      })
-      return NextResponse.json(
-        { error: "Failed to queue emails for delivery", details: enqueueError.message },
-        { status: 500 }
-      )
+    } catch (logError) {
+      logger.error({ error: logError }, "LAUNCH: Activity logging failed (non-critical)")
     }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        status: "SENDING",
+        recipientCount,
+      },
+    })
 
   } catch (error) {
     logger.error({ error }, "LAUNCH: POST /api/campaigns/[id]/launch - CRITICAL ERROR")

@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     const segments = await prisma.segment.findMany({
+      where: { userId: session.user.id },
       orderBy: { createdAt: 'desc' }
     })
 
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         description,
-        criteria
+        criteria,
+        userId: session.user.id
       }
     })
 

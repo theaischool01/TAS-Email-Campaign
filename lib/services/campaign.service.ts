@@ -1,6 +1,7 @@
 import { Session } from "next-auth"
 import { PrismaClient } from '@prisma/client'
 import { CampaignAccessControl } from '@/lib/rbac/campaign-access'
+import logger from '@/lib/logger'
 
 /**
  * Centralized campaign data service for consistent RBAC across the platform
@@ -16,12 +17,7 @@ export class CampaignService {
       where: filter
     })
     
-    console.log("📊 Dashboard Campaign Count:", {
-      filter,
-      count,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count }, 'Dashboard campaign count fetched')
     
     return count
   }
@@ -106,15 +102,7 @@ export class CampaignService {
       prisma.campaign.count({ where: whereClause })
     ])
 
-    console.log("� Campaigns Retrieved:", {
-      filter: whereClause,
-      count: campaigns.length,
-      total,
-      skip,
-      take,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count: campaigns.length, total }, 'Campaigns list fetched')
 
     return {
       campaigns,
@@ -150,14 +138,19 @@ export class CampaignService {
       throw new Error("Forbidden")
     }
 
-    // Get non-openers (sent but not opened)
-    const logs = await (prisma as any).campaignActivityLog.findMany({
-      where: { campaignId: originalId },
-      select: { contactId: true, type: true }
+    // Get sent contact IDs
+    const sentLogs = await prisma.emailDelivery.findMany({
+      where: { campaignId: originalId, status: 'SENT' },
+      select: { contactId: true }
     })
+    const sentContactIds = new Set(sentLogs.map(l => l.contactId).filter(Boolean) as string[])
 
-    const sentContactIds = new Set(logs.filter((l: any) => l.type === 'SENT').map((l: any) => l.contactId))
-    const openedContactIds = new Set(logs.filter((l: any) => l.type === 'OPENED').map((l: any) => l.contactId))
+    // Get opened contact IDs
+    const openedLogs = await prisma.campaignActivityLog.findMany({
+      where: { campaignId: originalId, action: 'EMAIL_OPENED' },
+      select: { contactId: true }
+    })
+    const openedContactIds = new Set(openedLogs.map(l => l.contactId).filter(Boolean) as string[])
     
     const nonOpenerIds = Array.from(sentContactIds).filter(id => !openedContactIds.has(id))
 
@@ -236,86 +229,88 @@ export class CampaignService {
       throw new Error("Forbidden")
     }
 
-    // 2. Fetch all activity logs for this campaign for processing
-    console.log(`📊 Report: Fetching logs for campaign ${campaignId}...`)
-    let logs = []
-    try {
-      logs = await prisma.campaignActivityLog.findMany({
-        where: { campaignId },
-        include: { contact: true },
-        orderBy: { createdAt: 'asc' }
-      })
-      console.log(`📊 Report: Found ${logs.length} activity logs`)
-    } catch (dbError: any) {
-      console.error(`❌ Report DB Error:`, dbError)
-      throw new Error(`Database error: ${dbError.message}`)
-    }
+    // 2. Fetch counts directly from DB
+    const [sent, opened, clicked, bounced, complained, unsubscribed] = await Promise.all([
+      prisma.emailDelivery.count({ where: { campaignId, status: 'SENT' } }),
+      prisma.campaignActivityLog.count({ where: { campaignId, action: 'EMAIL_OPENED' } }),
+      prisma.campaignActivityLog.count({ where: { campaignId, action: 'EMAIL_CLICKED' } }),
+      prisma.campaignActivityLog.count({ where: { campaignId, action: 'EMAIL_BOUNCED' } }),
+      prisma.campaignActivityLog.count({ where: { campaignId, action: { in: ['EMAIL_COMPLAINED', 'EMAIL_COMPLAINT'] } } }),
+      prisma.campaignActivityLog.count({ where: { campaignId, action: 'EMAIL_UNSUBSCRIBED' } })
+    ])
 
-    // 3. Process Summary Stats with caps
-    console.log(`📊 Report: Processing summary stats...`)
-    const delivered = (campaign.totalSent || 0) - (campaign.totalBounced || 0)
-    const uniqueOpens = new Set(logs.filter(l => l.action === 'EMAIL_OPENED').map(l => l.actorId)).size
-    const uniqueClicks = new Set(logs.filter(l => l.action === 'EMAIL_CLICKED').map(l => l.actorId)).size
+    // Compute unique counts using distinct queries
+    const [uniqueOpenRecords, uniqueClickRecords] = await Promise.all([
+      prisma.campaignActivityLog.findMany({
+        where: { campaignId, action: 'EMAIL_OPENED' },
+        distinct: ['actorId'],
+        select: { actorId: true }
+      }),
+      prisma.campaignActivityLog.findMany({
+        where: { campaignId, action: 'EMAIL_CLICKED' },
+        distinct: ['actorId'],
+        select: { actorId: true }
+      })
+    ])
+
+    const uniqueOpens = uniqueOpenRecords.length
+    const uniqueClicks = uniqueClickRecords.length
+    const delivered = sent - bounced
 
     const summary = {
-      sent: campaign.totalSent || 0,
-      opened: campaign.totalOpened || 0,
-      clicked: campaign.totalClicked || 0,
-      bounced: campaign.totalBounced || 0,
-      complained: campaign.totalComplained || 0,
-      unsubscribed: logs.filter(l => l.action === 'EMAIL_UNSUBSCRIBED').length || campaign.totalUnsubscribed || 0,
+      sent,
+      opened,
+      clicked,
+      bounced,
+      complained,
+      unsubscribed,
       delivered,
       uniqueOpens: Math.min(uniqueOpens, delivered > 0 ? delivered : uniqueOpens),
       uniqueClicks: Math.min(uniqueClicks, delivered > 0 ? delivered : uniqueClicks),
     }
-    console.log(`📊 Report: Summary stats processed`, summary)
 
-    // 4. Process Open Rate Over Time (Hourly for 48h, then daily)
-    console.log(`📊 Report: Processing timeline...`)
+    // 3. Process Open Rate Over Time (select only createdAt for opens)
+    const openLogs = await prisma.campaignActivityLog.findMany({
+      where: { campaignId, action: 'EMAIL_OPENED' },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' }
+    })
+
     const openTimeline: Record<string, number> = {}
-    try {
-      const startAt = new Date(campaign.sentAt || campaign.createdAt)
-      const now = new Date()
-      const diffHours = Math.floor((now.getTime() - startAt.getTime()) / (1000 * 60 * 60))
+    const startAt = new Date(campaign.sentAt || campaign.createdAt)
+    const now = new Date()
+    const diffHours = Math.floor((now.getTime() - startAt.getTime()) / (1000 * 60 * 60))
 
-      logs.filter(l => l.action === 'EMAIL_OPENED').forEach(log => {
-        const logDate = new Date(log.createdAt)
-        let key: string
-        
-        if (diffHours <= 48) {
-          key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')} ${logDate.getHours().toString().padStart(2,'0')}:00`
-        } else {
-          key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')}`
-        }
-        
-        openTimeline[key] = (openTimeline[key] || 0) + 1
-      })
-      console.log(`📊 Report: Timeline processed (${Object.keys(openTimeline).length} data points)`)
-    } catch (timelineError: any) {
-      console.error("❌ Report Timeline Error:", timelineError)
-      // Non-blocking but logged
-    }
+    openLogs.forEach(log => {
+      const logDate = new Date(log.createdAt)
+      let key: string
+      if (diffHours <= 48) {
+        key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')} ${logDate.getHours().toString().padStart(2,'0')}:00`
+      } else {
+        key = `${logDate.getFullYear()}-${(logDate.getMonth()+1).toString().padStart(2,'0')}-${logDate.getDate().toString().padStart(2,'0')}`
+      }
+      openTimeline[key] = (openTimeline[key] || 0) + 1
+    })
 
-    // 5. Process Link Click Breakdown
-    console.log(`📊 Report: Processing link clicks...`)
+    // 4. Process Link Click Breakdown
+    const clickLogs = await prisma.campaignActivityLog.findMany({
+      where: { campaignId, action: 'EMAIL_CLICKED' },
+      select: { actorId: true, metadata: true }
+    })
+
     const linkStats: Record<string, { clicks: number, unique: number, users: Set<string> }> = {}
-    try {
-      logs.filter(l => l.action === 'EMAIL_CLICKED').forEach(log => {
-        const metadata = log.metadata as any
-        const url = metadata?.url || 'Unknown'
-        
-        if (!linkStats[url]) {
-          linkStats[url] = { clicks: 0, unique: 0, users: new Set() }
-        }
-        
-        linkStats[url].clicks++
-        if (log.actorId) linkStats[url].users.add(log.actorId)
-      })
-      console.log(`📊 Report: Link clicks processed (${Object.keys(linkStats).length} unique URLs)`)
-    } catch (linkError: any) {
-      console.error("❌ Report Link Error:", linkError)
-    }
-    
+    clickLogs.forEach(log => {
+      const metadata = log.metadata as any
+      const url = metadata?.url || 'Unknown'
+      
+      if (!linkStats[url]) {
+        linkStats[url] = { clicks: 0, unique: 0, users: new Set() }
+      }
+      
+      linkStats[url].clicks++
+      if (log.actorId) linkStats[url].users.add(log.actorId)
+    })
+
     const links = Object.entries(linkStats).map(([url, stats]) => ({
       url,
       clicks: stats.clicks,
@@ -323,35 +318,48 @@ export class CampaignService {
       percent: (delivered || 0) > 0 ? Math.min((stats.users.size / (delivered || 1)) * 100, 100) : 0
     })).sort((a, b) => b.clicks - a.clicks)
 
-    // 6. Device Breakdown (parsing User-Agent)
-    console.log(`📊 Report: Processing device stats...`)
-    const deviceStats = { desktop: 0, mobile: 0, tablet: 0, unknown: 0 }
-    try {
-      logs.filter(l => l.action === 'EMAIL_OPENED' || l.action === 'EMAIL_CLICKED').forEach(log => {
-        const metadata = log.metadata as any
-        if (metadata?.isBot || metadata?.isPrefetch) return // Skip bots/proxies for device stats
-        
-        const ua = (metadata?.userAgent || "").toLowerCase()
-        if (!ua) { deviceStats.unknown++; return }
-        
-        if (ua.includes('tablet') || ua.includes('ipad')) deviceStats.tablet++
-        else if (ua.includes('mobile') || ua.includes('iphone') || ua.includes('android')) deviceStats.mobile++
-        else deviceStats.desktop++
-      })
-      console.log(`📊 Report: Device stats processed`, deviceStats)
-    } catch (deviceError: any) {
-      console.error("❌ Report Device Error:", deviceError)
-    }
+    // 5. Device Breakdown
+    const openAndClickLogs = await prisma.campaignActivityLog.findMany({
+      where: {
+        campaignId,
+        action: { in: ['EMAIL_OPENED', 'EMAIL_CLICKED'] }
+      },
+      select: { metadata: true }
+    })
 
-    console.log(`📊 Report: Finalizing payload...`)
+    const deviceStats = { desktop: 0, mobile: 0, tablet: 0, unknown: 0 }
+    openAndClickLogs.forEach(log => {
+      const metadata = log.metadata as any
+      if (metadata?.isBot || metadata?.isPrefetch) return
+      
+      const ua = (metadata?.userAgent || "").toLowerCase()
+      if (!ua) { deviceStats.unknown++; return }
+      
+      if (ua.includes('tablet') || ua.includes('ipad')) deviceStats.tablet++
+      else if (ua.includes('mobile') || ua.includes('iphone') || ua.includes('android')) deviceStats.mobile++
+      else deviceStats.desktop++
+    })
+
+    // 6. Recent Activity feed (take 100, ordered by createdAt desc)
+    const recentLogs = await prisma.campaignActivityLog.findMany({
+      where: { campaignId },
+      include: { contact: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    })
+
+    const totalLogsCount = await prisma.campaignActivityLog.count({
+      where: { campaignId }
+    })
+
     return {
       campaign,
       summary,
       openTimeline: Object.entries(openTimeline).map(([time, count]) => ({ time, count })),
       links,
       deviceStats,
-      activityCount: logs.length,
-      recentActivity: (logs || []).slice(-100).reverse().map(l => ({
+      activityCount: totalLogsCount,
+      recentActivity: recentLogs.map(l => ({
         id: l.id,
         action: l.action,
         createdAt: l.createdAt,

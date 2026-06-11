@@ -32,18 +32,8 @@ export async function GET(
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
 
-    // Check if user can access this contact (only if in their lists)
-    const contactListIds = contact.lists?.map((list: any) => list.contactList?.id) || []
-    const userLists = await prisma.contactList.findMany({
-      where: {
-        id: { in: contactListIds },
-        ownerId: session.user.id
-      },
-      select: { id: true }
-    })
-
-    const hasAccess = userLists.length > 0
-    if (!hasAccess) {
+    // Check if user owns this contact
+    if (contact.userId !== session.user.id) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
@@ -69,30 +59,17 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get contact with list memberships to verify access
+    // Get contact to verify access
     const contact = await prisma.contact.findUnique({
-      where: { id },
-      include: {
-        lists: {
-          include: {
-            contactList: {
-            select: { ownerId: true }
-          }
-        }
-        }
-      }
+      where: { id }
     })
 
     if (!contact) {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 })
     }
 
-    // Check if user can access this contact (only if in their lists)
-    const hasAccess = contact.lists?.some((list: any) => 
-      list.contactList?.ownerId === session.user.id
-    )
-
-    if (!hasAccess) {
+    // Check ownership
+    if (contact.userId !== session.user.id) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 

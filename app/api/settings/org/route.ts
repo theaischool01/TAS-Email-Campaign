@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma } from "@/app/lib/prisma"
+import { encrypt, decrypt } from "@/lib/security/encryption"
 
 export async function GET() {
   try {
@@ -11,12 +12,19 @@ export async function GET() {
     }
 
     const settings = await (prisma as any).settings.findUnique({
-      where: { id: "system" }
+      where: { userId: session.user.id }
     })
 
     return NextResponse.json({
       success: true,
-      data: settings || {
+      data: settings ? {
+        ...settings,
+        awsAccessKey: "",
+        awsSecretKey: "",
+        awsRegion: "",
+        defaultFromEmail: "",
+        defaultFromName: ""
+      } : {
         orgName: "My Organisation",
         orgLogo: "",
         defaultFromEmail: "",
@@ -42,34 +50,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { 
       orgName, 
-      orgLogo, 
-      defaultFromEmail, 
-      defaultFromName,
-      awsAccessKey,
-      awsSecretKey,
-      awsRegion
+      orgLogo
     } = body
 
     const settings = await (prisma as any).settings.upsert({
-      where: { id: "system" },
+      where: { userId: session.user.id },
       update: {
         orgName,
-        orgLogo,
-        defaultFromEmail,
-        defaultFromName,
-        awsAccessKey,
-        awsSecretKey,
-        awsRegion
+        orgLogo
       },
       create: {
-        id: "system",
+        userId: session.user.id,
         orgName,
-        orgLogo,
-        defaultFromEmail,
-        defaultFromName,
-        awsAccessKey,
-        awsSecretKey,
-        awsRegion
+        orgLogo
       }
     })
 
@@ -79,6 +72,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("Settings POST Error:", error)
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 })
+    return NextResponse.json({ error: error.message || "Failed to update settings" }, { status: 500 })
   }
 }

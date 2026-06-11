@@ -94,6 +94,7 @@ const TemplateCard = React.memo<{
         {/* Miniature Live Preview via Iframe - Adjusted for full height visibility */}
         <div className="absolute inset-0 pointer-events-none transform origin-top-left scale-[0.4] w-[250%] h-[250%] p-2">
           <iframe 
+            sandbox="allow-same-origin"
             srcDoc={`<style>body{zoom:0.8; overflow:hidden;}</style>${template.html}`} 
             title={template.name}
             className="w-full h-full border-none pointer-events-none bg-white shadow-sm"

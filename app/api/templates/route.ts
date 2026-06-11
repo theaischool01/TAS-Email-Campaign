@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { TemplateService } from "@/lib/services/template.service"
+import { sanitizeEmailHTML } from "@/lib/security/html-sanitizer"
 
 const prisma = prismaClient as any
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
         data: {
           name,
           category,
-          html,
+          html: sanitizeEmailHTML(html),
           json,
           isPublic,
           createdBy: session.user.id

@@ -35,6 +35,7 @@ export async function GET(
     // Get contacts in this list
     const contacts = await prisma.contact.findMany({
       where: {
+        userId: session.user.id,
         lists: {
           some: {
             contactListId: id
@@ -98,7 +99,12 @@ export async function POST(
 
     // Check for duplicate email
     const existingContact = await prisma.contact.findUnique({
-      where: { email: email.trim().toLowerCase() }
+      where: {
+        userId_email: {
+          userId: session.user.id,
+          email: email.trim().toLowerCase()
+        }
+      }
     })
 
     if (existingContact) {
@@ -109,6 +115,7 @@ export async function POST(
     const newContact = await prisma.contact.create({
       data: {
         email: email.trim().toLowerCase(),
+        userId: session.user.id,
         firstName: firstName?.trim() || null,
         lastName: lastName?.trim() || null,
         phone: phone?.trim() || null,

@@ -14,23 +14,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const filter = ContactAccessControl.getContactVisibilityFilter(session)
+    const { searchParams } = new URL(request.url)
+    const pageParam = parseInt(searchParams.get("page") || "1", 10)
+    const limitParam = parseInt(searchParams.get("limit") || "50", 10)
 
-    const contacts = await prisma.contact.findMany({
-      where: filter,
-      include: {
-        lists: {
-          include: {
-            contactList: true
+    const page = Math.max(1, isNaN(pageParam) ? 1 : pageParam)
+    const rawLimit = Math.max(1, isNaN(limitParam) ? 50 : limitParam)
+    const limit = Math.min(200, rawLimit)
+
+    const skip = (page - 1) * limit
+    const take = limit
+
+    const [contacts, total] = await Promise.all([
+      prisma.contact.findMany({
+        where: { userId: session.user.id },
+        include: {
+          lists: {
+            include: {
+              contactList: true
+            }
           }
-        }
-      },
-      orderBy: {
-        createdAt: "desc"
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
+        skip,
+        take
+      }),
+      prisma.contact.count({
+        where: { userId: session.user.id }
+      })
+    ])
+
+    const pages = Math.ceil(total / limit)
+
+    return NextResponse.json({
+      contacts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages
       }
     })
-
-    return NextResponse.json(contacts)
   } catch (error) {
     console.error("Error fetching contacts:", error)
     return NextResponse.json(

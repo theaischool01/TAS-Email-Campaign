@@ -1,4 +1,5 @@
-import { SQSClient, SendMessageCommand, CreateQueueCommand, GetQueueUrlCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } from "@aws-sdk/client-sqs"
+import { SQSClient, SendMessageCommand, SendMessageBatchCommand, CreateQueueCommand, GetQueueUrlCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } from "@aws-sdk/client-sqs"
+import logger from '@/lib/logger'
 
 const sqsClient = new SQSClient({
   region: process.env.AWS_REGION || "ap-south-1",
@@ -12,6 +13,7 @@ const QUEUE_NAME = process.env.SQS_QUEUE_NAME || "EmailDispatchQueue"
 
 export interface QueueMessage {
   campaignId: string
+  userId?: string
   recipient: {
     email: string
     firstName?: string | null
@@ -33,7 +35,7 @@ export class QueueService {
       if (this.queueUrl) return this.queueUrl
     } catch (error: any) {
       if (error.name === "QueueDoesNotExist") {
-        console.log(`Queue ${QUEUE_NAME} does not exist. Creating it...`)
+        logger.info({ queueName: QUEUE_NAME }, 'SQS queue not found, creating')
         return await this.createQueue()
       }
       throw error
@@ -56,7 +58,7 @@ export class QueueService {
       const dlqRes = await sqsClient.send(dlqCommand)
       dlqUrl = dlqRes.QueueUrl
     } catch (e) {
-      console.log(`DLQ ${dlqName} detection error/exists, fetching URL...`)
+      logger.info({ dlqName }, 'DLQ already exists, fetching URL')
       const getDlqUrlCmd = new GetQueueUrlCommand({ QueueName: dlqName })
       const getRes = await sqsClient.send(getDlqUrlCmd)
       dlqUrl = getRes.QueueUrl
@@ -92,7 +94,7 @@ export class QueueService {
       this.queueUrl = response.QueueUrl || null
     } catch (error: any) {
       if (error.name === "QueueAlreadyExists" || error.Code === "QueueAlreadyExists" || error.message.includes("already exists")) {
-        console.log(`Queue ${QUEUE_NAME} exists with different attributes. Updating attributes via SetQueueAttributes...`)
+        logger.info({ queueName: QUEUE_NAME }, 'Queue already exists, updating RedrivePolicy via SetQueueAttributes')
         const getRes = await sqsClient.send(new GetQueueUrlCommand({ QueueName: QUEUE_NAME }))
         this.queueUrl = getRes.QueueUrl || null
         if (this.queueUrl) {
@@ -120,20 +122,21 @@ export class QueueService {
   }
 
   static async enqueueBatch(messages: QueueMessage[]): Promise<void> {
-    // SQS supports Batch Send, but for simplicity and to avoid batch limits initially, 
-    // we'll send them individually or in chunks.
-    // AWS SQS SendMessageBatch has a limit of 10 messages.
     const queueUrl = await this.getQueueUrl()
     
+    // AWS SQS SendMessageBatch has a limit of 10 messages.
     for (let i = 0; i < messages.length; i += 10) {
-      const batch = messages.slice(i, i + 10)
-      const entries = batch.map((msg, index) => ({
-        Id: `msg_${Date.now()}_${i + index}`,
+      const chunk = messages.slice(i, i + 10)
+      const entries = chunk.map((msg, index) => ({
+        Id: `msg_${Date.now()}_${i + index}_${Math.floor(Math.random() * 1000)}`,
         MessageBody: JSON.stringify(msg),
       }))
       
-      // Using individual sends for now to be safe, but batching is better for performance
-      await Promise.all(batch.map(msg => this.enqueueEmail(msg)))
+      const command = new SendMessageBatchCommand({
+        QueueUrl: queueUrl,
+        Entries: entries
+      })
+      await sqsClient.send(command)
     }
   }
 

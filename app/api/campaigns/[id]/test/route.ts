@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
+import { enforceRateLimit, handleRateLimitError } from "@/lib/security/rate-limit"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignAccessControl } from "@/lib/rbac/campaign-access"
 import { sendSingleEmail } from "@/lib/services/email.service"
@@ -23,6 +24,13 @@ export async function POST(
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    try {
+      await enforceRateLimit("testEmail", `test-email:${session.user.id}`)
+    } catch (limitErr) {
+      const errorRes = handleRateLimitError(limitErr)
+      if (errorRes) return errorRes
     }
 
     const { id: campaignId } = await params
@@ -64,16 +72,14 @@ export async function POST(
     // Prepend [TEST] to the subject
     const testSubject = `[TEST] ${campaign.subject || "Test Email"}`
 
-    // Send real emails via AWS SES
+    // Send real emails via AWS SES using global service
     const sendResults = await Promise.allSettled(
       validatedData.emails.map((email) =>
         sendSingleEmail({
           to: { email, firstName: "Test", lastName: "Recipient" },
           subject: testSubject,
           html: campaign.template.html,
-          fromName: campaign.senderName || campaign.user?.name || "Email Campaign Platform",
-          fromEmail: campaign.senderEmail || process.env.SES_FROM_EMAIL,
-          replyTo: campaign.replyToEmail || undefined,
+          userId: campaign.createdBy,
           // No campaignId here so we don't inject tracking in test emails
         })
       )

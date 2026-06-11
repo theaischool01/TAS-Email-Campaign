@@ -51,13 +51,7 @@ export class ContactAccessControl {
     }
 
     return {
-      lists: {
-        some: {
-          contactList: {
-            ownerId: session.user.id
-          }
-        }
-      }
+      userId: session.user.id
     }
   }
 

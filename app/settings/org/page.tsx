@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Building, Mail, Server, Save, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Building, Save, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 export default function OrgSettingsPage() {
@@ -19,12 +19,7 @@ export default function OrgSettingsPage() {
   
   const [settings, setSettings] = useState({
     orgName: "",
-    orgLogo: "",
-    defaultFromEmail: "",
-    defaultFromName: "",
-    awsAccessKey: "",
-    awsSecretKey: "",
-    awsRegion: "us-east-1"
+    orgLogo: ""
   })
 
   useEffect(() => {
@@ -37,7 +32,10 @@ export default function OrgSettingsPage() {
       if (response.ok) {
         const result = await response.json()
         if (result.success) {
-          setSettings(result.data)
+          setSettings({
+            orgName: result.data?.orgName || "",
+            orgLogo: result.data?.orgLogo || ""
+          })
         }
       }
     } catch (error) {
@@ -59,10 +57,12 @@ export default function OrgSettingsPage() {
         body: JSON.stringify(settings)
       })
       
+      const result = await response.json().catch(() => ({}))
       if (response.ok) {
         toast.success("Settings updated successfully")
+        fetchSettings()
       } else {
-        toast.error("Failed to update settings")
+        toast.error(result.error || "Failed to update settings")
       }
     } catch (error) {
       console.error("Save Error:", error)
@@ -85,7 +85,7 @@ export default function OrgSettingsPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Organisation Settings</h1>
-            <p className="text-gray-600 dark:text-slate-400">Configure your platform identity and delivery providers</p>
+            <p className="text-gray-600 dark:text-slate-400">Configure your platform identity and preferences</p>
           </div>
           <Button onClick={handleSave} disabled={isSaving} className="dark:bg-red-600 dark:text-white dark:hover:bg-red-700 dark:border-0">
             {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -122,96 +122,6 @@ export default function OrgSettingsPage() {
                     value={settings.orgLogo || ""} 
                     onChange={(e) => setSettings({...settings, orgLogo: e.target.value})}
                     placeholder="https://example.com/logo.png" 
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Email Defaults */}
-          <Card className="dark:bg-slate-900 dark:border-slate-800">
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <Mail className="w-5 h-5 text-blue-600" />
-                <CardTitle className="dark:text-white">Email Defaults</CardTitle>
-              </div>
-              <CardDescription className="dark:text-slate-400">Default sender information for new campaigns</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="defaultFromName" className="dark:text-slate-300">Default From Name</Label>
-                  <Input 
-                    id="defaultFromName" 
-                    value={settings.defaultFromName || ""} 
-                    onChange={(e) => setSettings({...settings, defaultFromName: e.target.value})}
-                    placeholder="e.g. Marketing Team" 
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="defaultFromEmail" className="dark:text-slate-300">Default From Email</Label>
-                  <Input 
-                    id="defaultFromEmail" 
-                    type="email"
-                    value={settings.defaultFromEmail || ""} 
-                    onChange={(e) => setSettings({...settings, defaultFromEmail: e.target.value})}
-                    placeholder="hello@yourdomain.com" 
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* AWS SES Config */}
-          <Card className="border-blue-100 bg-blue-50/10 dark:bg-slate-900 dark:border-slate-800">
-            <CardHeader>
-              <div className="flex items-center space-x-2">
-                <Server className="w-5 h-5 text-blue-600" />
-                <CardTitle className="dark:text-white">AWS SES Configuration</CardTitle>
-              </div>
-              <CardDescription className="dark:text-slate-400">Connect your AWS SES account for email delivery</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start space-x-3 mb-4 dark:bg-amber-950/50 dark:border-amber-800">
-                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-                <div className="text-sm text-amber-800 dark:text-amber-300">
-                  <p className="font-semibold">Security Note</p>
-                  <p>These credentials are used for email delivery. Ensure the IAM user has <code className="bg-amber-100 px-1 rounded">ses:SendRawEmail</code> permissions.</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="awsAccessKey" className="dark:text-slate-300">AWS Access Key ID</Label>
-                  <Input 
-                    id="awsAccessKey" 
-                    value={settings.awsAccessKey || ""} 
-                    onChange={(e) => setSettings({...settings, awsAccessKey: e.target.value})}
-                    placeholder="AKIA..." 
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="awsSecretKey" className="dark:text-slate-300">AWS Secret Access Key</Label>
-                  <Input 
-                    id="awsSecretKey" 
-                    type="password"
-                    value={settings.awsSecretKey || ""} 
-                    onChange={(e) => setSettings({...settings, awsSecretKey: e.target.value})}
-                    placeholder="••••••••••••••••••••" 
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="awsRegion" className="dark:text-slate-300">AWS Region</Label>
-                  <Input 
-                    id="awsRegion" 
-                    value={settings.awsRegion || ""} 
-                    onChange={(e) => setSettings({...settings, awsRegion: e.target.value})}
-                    placeholder="us-east-1" 
                     className="dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
                   />
                 </div>

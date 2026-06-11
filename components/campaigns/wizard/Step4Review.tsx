@@ -902,7 +902,7 @@ export function Step4Review({
                   srcDoc={selectedTemplateData.html}
                   className="w-full h-full min-h-[500px] border-0"
                   title="Email Preview"
-                  sandbox="allow-same-origin allow-scripts"
+                  sandbox="allow-same-origin"
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-2 py-20">

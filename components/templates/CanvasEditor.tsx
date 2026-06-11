@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { Plus, GripVertical, Trash2, Edit, ChevronUp, ChevronDown, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { sanitizeEmailHTML } from "@/lib/security/html-sanitizer"
 
 interface TemplateBlock {
   id: string
@@ -531,7 +532,7 @@ export default function CanvasEditor({
                     borderRadius: '4px',
                     padding: '8px'
                   }}
-                  dangerouslySetInnerHTML={{ __html: block.content.html }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeEmailHTML(block.content.html) }}
                 />
               ) : (
                 <div style={{ border: '1px dashed #ccc', padding: '10px', minHeight: '50px', backgroundColor: '#f9f9f9' }}>

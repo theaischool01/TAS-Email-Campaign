@@ -24,6 +24,11 @@ model User {
   contactLists     ContactList[]
   emailTemplates   EmailTemplate[]
   sessions         Session[]
+  contacts         Contact[]
+  segments         Segment[]
+  settings         Settings?
+  suppressionList  SuppressionList[]
+  emailDeliveries  EmailDelivery[]
 
   @@map("users")
 }
@@ -87,7 +92,8 @@ model ContactList {
 
 model Contact {
   id                   String                 @id @default(cuid())
-  email                String                 @unique
+  email                String
+  userId               String
   firstName            String?
   lastName             String?
   phone                String?
@@ -102,7 +108,11 @@ model Contact {
   ContactToContactList ContactToContactList[]
   activityLogs         CampaignActivityLog[]
   lists                ContactListMember[]
+  emailDeliveries      EmailDelivery[]
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, email])
+  @@index([userId, createdAt])
   @@map("contacts")
 }
 
@@ -123,9 +133,11 @@ model Segment {
   name               String
   description        String?
   criteria           Json?
+  userId             String
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
   recipientCampaigns CampaignRecipientSegment[]
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("segments")
 }
@@ -186,11 +198,13 @@ model Campaign {
   recipientLists      CampaignRecipientList[]
   recipientSegments   CampaignRecipientSegment[]
   testSends           CampaignTestSend[]
+  emailDeliveries     EmailDelivery[]
   user                User                       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   template            EmailTemplate?             @relation(fields: [templateId], references: [id])
 
   @@unique([createdBy, name])
   @@index([templateId])
+  @@index([createdBy, createdAt])
   @@map("campaigns")
 }
 
@@ -262,7 +276,8 @@ model CampaignActivityLog {
 }
 
 model Settings {
-  id               String   @id @default("system")
+  id               String   @id @default(cuid())
+  userId           String   @unique
   orgName          String   @default("My Organisation")
   orgLogo          String?
   defaultFromEmail String?
@@ -271,6 +286,7 @@ model Settings {
   awsSecretKey     String?
   awsRegion        String?  @default("us-east-1")
   updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("settings")
 }
@@ -287,11 +303,15 @@ model LoginAttempt {
 }
 
 model SuppressionList {
-  email     String   @id
+  id        String   @id @default(cuid())
+  userId    String
+  email     String
   reason    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, email])
   @@map("suppression_list")
 }
 
@@ -331,4 +351,71 @@ enum CampaignStatus {
   PAUSED
   CANCELLED
   FAILED
+}
+
+enum DeliveryStatus {
+  SENDING
+  SENT
+  FAILED
+}
+
+model EmailDelivery {
+  id String @id @default(cuid())
+
+  campaignId String
+  userId String
+
+  contactId String?
+  recipientEmail String
+
+  status DeliveryStatus @default(SENDING)
+
+  sesMessageId String?
+
+  failureCode String?
+  failureReason String?
+
+  retryCount Int @default(0)
+
+  startedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([campaignId, recipientEmail])
+
+  @@index([campaignId, status])
+  @@index([userId, createdAt])
+  @@index([contactId])
+  @@map("email_deliveries")
+}
+
+enum WorkerStatus {
+  STARTING
+  HEALTHY
+  SHUTTING_DOWN
+  FAILED
+}
+
+model WorkerHeartbeat {
+  id                 String       @id
+  hostname           String
+  processId          Int
+  status             WorkerStatus @default(STARTING)
+  version            String?
+  environment        String?
+  activeMessages     Int          @default(0)
+  successfulMessages Int          @default(0)
+  failedMessages     Int          @default(0)
+  memoryUsageMb      Int
+  uptimeSeconds      Int
+  startedAt          DateTime     @default(now())
+  lastSeenAt         DateTime     @updatedAt
+
+  @@index([status, lastSeenAt])
+  @@map("worker_heartbeats")
 }

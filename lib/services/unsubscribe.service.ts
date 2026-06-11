@@ -1,4 +1,5 @@
 import { prisma as prismaClient } from "@/app/lib/prisma"
+import logger from '@/lib/logger'
 
 const prisma = prismaClient as any
 
@@ -29,34 +30,40 @@ export class UnsubscribeService {
     // Backward compatibility: If the token does not contain a "." (unsigned legacy token)
     // The token service sets _isLegacy=true on legacy tokens for explicit signaling
     if (!token.includes('.') || data._isLegacy) {
-      console.warn(`[LEGACY TOKEN WARNING] Unsigned legacy token decoded: ${token}`)
       const { cid, cam, em } = data
+      logger.warn({ cam, cid, em }, 'Legacy unsigned token detected — performing DB verification')
 
       try {
         if (cid && cid !== 'unknown') {
-          // Case 1: cid is present and valid
           const contact = await prisma.contact.findUnique({
             where: { id: cid }
           })
           if (!contact) {
-            console.warn(`[LEGACY TOKEN REJECTED] Contact ID ${cid} not found for legacy token`)
+            logger.warn({ cid, cam, em, reason: 'contact_not_found' }, 'Legacy token rejected')
             return null
           }
           if (contact.email !== em) {
-            console.warn(`[LEGACY TOKEN REJECTED] Email mismatch for contact ${cid}: token has ${em}, DB has ${contact.email}`)
+            logger.warn({ cid, cam, reason: 'email_mismatch' }, 'Legacy token rejected')
             return null
           }
         } else if (cam && em) {
-          // Case 2: cid is missing/unknown, but cam and em exist. Check CampaignActivityLog to prevent forgery
-          const contact = await prisma.contact.findFirst({
-            where: { email: em }
+          const campaign = await prisma.campaign.findUnique({
+            where: { id: cam },
+            select: { createdBy: true }
           })
-          if (!contact) {
-            console.warn(`[LEGACY TOKEN REJECTED] Contact with email ${em} not found for legacy token`)
+          if (!campaign) {
+            logger.warn({ cam, em, reason: 'campaign_not_found' }, 'Legacy token rejected')
             return null
           }
 
-          // Check if an EMAIL_SENT activity exists for this campaign and contact
+          const contact = await prisma.contact.findFirst({
+            where: { email: em, userId: campaign.createdBy }
+          })
+          if (!contact) {
+            logger.warn({ cam, em, reason: 'contact_email_not_found' }, 'Legacy token rejected')
+            return null
+          }
+
           const sentLog = await prisma.campaignActivityLog.findFirst({
             where: {
               campaignId: cam,
@@ -65,16 +72,15 @@ export class UnsubscribeService {
             }
           })
           if (!sentLog) {
-            console.warn(`[LEGACY TOKEN REJECTED] Forgery attempt or no sent email found for campaign ${cam} and email ${em}`)
+            logger.warn({ cam, em, reason: 'no_sent_log_forgery_suspected' }, 'Legacy token rejected')
             return null
           }
         } else {
-          // Lacks sufficient identifiers to validate, reject to prevent email-only forgery
-          console.warn(`[LEGACY TOKEN REJECTED] Token lacks sufficient context: cid=${cid}, cam=${cam}, em=${em}`)
+          logger.warn({ cid, cam, em, reason: 'insufficient_context' }, 'Legacy token rejected')
           return null
         }
       } catch (error) {
-        console.error(`[LEGACY TOKEN ERROR] Database error during legacy verification:`, error)
+        logger.error({ cid, cam, em, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Legacy token DB verification failed')
         return null
       }
     }
@@ -113,28 +119,53 @@ export class UnsubscribeService {
         
         // Add to suppression list (upsert)
         await prisma.suppressionList.upsert({
-          where: { email: contact.email },
+          where: {
+            userId_email: {
+              userId: contact.userId,
+              email: contact.email
+            }
+          },
           update: { reason: `Unsubscribed from campaign ${cam || 'unknown'}` },
           create: { 
+            userId: contact.userId,
             email: contact.email, 
             reason: `Unsubscribed from campaign ${cam || 'unknown'}` 
           }
         })
       } else if (em) {
-        await prisma.contact.updateMany({
-          where: { email: em },
-          data: { status: 'UNSUBSCRIBED' }
-        })
-
-        // Add to suppression list (upsert)
-        await prisma.suppressionList.upsert({
-          where: { email: em },
-          update: { reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` },
-          create: { 
-            email: em, 
-            reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` 
+        let campaignOwnerId = 'unknown'
+        if (cam) {
+          const campaign = await prisma.campaign.findUnique({
+            where: { id: cam },
+            select: { createdBy: true }
+          })
+          if (campaign) {
+            campaignOwnerId = campaign.createdBy
           }
-        })
+        }
+
+        if (campaignOwnerId !== 'unknown') {
+          await prisma.contact.updateMany({
+            where: { email: em, userId: campaignOwnerId },
+            data: { status: 'UNSUBSCRIBED' }
+          })
+
+          // Add to suppression list (upsert)
+          await prisma.suppressionList.upsert({
+            where: {
+              userId_email: {
+                userId: campaignOwnerId,
+                email: em
+              }
+            },
+            update: { reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` },
+            create: { 
+              userId: campaignOwnerId,
+              email: em, 
+              reason: `Unsubscribed (email only) from campaign ${cam || 'unknown'}` 
+            }
+          })
+        }
       }
 
       // 2. Log activity and increment metrics (only if first time)
@@ -164,7 +195,7 @@ export class UnsubscribeService {
 
       return { success: true, email: em }
     } catch (error) {
-      console.error("Unsubscribe Action Error:", error)
+      logger.error({ campaignId: cam, contactId: cid, recipientEmail: em, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Unsubscribe action failed')
       return { success: false, error: "Database error" }
     }
   }
@@ -176,12 +207,29 @@ export class UnsubscribeService {
     const data = await this.decodeToken(token)
     if (!data) return null
 
-    const { cid, em } = data
+    const { cid, em, cam } = data
 
     try {
+      let contactWhere: any = {}
+      if (cid && cid !== 'unknown') {
+        contactWhere = { id: cid }
+      } else if (em && cam) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: cam },
+          select: { createdBy: true }
+        })
+        if (campaign) {
+          contactWhere = { email: em, userId: campaign.createdBy }
+        } else {
+          return null
+        }
+      } else {
+        return null
+      }
+
       // Find contact by ID or email
       const contact = await prisma.contact.findFirst({
-        where: cid && cid !== 'unknown' ? { id: cid } : { email: em },
+        where: contactWhere,
         include: {
           lists: {
             include: {
@@ -204,7 +252,7 @@ export class UnsubscribeService {
         }))
       }
     } catch (error) {
-      console.error("Get Contact Lists Error:", error)
+      logger.error({ contactId: cid, recipientEmail: em, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Get contact lists failed')
       return null
     }
   }
@@ -217,12 +265,29 @@ export class UnsubscribeService {
     const data = await this.decodeToken(token)
     if (!data) return { success: false, error: "Invalid token" }
 
-    const { cid, em } = data
+    const { cid, em, cam } = data
 
     try {
+      let contactWhere: any = {}
+      if (cid && cid !== 'unknown') {
+        contactWhere = { id: cid }
+      } else if (em && cam) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: cam },
+          select: { createdBy: true }
+        })
+        if (campaign) {
+          contactWhere = { email: em, userId: campaign.createdBy }
+        } else {
+          return { success: false, error: "Campaign not found" }
+        }
+      } else {
+        return { success: false, error: "Invalid identifier" }
+      }
+
       // Find contact
       const contact = await prisma.contact.findFirst({
-        where: cid && cid !== 'unknown' ? { id: cid } : { email: em }
+        where: contactWhere
       })
 
       if (!contact) return { success: false, error: "Contact not found" }
@@ -254,7 +319,7 @@ export class UnsubscribeService {
 
       return { success: true }
     } catch (error) {
-      console.error("Toggle List Error:", error)
+      logger.error({ contactId: cid, listId, subscribe, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Toggle list subscription failed')
       return { success: false, error: "Database error" }
     }
   }
@@ -297,7 +362,7 @@ export class UnsubscribeService {
         }
       })
     } catch (error) {
-      console.error("Log Preference Update Error:", error)
+      logger.error({ campaignId: cam, contactId: cid, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Log preference update failed')
     }
   }
 
@@ -322,22 +387,37 @@ export class UnsubscribeService {
 
         // Remove from suppression list (safe delete)
         await prisma.suppressionList.deleteMany({
-          where: { email: contact.email }
+          where: { userId: contact.userId, email: contact.email }
         })
       } else if (em) {
-        const contact = await prisma.contact.findFirst({ where: { email: em } });
-        if (contact) {
-          contactId = contact.id;
-          await prisma.contact.update({
-            where: { id: contact.id },
-            data: { status: 'ACTIVE' }
+        let campaignOwnerId = 'unknown'
+        if (cam) {
+          const campaign = await prisma.campaign.findUnique({
+            where: { id: cam },
+            select: { createdBy: true }
           })
+          if (campaign) {
+            campaignOwnerId = campaign.createdBy
+          }
         }
 
-        // Remove from suppression list (safe delete)
-        await prisma.suppressionList.deleteMany({
-          where: { email: em }
-        })
+        if (campaignOwnerId !== 'unknown') {
+          const contact = await prisma.contact.findFirst({
+            where: { email: em, userId: campaignOwnerId }
+          })
+          if (contact) {
+            contactId = contact.id;
+            await prisma.contact.update({
+              where: { id: contact.id },
+              data: { status: 'ACTIVE' }
+            })
+          }
+
+          // Remove from suppression list (safe delete)
+          await prisma.suppressionList.deleteMany({
+            where: { userId: campaignOwnerId, email: em }
+          })
+        }
       }
 
       // 2. Log EMAIL_RESUBSCRIBED with deduplication
@@ -372,7 +452,7 @@ export class UnsubscribeService {
 
       return { success: true }
     } catch (error) {
-      console.error("Resubscribe Error:", error);
+      logger.error({ campaignId: cam, contactId: cid, recipientEmail: em, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Resubscribe action failed')
       return { success: false, error: "Database error" }
     }
   }

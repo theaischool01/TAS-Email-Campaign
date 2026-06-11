@@ -57,7 +57,10 @@ export async function PUT(
 
     if (validatedData.recipientListIds && validatedData.recipientListIds.length > 0) {
       const existingLists = await prisma.contactList.findMany({
-        where: { id: { in: validatedData.recipientListIds } },
+        where: { 
+          id: { in: validatedData.recipientListIds },
+          ownerId: session.user.id
+        },
         select: { id: true }
       })
       validListIds = Array.from(new Set(existingLists.map((l: any) => l.id)))
@@ -65,7 +68,10 @@ export async function PUT(
 
     if (validatedData.recipientSegmentIds && validatedData.recipientSegmentIds.length > 0) {
       const existingSegments = await prisma.segment.findMany({
-        where: { id: { in: validatedData.recipientSegmentIds } },
+        where: { 
+          id: { in: validatedData.recipientSegmentIds },
+          userId: session.user.id
+        },
         select: { id: true }
       })
       validSegmentIds = Array.from(new Set(existingSegments.map((s: any) => s.id)))
@@ -73,7 +79,10 @@ export async function PUT(
 
     if (validatedData.excludedListIds && validatedData.excludedListIds.length > 0) {
       const existingExcluded = await prisma.contactList.findMany({
-        where: { id: { in: validatedData.excludedListIds } },
+        where: { 
+          id: { in: validatedData.excludedListIds },
+          ownerId: session.user.id
+        },
         select: { id: true }
       })
       validExcludedIds = Array.from(new Set(existingExcluded.map((l: any) => l.id)))

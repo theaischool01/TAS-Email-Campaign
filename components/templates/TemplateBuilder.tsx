@@ -32,6 +32,9 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmailTemplate } from "@/types/template"
 import { Sidebar } from "@/components/layout/sidebar"
+import { parseHTMLToBlocks } from "./utils/html-parser"
+import { renderBlocksToHTML } from "./utils/html-renderer"
+
 
 
 // Dynamic imports for performance
@@ -69,13 +72,7 @@ interface TemplateBuilderProps {
   onSaveAndUse?: (templateId: string) => void
 }
 
-interface TemplateBlock {
-  id: string
-  type: string
-  content: Record<string, any>
-  styles: Record<string, any>
-  children?: TemplateBlock[]
-}
+import { TemplateBlock } from "./types"
 
 export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, showSaveAndUse, onSaveAndUse }: TemplateBuilderProps) {
   const { data: session } = useSession()
@@ -94,6 +91,8 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
   const [templateCategory, setTemplateCategory] = useState("")
   const [templateDescription, setTemplateDescription] = useState("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showConfidenceWarning, setShowConfidenceWarning] = useState(false)
+  const [parserWarnings, setParserWarnings] = useState<string[]>([])
 
   // Debounce timer ref for HTML code editor sync
   const htmlSyncTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -125,49 +124,36 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
         setTemplateName(data.name)
         setTemplateCategory(data.category || "")
         
-        // Parse and validate blocks from JSON
         let normalizedBlocks: TemplateBlock[] = []
-        
+        let parseConfidence: "HIGH" | "MEDIUM" | "LOW" = "HIGH"
+        let parseWarnings: string[] = []
+
         if (data.json) {
           try {
             const parsedBlocks = JSON.parse(data.json)
-            
-            // Validate that parsed data is an array
-            if (Array.isArray(parsedBlocks)) {
+            if (Array.isArray(parsedBlocks) && parsedBlocks.length > 0) {
               normalizedBlocks = parsedBlocks.filter(block => 
                 block && typeof block === 'object' && block.id && block.type
               )
-              console.log("Loaded and validated blocks:", normalizedBlocks.length)
-            } else {
-              console.warn("Template JSON is not an array, using empty blocks")
+              console.log("Loaded blocks from JSON:", normalizedBlocks.length)
             }
           } catch (error) {
-            console.error("Error parsing template JSON:", error)
-            console.warn("Using empty blocks due to JSON parse error")
+            console.error("Error parsing JSON blocks:", error)
           }
-        } else {
-          console.warn("No JSON data found, using empty blocks")
         }
 
-        // Fallback: if no valid blocks were restored from JSON,
-        // but the template has raw HTML (e.g. seeded templates),
-        // wrap it in a single html block so the canvas is not blank.
         if (normalizedBlocks.length === 0 && data.html && data.html.trim() !== '') {
-          const htmlBlock: TemplateBlock = {
-            id: 'restored-html-' + Date.now(),
-            type: 'html',
-            content: { html: data.html },
-            styles: {}
-          }
-          normalizedBlocks = [htmlBlock]
-          console.log('Template loaded: using HTML fallback block')
-        }
+          const parseResult = parseHTMLToBlocks(data.html)
+          normalizedBlocks = parseResult.blocks
+          parseConfidence = parseResult.confidence
+          parseWarnings = parseResult.warnings
+          console.log("Parsed blocks from HTML. Confidence:", parseConfidence, "Count:", normalizedBlocks.length)
 
-        console.log('Template loaded:', {
-          hasJson: !!data.json,
-          hasHtml: !!data.html,
-          blockCount: normalizedBlocks.length
-        })
+          if (parseConfidence === "LOW") {
+            setShowConfidenceWarning(true)
+            setParserWarnings(parseWarnings)
+          }
+        }
 
         setBlocks(normalizedBlocks)
       } else {
@@ -190,30 +176,37 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
         setTemplateName(`${data.name} (Copy)`)
         setTemplateCategory(data.category || "")
         
-        // Parse and validate blocks from JSON
         let normalizedBlocks: TemplateBlock[] = []
-        
+        let parseConfidence: "HIGH" | "MEDIUM" | "LOW" = "HIGH"
+        let parseWarnings: string[] = []
+
         if (data.json) {
           try {
             const parsedBlocks = JSON.parse(data.json)
-            
-            // Validate that parsed data is an array
-            if (Array.isArray(parsedBlocks)) {
+            if (Array.isArray(parsedBlocks) && parsedBlocks.length > 0) {
               normalizedBlocks = parsedBlocks.filter(block => 
                 block && typeof block === 'object' && block.id && block.type
               )
-              console.log("Loaded and validated blocks for duplication:", normalizedBlocks.length)
-            } else {
-              console.warn("Template JSON is not an array, using empty blocks for duplication")
+              console.log("Loaded blocks for duplication from JSON:", normalizedBlocks.length)
             }
           } catch (error) {
-            console.error("Error parsing template JSON for duplication:", error)
-            console.warn("Using empty blocks due to JSON parse error")
+            console.error("Error parsing JSON blocks for duplication:", error)
           }
-        } else {
-          console.warn("No JSON data found, using empty blocks for duplication")
         }
-        
+
+        if (normalizedBlocks.length === 0 && data.html && data.html.trim() !== '') {
+          const parseResult = parseHTMLToBlocks(data.html)
+          normalizedBlocks = parseResult.blocks
+          parseConfidence = parseResult.confidence
+          parseWarnings = parseResult.warnings
+          console.log("Parsed blocks for duplication from HTML. Confidence:", parseConfidence, "Count:", normalizedBlocks.length)
+
+          if (parseConfidence === "LOW") {
+            setShowConfidenceWarning(true)
+            setParserWarnings(parseWarnings)
+          }
+        }
+
         setBlocks(normalizedBlocks)
       } else {
         router.push("/templates")
@@ -225,6 +218,7 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
       setIsLoading(false)
     }
   }
+
 
   const handleSave = useCallback(async (isRetry = false, targetType?: "library" | "use") => {
     if (targetType) {
@@ -363,167 +357,8 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
   }, [templateName])
 
   const generateHTML = useCallback(() => {
-    return blocks.map(block => renderBlockToHTML(block)).join('')
+    return renderBlocksToHTML(blocks)
   }, [blocks])
-
-  const renderBlockToHTML = (block: TemplateBlock): string => {
-    const styles = Object.entries(block.styles)
-      .map(([key, value]) => `${key.replace(/([A-Z])/g, '-$1').toLowerCase()}: ${value}`)
-      .join('; ')
-
-    switch (block.type) {
-      case 'header':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; text-align: center; ${styles}">
-                <h1 style="margin: 0; font-size: 24px;">${block.content.text}</h1>
-              </td>
-            </tr>
-          </table>
-        `
-      case 'text':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; ${styles}">
-                <p style="margin: 0;">${block.content.text}</p>
-              </td>
-            </tr>
-          </table>
-        `
-      case 'button':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; text-align: center;">
-                <a href="${block.content.url || '#'}" style="background-color: ${block.content.backgroundColor || '#007bff'}; color: ${block.content.color || '#ffffff'}; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">
-                  ${block.content.text}
-                </a>
-              </td>
-            </tr>
-          </table>
-        `
-      case 'image':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; text-align: center;">
-                <img src="${block.content.src || 'https://via.placeholder.com/600x300'}" alt="${block.content.alt || ''}" style="max-width: 100%; height: auto; border-radius: 8px;" />
-              </td>
-            </tr>
-          </table>
-        `
-      case 'divider':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px 0; text-align: center;">
-                <hr style="border: none; border-top: 1px solid #e5e7eb; width: 100%;" />
-              </td>
-            </tr>
-          </table>
-        `
-      case 'spacer':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="height: ${block.content.height || '20px'}; line-height: ${block.content.height || '20px'}; font-size: ${block.content.height || '20px'};">&nbsp;</td>
-            </tr>
-          </table>
-        `
-      case 'footer':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; text-align: center; background-color: #f8f9fa; color: #6c757d; font-size: 12px; font-family: Arial, sans-serif; ${styles}">
-                <p style="margin: 0 0 10px 0; font-size: 11px; line-height: 1.4;">
-                  ${block.content?.unsubscribeText || "You received this email because you're subscribed to our newsletter."}
-                </p>
-                <p style="margin: 0 0 10px 0; font-size: 11px; line-height: 1.4;">
-                  <a href="#" style="color: #6c757d; text-decoration: underline; margin-right: 10px;">Unsubscribe</a>
-                  <a href="#" style="color: #6c757d; text-decoration: underline; margin-right: 10px;">Privacy Policy</a>
-                  <a href="#" style="color: #6c757d; text-decoration: underline;">Terms of Service</a>
-                </p>
-                <p style="margin: 0 0 5px 0; font-size: 11px; line-height: 1.4;">
-                  ${block.content?.company || "Your Company Name"}
-                </p>
-                <p style="margin: 0 0 5px 0; font-size: 10px; line-height: 1.4;">
-                  ${block.content?.address || "123 Business St, City, State 12345"}
-                </p>
-                <p style="margin: 0; font-size: 10px; line-height: 1.4; border-top: 1px solid #dee2e6; padding-top: 10px;">
-                  ${block.content?.copyright || `© ${new Date().getFullYear()} Your Company Name. All rights reserved.`}
-                </p>
-              </td>
-            </tr>
-          </table>
-        `
-      case '2column':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td width="50%" style="padding: 10px; vertical-align: top;">
-                ${block.content.text1 || "Column 1 content"}
-              </td>
-              <td width="50%" style="padding: 10px; vertical-align: top;">
-                ${block.content.text2 || "Column 2 content"}
-              </td>
-            </tr>
-          </table>
-        `
-      case '3column':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td width="33.33%" style="padding: 10px; vertical-align: top;">
-                ${block.content.text1 || "Column 1 content"}
-              </td>
-              <td width="33.33%" style="padding: 10px; vertical-align: top;">
-                ${block.content.text2 || "Column 2 content"}
-              </td>
-              <td width="33.33%" style="padding: 10px; vertical-align: top;">
-                ${block.content.text3 || "Column 3 content"}
-              </td>
-            </tr>
-          </table>
-        `
-      case 'social':
-        const platforms = [
-          { id: 'facebook', label: 'FB' },
-          { id: 'twitter', label: 'X' },
-          { id: 'linkedin', label: 'IN' },
-          { id: 'instagram', label: 'IG' },
-          { id: 'youtube', label: 'YT' }
-        ];
-        const socialLinks = platforms.map(p => {
-          if (block.content[p.id]) {
-            return `<a href="${block.content[p.id]}" target="_blank" style="display: inline-block; width: 36px; height: 36px; line-height: 36px; margin: 0 5px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 12px; text-align: center;">${p.label}</a>`;
-          }
-          return '';
-        }).join('');
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px; text-align: center;">
-                ${socialLinks || '<span style="color: #9ca3af; font-size: 12px; font-style: italic;">Configure social links</span>'}
-              </td>
-            </tr>
-          </table>
-        `
-      case 'html':
-        return `
-          <table width="100%" border="0" cellspacing="0" cellpadding="0">
-            <tr>
-              <td style="padding: 20px;">
-                ${block.content.html || '<div>Custom HTML Block</div>'}
-              </td>
-            </tr>
-          </table>
-        `
-      default:
-        return ''
-    }
-  }
 
   const [isInserting, setIsInserting] = useState(false)
   const [pendingBlockType, setPendingBlockType] = useState<string | null>(null)
@@ -1034,6 +869,48 @@ export default function TemplateBuilder({ mode, templateId, onSaved, onCancel, s
             <Button size="sm" onClick={() => handleSave()}>
               Save Now
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Parser Confidence Warning Modal */}
+      {showConfidenceWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200">
+            <h3 className="text-lg font-bold text-red-600 mb-2 flex items-center gap-2">
+              <span className="text-xl">⚠️</span> Advanced HTML Warning
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This template contains advanced or Outlook-specific email HTML formatting. Visual block editing might not preserve all custom CSS and layouts.
+            </p>
+            {parserWarnings.length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded p-3 mb-4 max-h-32 overflow-y-auto">
+                <p className="text-xs font-semibold text-gray-500 mb-1">Detections:</p>
+                <ul className="list-disc pl-4 text-xs text-gray-600 space-y-1">
+                  {parserWarnings.map((w, idx) => (
+                    <li key={idx}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowHTML(true)
+                  setShowConfidenceWarning(false)
+                }}
+              >
+                Open HTML Editor
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowConfidenceWarning(false)}
+              >
+                Continue in Visual Mode
+              </Button>
+            </div>
           </div>
         </div>
       )}

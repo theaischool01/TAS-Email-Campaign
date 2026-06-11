@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { CampaignAccessControl } from '@/lib/rbac/campaign-access'
 import { ContactAccessControl } from '@/lib/rbac/contact-access'
 import { TemplateAccessControl } from '@/lib/rbac/template-access'
+import logger from '@/lib/logger'
 
 /**
  * Centralized dashboard data service for consistent RBAC across the platform
@@ -18,12 +19,7 @@ export class DashboardService {
       where: filter
     })
     
-    console.log("📊 Dashboard Campaign Count:", {
-      filter,
-      count,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count }, 'Dashboard campaign count fetched')
     
     return count
   }
@@ -38,12 +34,7 @@ export class DashboardService {
       where: filter
     })
     
-    console.log("📊 Dashboard Contact Count (Contacts):", {
-      filter,
-      count,
-      userId: session?.user?.id,
-      userRole: session?.user?.role
-    })
+    logger.debug({ userId: session?.user?.id, userRole: session?.user?.role, count }, 'Dashboard contact count fetched')
     
     return count
   }

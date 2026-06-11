@@ -1,4 +1,5 @@
 import { prisma } from "../app/lib/prisma"
+import logger from '@/lib/logger'
 
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION = 15 * 60 * 1000 // 15 minutes in milliseconds
@@ -30,7 +31,7 @@ export async function checkIpLock(ip: string): Promise<{ isLocked: boolean; rema
 
     return { isLocked: false }
   } catch (error) {
-    console.error("Error checking IP lock:", error)
+    logger.error({ ip, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Failed to check IP lock status')
     return { isLocked: false }
   }
 }
@@ -62,7 +63,7 @@ export async function recordFailedAttempt(ip: string): Promise<void> {
       }
     })
   } catch (error) {
-    console.error("Error recording failed attempt:", error)
+    logger.error({ ip, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Failed to record failed login attempt')
   }
 }
 
@@ -80,6 +81,6 @@ export async function resetAttempts(ip: string): Promise<void> {
       }
     })
   } catch (error) {
-    console.error("Error resetting attempts:", error)
+    logger.error({ ip, errorName: (error as Error).name, errorMessage: (error as Error).message }, 'Failed to reset login attempts')
   }
 }

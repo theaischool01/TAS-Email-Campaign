@@ -159,6 +159,7 @@ export default function TemplatePreviewPage() {
           >
             <div className="border shadow-sm rounded-lg overflow-hidden bg-white">
               <iframe 
+                sandbox="allow-same-origin"
                 srcDoc={`
                   <!DOCTYPE html>
                   <html>

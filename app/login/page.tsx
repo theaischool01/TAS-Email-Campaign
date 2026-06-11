@@ -204,6 +204,13 @@ function LoginForm() {
                 Sign in
               </Button>
             </form>
+
+            <div className="text-center mt-6 text-sm text-slate-500">
+              Don't have an account?{" "}
+              <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-semibold hover:underline">
+                Create Account
+              </Link>
+            </div>
           </div>
         </div>
       </div>
