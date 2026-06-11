@@ -131,6 +131,23 @@ node worker.js
 
 ---
 
+## 🧪 Production Validation Checklist
+
+After deployment verify:
+
+- [ ] Application loads successfully.
+- [ ] User authentication works.
+- [ ] Dashboard functions correctly.
+- [ ] CSV upload works.
+- [ ] Email templates can be created.
+- [ ] Campaigns can be scheduled.
+- [ ] Worker receives SQS messages.
+- [ ] Emails are delivered through AWS SES.
+- [ ] Open and click tracking works.
+- [ ] Analytics data updates correctly.
+
+---
+
 ## 🔮 Future Roadmap
 
 - [ ] **AI Subject Suggestions**: Leverage Gemini AI to suggest high-converting subject lines.
@@ -147,7 +164,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 👨💻 Author
+## 👨‍💻 Author
 
 **Saheel Yadav**
 - [LinkedIn](https://www.linkedin.com/in/saheel-yadav-ai-ml/)
