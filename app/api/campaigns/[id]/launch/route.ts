@@ -15,6 +15,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: campaignId } = await params
+
+  // Declared outside try so the catch block can read them for safe rollback
+  let statusUpdatedToSending = false
+  let sqsMessagesQueued = 0
+
   try {
     logger.info({ campaignId }, "LAUNCH: Starting")
 
@@ -202,6 +207,24 @@ export async function POST(
 
     const { QueueService } = await import("@/lib/services/queue.service")
 
+    // ─── RACE CONDITION FIX ──────────────────────────────────────────────────
+    // Commit SENDING status BEFORE the SQS enqueue loop so the worker never
+    // reads the campaign as DRAFT when it immediately consumes messages.
+    // Scheduled campaigns skip this — they go through the SCHEDULED branch below.
+    if (!isScheduled) {
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          status: "SENDING",
+          sentAt: new Date(),
+          totalSent: 0,
+          updatedAt: new Date(),
+        },
+      })
+      statusUpdatedToSending = true
+      logger.info({ campaignId }, "LAUNCH: Status committed to SENDING before SQS enqueue")
+    }
+
     logger.info({ campaignId, targetListIds }, "LAUNCH: Starting recipient stream loop")
 
     while (true) {
@@ -259,6 +282,7 @@ export async function POST(
       if (!isScheduled && batchMessages.length > 0) {
         logger.info({ campaignId, batchSize: batchMessages.length, totalProcessed: recipientCount }, "LAUNCH: Sending SQS batch")
         await QueueService.enqueueBatch(batchMessages)
+        sqsMessagesQueued += batchMessages.length
       }
 
       lastMemberId = members[members.length - 1].id
@@ -268,6 +292,14 @@ export async function POST(
 
     if (recipientCount === 0) {
       logger.warn({ campaignId }, "LAUNCH: No active recipients found")
+      // Safe rollback: status was set to SENDING but nothing was queued — revert cleanly
+      if (statusUpdatedToSending) {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { status: "DRAFT" },
+        })
+        logger.info({ campaignId }, "LAUNCH: Rolled back to DRAFT — no active recipients found")
+      }
       return NextResponse.json(
         { error: "No active recipients found in the selected lists (all contacts may be unsubscribed or excluded)" },
         { status: 422 }
@@ -314,14 +346,12 @@ export async function POST(
 
     // ─── SEND NOW (Queueing Complete) ────────────────────────────────────────
 
-    // ─── Mark campaign as SENDING ───────────────────────────────────────────
+    // Campaign was already committed as SENDING before the SQS loop.
+    // Update recipientCount now that the exact count is known.
     await prisma.campaign.update({
       where: { id: campaignId },
       data: {
-        status: "SENDING",
-        sentAt: new Date(),
         recipientCount,
-        totalSent: 0,
         updatedAt: new Date(),
       },
     })
@@ -353,7 +383,27 @@ export async function POST(
     })
 
   } catch (error) {
-    logger.error({ error }, "LAUNCH: POST /api/campaigns/[id]/launch - CRITICAL ERROR")
+    // Safe rollback: revert to DRAFT only if SENDING was committed but no SQS messages
+    // were successfully queued. Once messages are in flight, a rollback would cause
+    // inconsistency — the worker would receive messages for a non-SENDING campaign.
+    if (statusUpdatedToSending && sqsMessagesQueued === 0) {
+      try {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { status: "DRAFT" },
+        })
+        logger.warn({ campaignId }, "LAUNCH: Rolled back to DRAFT — failure before any SQS messages were queued")
+      } catch (rollbackErr) {
+        logger.error({
+          message: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+          stack: rollbackErr instanceof Error ? rollbackErr.stack : undefined
+        }, "LAUNCH: Failed to rollback campaign to DRAFT")
+      }
+    }
+    logger.error({
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, "LAUNCH: POST /api/campaigns/[id]/launch - CRITICAL ERROR")
     return NextResponse.json(
       { error: "Failed to launch campaign", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
