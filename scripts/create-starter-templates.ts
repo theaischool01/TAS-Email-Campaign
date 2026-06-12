@@ -242,11 +242,15 @@ async function main() {
           createdBy: adminUser.id
         }
       },
-      update: template,
+      update: {
+        ...template,
+        isSystem: true
+      },
       create: {
         ...template,
         createdBy: adminUser.id,
-        isPublic: true
+        isPublic: true,
+        isSystem: true
       }
     })
     console.log(`✅ Created/Updated template: ${template.name}`)

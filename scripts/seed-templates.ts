@@ -406,7 +406,10 @@ async function seedTemplates() {
     }
 
     const createdTemplate = await prisma.emailTemplate.create({
-      data: template
+      data: {
+        ...template,
+        isSystem: true
+      }
     })
     
     console.log(`✅ Created template: ${createdTemplate.name} (${createdTemplate.category})`)
