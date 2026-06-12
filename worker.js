@@ -693,11 +693,12 @@ async function processQueue() {
         }
 
         activeMessages++;
+        let delivery = null;
+        let campaignId = null;
+        let recipient = null;
+        let contactId = null;
+
         try {
-          let delivery = null;
-          let campaignId = null;
-          let recipient = null;
-          let contactId = null;
           
           // 1. JSON Parse
           const parsedBody = JSON.parse(message.Body);
