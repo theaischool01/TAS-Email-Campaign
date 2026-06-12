@@ -972,7 +972,10 @@ async function processQueue() {
               globalLastProcessedAt = new Date().toISOString()
               break;
             } catch (dbError) {
-              logger.warn({ error: dbError.message }, `[DB RETRY] Attempt ${attempt} failed to update delivery status to SENT:`);
+              logger.warn({
+                message: dbError instanceof Error ? dbError.message : String(dbError),
+                stack: dbError instanceof Error ? dbError.stack : undefined
+              }, `[DB RETRY] Attempt ${attempt} failed to update delivery status to SENT:`);
               if (attempt < 5) {
                 await new Promise(r => setTimeout(r, 2000));
               }
@@ -1048,7 +1051,11 @@ async function processQueue() {
           }
 
           if (isPermanentError(innerError)) {
-            logger.error({ error: innerError.message, type: innerError.name || 'Error' }, `[PERMANENT FAILURE] Poison message detected:`);
+            logger.error({
+              message: innerError instanceof Error ? innerError.message : String(innerError),
+              stack: innerError instanceof Error ? innerError.stack : undefined,
+              type: innerError.name || 'Error'
+            }, `[PERMANENT FAILURE] Poison message detected:`);
             
             // Delete message from SQS immediately to prevent poison retry loops
             await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
@@ -1058,7 +1065,10 @@ async function processQueue() {
           const isRetryable = classifyError(innerError);
           
           if (isRetryable) {
-            logger.warn({ error: innerError.message }, `[RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} will be retried:`);
+            logger.warn({
+              message: innerError instanceof Error ? innerError.message : String(innerError),
+              stack: innerError instanceof Error ? innerError.stack : undefined
+            }, `[RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} will be retried:`);
             
             if (delivery) {
               await prisma.emailDelivery.update({
@@ -1079,9 +1089,15 @@ async function processQueue() {
               QueueUrl: qUrl,
               ReceiptHandle: message.ReceiptHandle,
               VisibilityTimeout: backoffSeconds
-            })).catch((visibilityErr) => logger.error({ error: visibilityErr.message }, "Failed to change visibility timeout:"));
+            })).catch((visibilityErr) => logger.error({
+              message: visibilityErr instanceof Error ? visibilityErr.message : String(visibilityErr),
+              stack: visibilityErr instanceof Error ? visibilityErr.stack : undefined
+            }, 'Failed to change visibility timeout:'));
           } else {
-            logger.error({ error: innerError.message }, `[NON-RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} failed permanently:`);
+            logger.error({
+              message: innerError instanceof Error ? innerError.message : String(innerError),
+              stack: innerError instanceof Error ? innerError.stack : undefined
+            }, `[NON-RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} failed permanently:`);
             
             if (delivery) {
               await prisma.emailDelivery.update({
@@ -1118,7 +1134,10 @@ async function processQueue() {
         }
       }
     } catch (error) {
-      logger.error({ error }, '❌ Queue Error:');
+      logger.error({
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, '❌ Queue Error:');
       Sentry.captureException(error);
       await new Promise(r => setTimeout(r, 5000));
     }
@@ -1154,7 +1173,10 @@ async function gracefulShutdown(signal) {
     });
     logger.info('Worker status updated to SHUTTING_DOWN in database.');
   } catch (err) {
-    logger.error({ error: err.message }, 'Failed to update worker status to SHUTTING_DOWN');
+    logger.error({
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined
+    }, 'Failed to update worker status to SHUTTING_DOWN');
   }
 
   // Stop new scheduled tasks
@@ -1199,14 +1221,20 @@ async function gracefulShutdown(signal) {
     await prisma.$disconnect();
     logger.info('Prisma disconnected successfully.');
   } catch (error) {
-    logger.error({ error: error.message }, 'Error during worker shutdown.');
+    logger.error({
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error during worker shutdown.');
   }
 
   try {
     await Sentry.close(2000);
     logger.info('Sentry closed successfully.');
   } catch (sentryErr) {
-    logger.error({ error: sentryErr.message }, 'Error closing Sentry.');
+    logger.error({
+      message: sentryErr instanceof Error ? sentryErr.message : String(sentryErr),
+      stack: sentryErr instanceof Error ? sentryErr.stack : undefined
+    }, 'Error closing Sentry.');
   }
 
   clearTimeout(forceExit);
