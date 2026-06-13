@@ -112,40 +112,75 @@ export async function POST(
       return []
     })
 
-    // Calculate real recipient count (Unique Active Contacts only)
-    const activeContactsCount = await prisma.contact.count({
-      where: {
-        status: "ACTIVE",
-        OR: [
-          // Contacts in selected lists
-          {
-            lists: {
-              some: {
-                contactListId: {
-                  in: campaign.recipientLists.map((rl: any) => rl.contactListId)
-                }
-              }
-            }
-          },
-          // Contacts matching segments
-          ...segmentConditions
-        ],
-        // Exclude contacts in excluded lists
-        ...(campaign.excludedLists && campaign.excludedLists.length > 0 && {
-          NOT: {
-            lists: {
-              some: {
-                contactListId: {
-                  in: campaign.excludedLists.map((el: any) => el.contactListId)
-                }
-              }
-            }
+    const listIds = campaign.recipientLists.map((rl: any) => rl.contactListId)
+    const excludedListIds = (campaign.excludedLists || []).map((el: any) => el.contactListId)
+    
+    // Fetch suppressed emails
+    const suppressedEmails = await prisma.suppressionList.findMany({
+      where: { userId: session.user.id },
+      select: { email: true }
+    })
+    const suppressedSet = new Set(suppressedEmails.map((s: any) => s.email.trim().toLowerCase()))
+
+    // Fetch excluded contact IDs from excluded lists
+    const excludedContactIdsSet = new Set<string>()
+    if (excludedListIds.length > 0) {
+      const excludedMembers = await prisma.contactListMember.findMany({
+        where: { contactListId: { in: excludedListIds } },
+        select: { contactId: true }
+      })
+      excludedMembers.forEach((m: any) => excludedContactIdsSet.add(m.contactId))
+    }
+
+    const includedTagsStr = (campaign.includedTags || "").trim()
+    const includedTags = includedTagsStr
+      ? includedTagsStr.split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean)
+      : []
+
+    // Fetch active list members to resolve unique contacts
+    const members = await prisma.contactListMember.findMany({
+      where: { contactListId: { in: listIds } },
+      select: {
+        contact: {
+          select: {
+            id: true,
+            email: true,
+            status: true,
+            tags: true
           }
-        })
+        }
       }
     })
 
-    const totalContacts = activeContactsCount
+    const processedEmails = new Set<string>()
+    let recipientCount = 0
+
+    for (const member of members) {
+      const contact = member.contact
+      if (!contact) continue
+      if (contact.status !== "ACTIVE") continue
+
+      const emailLower = contact.email.trim().toLowerCase()
+      if (suppressedSet.has(emailLower)) continue
+      if (excludedContactIdsSet.has(contact.id)) continue
+      if (processedEmails.has(emailLower)) continue
+
+      // Tag filtering
+      const contactTags = (contact.tags || "")
+        .split(",")
+        .map((t: string) => t.trim().toLowerCase())
+        .filter(Boolean)
+
+      if (includedTags.length > 0) {
+        const hasIncludedTag = contactTags.some((t: string) => includedTags.includes(t))
+        if (!hasIncludedTag) continue
+      }
+
+      processedEmails.add(emailLower)
+      recipientCount++
+    }
+
+    const totalContacts = recipientCount
 
     // Update campaign to SCHEDULED
     const updatedCampaign = await prisma.campaign.update({

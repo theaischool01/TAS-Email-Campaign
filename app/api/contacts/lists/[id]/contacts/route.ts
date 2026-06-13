@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/next-auth"
 import { prisma } from "@/app/lib/prisma"
 import { canAccessResource, createContactListMemberFilter } from "@/lib/rbac-filters"
+import { validateEmail } from "@/lib/email-validator"
 
 export async function GET(
   request: NextRequest,
@@ -92,17 +93,26 @@ export async function POST(
     const phone = formData.get("phone") as string
     const company = formData.get("company") as string
     const city = formData.get("city") as string
+    const rawTags = (formData.get("tags") as string) || ""
 
     if (!email || !email.trim()) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
+
+    // 3-layer Email Validation
+    const validation = await validateEmail(email)
+    if (!validation.isValid) {
+      return NextResponse.json({ error: validation.error }, { status: 400 })
+    }
+
+    const sanitizedEmail = email.trim().toLowerCase()
 
     // Check for duplicate email
     const existingContact = await prisma.contact.findUnique({
       where: {
         userId_email: {
           userId: session.user.id,
-          email: email.trim().toLowerCase()
+          email: sanitizedEmail
         }
       }
     })
@@ -111,28 +121,44 @@ export async function POST(
       return NextResponse.json({ error: "Contact with this email already exists" }, { status: 409 })
     }
 
+    // Sanitize tags: comma separated, trimmed
+    const sanitizedTags = rawTags
+      .split(",")
+      .map(t => t.trim())
+      .filter(Boolean)
+      .join(",")
+
     // Create new contact
     const newContact = await prisma.contact.create({
       data: {
-        email: email.trim().toLowerCase(),
+        email: sanitizedEmail,
         userId: session.user.id,
         firstName: firstName?.trim() || null,
         lastName: lastName?.trim() || null,
         phone: phone?.trim() || null,
         company: company?.trim() || null,
         city: city?.trim() || null,
+        tags: sanitizedTags || null,
         status: "ACTIVE",
         source: "MANUAL"
       }
     })
 
     // Add contact to the list
-    await prisma.contactListMember.create({
-      data: {
-        contactListId: id,
-        contactId: newContact.id
-      }
-    })
+    await prisma.$transaction([
+      prisma.contactListMember.create({
+        data: {
+          contactListId: id,
+          contactId: newContact.id
+        }
+      }),
+      prisma.contactToContactList.create({
+        data: {
+          A: newContact.id,
+          B: id
+        }
+      })
+    ])
 
     return NextResponse.json(newContact, { status: 201 })
   } catch (error) {

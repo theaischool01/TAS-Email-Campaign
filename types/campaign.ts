@@ -55,6 +55,8 @@ export interface Campaign {
   totalOpened: number
   totalClicked: number
   tags?: string[]
+  includedTags?: string
+  excludedTags?: string
   templateId?: string
   createdBy: string
   createdAt: Date

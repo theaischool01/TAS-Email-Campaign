@@ -42,8 +42,9 @@ export default function ImportContactsPage() {
   const [currentStep, setCurrentStep] = useState<number>(0) // 0: Idle, 1: Parsing, 2: Validating, 3: Deduplicating, 4: Saving, 5: Done
   const [results, setResults] = useState<{
     total: number
-    added: number
-    duplicates: number
+    newContactsCreated: number
+    existingContactsAddedToList: number
+    alreadyInList: number
     ignored: number
   } | null>(null)
   const [error, setError] = useState("")
@@ -499,18 +500,22 @@ export default function ImportContactsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                   <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
                     <p className="text-2xl font-bold text-gray-900">{results.total}</p>
                     <p className="text-xs font-semibold text-gray-500 uppercase mt-1">Total Rows</p>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-green-100 shadow-sm">
-                    <p className="text-2xl font-bold text-green-600">{results.added}</p>
-                    <p className="text-xs font-semibold text-green-700 uppercase mt-1">Added</p>
+                    <p className="text-2xl font-bold text-green-600">{results.newContactsCreated}</p>
+                    <p className="text-xs font-semibold text-green-700 uppercase mt-1">New Contacts Created</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                    <p className="text-2xl font-bold text-blue-600">{results.existingContactsAddedToList}</p>
+                    <p className="text-xs font-semibold text-blue-700 uppercase mt-1">Existing Added To List</p>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm">
-                    <p className="text-2xl font-bold text-amber-600">{results.duplicates}</p>
-                    <p className="text-xs font-semibold text-amber-700 uppercase mt-1">Duplicates</p>
+                    <p className="text-2xl font-bold text-amber-600">{results.alreadyInList}</p>
+                    <p className="text-xs font-semibold text-amber-700 uppercase mt-1">Already In List</p>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-red-100 shadow-sm">
                     <p className="text-2xl font-bold text-red-600">{results.ignored}</p>

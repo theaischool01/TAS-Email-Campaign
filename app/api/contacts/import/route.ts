@@ -5,10 +5,9 @@ import { enforceRateLimit, getClientIp, handleRateLimitError } from "@/lib/secur
 import { prisma as prismaClient } from "@/app/lib/prisma"
 // @ts-ignore
 import Papa from "papaparse"
+import { validateEmail } from "@/lib/email-validator"
 
 const prisma = prismaClient as any
-
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: NextRequest) {
   try {
@@ -74,6 +73,7 @@ export async function POST(request: NextRequest) {
     // Determine column mapping from headers
     const emailCol = fields.includes("email") ? "email" : null
     const nameCol = fields.includes("name") ? "name" : null
+    const tagsCol = fields.includes("tags") ? "tags" : null
     const firstNameCol =
       fields.includes("firstname") ? "firstname"
       : fields.includes("first name") ? "first name"
@@ -85,13 +85,14 @@ export async function POST(request: NextRequest) {
 
     const counts = {
       total: rows.length,
-      added: 0,
-      duplicates: 0,
-      failed: 0,
+      newContactsCreated: 0,
+      existingContactsAddedToList: 0,
+      alreadyInList: 0,
       ignored: 0,
+      failed: 0,
     }
 
-    const BATCH_SIZE = 1000;
+    const BATCH_SIZE = 500; // Reduced batch size for concurrent DNS validation
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const chunk = rows.slice(i, i + BATCH_SIZE);
@@ -99,15 +100,17 @@ export async function POST(request: NextRequest) {
         email: string;
         firstName: string | null;
         lastName: string | null;
+        tags: string | null;
       }> = [];
 
-      // Phase 1: Filter & Normalize batch rows
-      for (const row of chunk) {
-        const rawEmail = emailCol ? (row[emailCol] ?? "").trim().toLowerCase() : "";
-        if (!rawEmail || !emailRegex.test(rawEmail)) {
-          counts.ignored++;
-          continue;
-        }
+      // Phase 1: Filter & Validate batch rows in parallel chunks
+      const validationPromises = chunk.map(async (row) => {
+        const rawEmail = emailCol ? (row[emailCol] ?? "").trim() : "";
+        if (!rawEmail) return null;
+
+        // Perform 3-layer email validation
+        const valResult = await validateEmail(rawEmail);
+        if (!valResult.isValid) return null;
 
         let firstName: string | null = null;
         let lastName: string | null = null;
@@ -125,11 +128,28 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        validRows.push({
-          email: rawEmail,
+        const rawTags = tagsCol ? (row[tagsCol] ?? "").trim() : "";
+        const sanitizedTags = rawTags
+          .split(",")
+          .map(t => t.trim())
+          .filter(Boolean)
+          .join(",");
+
+        return {
+          email: rawEmail.toLowerCase(),
           firstName,
           lastName,
-        });
+          tags: sanitizedTags || null,
+        };
+      });
+
+      const resolvedBatch = await Promise.all(validationPromises);
+      for (const item of resolvedBatch) {
+        if (item) {
+          validRows.push(item);
+        } else {
+          counts.ignored++;
+        }
       }
 
       if (validRows.length === 0) continue;
@@ -145,29 +165,61 @@ export async function POST(request: NextRequest) {
           },
           select: {
             id: true,
-            email: true
+            email: true,
+            tags: true
           }
         });
 
-        const existingMap = new Map<string, { id: string; email: string }>(
+        const existingMap = new Map<string, { id: string; email: string; tags: string | null }>(
           existingContacts.map((c: any) => [c.email.toLowerCase(), c])
+        );
+
+        // Fetch existing memberships for targetListId
+        const existingMemberships = await prisma.contactListMember.findMany({
+          where: {
+            contactListId: targetListId,
+            contactId: { in: existingContacts.map((c: any) => c.id) }
+          },
+          select: {
+            contactId: true
+          }
+        });
+
+        const existingMembershipsSet = new Set<string>(
+          existingMemberships.map((m: any) => m.contactId)
         );
 
         // Separate new contacts vs existing duplicates
         const newContactsData: any[] = [];
-        const existingIdsToLink: string[] = [];
+        const existingToLink: { contactId: string; email: string; newTags: string | null; currentTags: string | null }[] = [];
+        const existingAlreadyInList: { contactId: string; email: string; newTags: string | null; currentTags: string | null }[] = [];
 
         for (const row of validRows) {
           const matched = existingMap.get(row.email);
           if (matched) {
-            counts.duplicates++;
-            existingIdsToLink.push(matched.id);
+            const hasMembership = existingMembershipsSet.has(matched.id);
+            if (hasMembership) {
+              existingAlreadyInList.push({
+                contactId: matched.id,
+                email: matched.email,
+                newTags: row.tags,
+                currentTags: matched.tags
+              });
+            } else {
+              existingToLink.push({
+                contactId: matched.id,
+                email: matched.email,
+                newTags: row.tags,
+                currentTags: matched.tags
+              });
+            }
           } else {
             newContactsData.push({
               email: row.email,
               userId: session.user.id,
               firstName: row.firstName,
               lastName: row.lastName,
+              tags: row.tags,
               status: "ACTIVE",
               source: "IMPORT"
             });
@@ -184,11 +236,12 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // 2. Fetch all contacts IDs for the chunk
-          const contacts = await tx.contact.findMany({
+          // 2. Fetch newly created contacts to get their IDs
+          const newEmails = newContactsData.map(c => c.email);
+          const newCreatedContacts = await tx.contact.findMany({
             where: {
               userId: session.user.id,
-              email: { in: emails }
+              email: { in: newEmails }
             },
             select: {
               id: true,
@@ -196,27 +249,85 @@ export async function POST(request: NextRequest) {
             }
           });
 
-          // 3. Build membership arrays
-          const memberships = contacts.map((c: any) => ({
+          // 3. Build memberships arrays for newly created contacts + existing to link
+          const newMemberships = newCreatedContacts.map((c: any) => ({
             contactListId: targetListId,
             contactId: c.id
           }));
 
+          const existingMembershipsToCreate = existingToLink.map(e => ({
+            contactListId: targetListId,
+            contactId: e.contactId
+          }));
+
+          const allMembershipsToCreate = [...newMemberships, ...existingMembershipsToCreate];
+
           // 4. Bulk insert memberships
-          if (memberships.length > 0) {
+          if (allMembershipsToCreate.length > 0) {
             await tx.contactListMember.createMany({
-              data: memberships,
+              data: allMembershipsToCreate,
+              skipDuplicates: true
+            });
+            await tx.contactToContactList.createMany({
+              data: allMembershipsToCreate.map((m: any) => ({
+                A: m.contactId,
+                B: m.contactListId
+              })),
               skipDuplicates: true
             });
           }
 
-          counts.added += newContactsData.length;
+          // Helper helper to merge tags case-insensitively while preserving the casing of the first occurrence
+          const mergeTags = (existingStr: string | null, incomingStr: string | null): string | null => {
+            const existingArr = existingStr ? existingStr.split(",").map(t => t.trim()).filter(Boolean) : [];
+            const incomingArr = incomingStr ? incomingStr.split(",").map(t => t.trim()).filter(Boolean) : [];
+            
+            const seen = new Set<string>();
+            const result: string[] = [];
+
+            // Add all existing tags first
+            for (const tag of existingArr) {
+              const lower = tag.toLowerCase();
+              if (!seen.has(lower)) {
+                seen.add(lower);
+                result.push(tag);
+              }
+            }
+
+            // Add incoming tags
+            for (const tag of incomingArr) {
+              const lower = tag.toLowerCase();
+              if (!seen.has(lower)) {
+                seen.add(lower);
+                result.push(tag);
+              }
+            }
+
+            return result.join(",") || null;
+          };
+
+          // 5. Update merged tags for existing contacts
+          const allExistingContactsToUpdate = [...existingToLink, ...existingAlreadyInList];
+          for (const item of allExistingContactsToUpdate) {
+            const merged = mergeTags(item.currentTags, item.newTags);
+            if (merged !== item.currentTags) {
+              await tx.contact.update({
+                where: { id: item.contactId },
+                data: { tags: merged }
+              });
+            }
+          }
+
+          counts.newContactsCreated += newContactsData.length;
+          counts.existingContactsAddedToList += existingToLink.length;
+          counts.alreadyInList += existingAlreadyInList.length;
         });
 
         // Clear references to let garbage collection free heap
         existingMap.clear();
         newContactsData.length = 0;
-        existingIdsToLink.length = 0;
+        existingToLink.length = 0;
+        existingAlreadyInList.length = 0;
         emails.length = 0;
 
       } catch (batchErr) {
@@ -237,3 +348,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+

@@ -16,9 +16,13 @@ import {
   Mail, 
   Trash2, 
   Upload,
-  User
+  User,
+  Edit,
+  AlertCircle
 } from "lucide-react"
 import { getCreatedByText } from "@/lib/role-helpers"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 interface Contact {
   id: string
@@ -29,6 +33,7 @@ interface Contact {
   company?: string
   city?: string
   status: string
+  tags?: string
 }
 
 interface ContactList {
@@ -57,6 +62,60 @@ export default function ContactListDetailPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [showAddForm, setShowAddForm] = useState(false)
   const [error, setError] = useState("")
+  
+  // Tag input states for Add Modal
+  const [modalTags, setModalTags] = useState<string[]>([])
+  const [tagInputText, setTagInputText] = useState("")
+  const [showTagDropdown, setShowTagDropdown] = useState(false)
+
+  // Edit Modal States
+  const [editingContact, setEditingContact] = useState<Contact | null>(null)
+  const [editFirstName, setEditFirstName] = useState("")
+  const [editLastName, setEditLastName] = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editPhone, setEditPhone] = useState("")
+  const [editCompany, setEditCompany] = useState("")
+  const [editCity, setEditCity] = useState("")
+  const [editStatus, setEditStatus] = useState("")
+  const [editTags, setEditTags] = useState<string[]>([])
+  const [editTagInputText, setEditTagInputText] = useState("")
+  const [showEditTagDropdown, setShowEditTagDropdown] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [editError, setEditError] = useState("")
+  const [emailPermissions, setEmailPermissions] = useState({ canEditEmail: true, reason: "" })
+
+  // Global cached tags state
+  const [globalCachedTags, setGlobalCachedTags] = useState<string[]>([])
+
+  // Fetch global tags once when edit modal opens
+  const fetchGlobalTags = async () => {
+    try {
+      const response = await fetch("/api/contacts/tags")
+      if (response.ok) {
+        const data = await response.json()
+        if (data.tags) {
+          setGlobalCachedTags(data.tags)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load global unique tags:", err)
+    }
+  }
+
+  // Get all unique tags currently used in this list
+  const uniqueSuggestions = Array.from(
+    new Set(
+      contacts
+        .flatMap(c => (c.tags || "").split(","))
+        .map(t => t.trim())
+        .filter(t => t && !modalTags.includes(t))
+    )
+  )
+
+  // Autocomplete tag suggestions filtered locally from global cache
+  const filteredEditSuggestions = globalCachedTags.filter(
+    tag => tag.toLowerCase().includes(editTagInputText.toLowerCase()) && !editTags.includes(tag)
+  )
 
   useEffect(() => {
     if (params.id) {
@@ -94,6 +153,7 @@ export default function ContactListDetailPage() {
   const handleAddContact = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
+    formData.append("tags", modalTags.join(","))
     
     try {
       const response = await fetch(`/api/contacts/lists/${params.id}/contacts`, {
@@ -104,6 +164,8 @@ export default function ContactListDetailPage() {
       const data = await response.json()
       if (response.ok) {
         setShowAddForm(false)
+        setModalTags([])
+        setTagInputText("")
         fetchContacts()
         e.currentTarget.reset()
       } else {
@@ -129,6 +191,78 @@ export default function ContactListDetailPage() {
       }
     } catch (error) {
       console.error("Failed to delete contact:", error)
+    }
+  }
+
+  // Open Edit modal, load permission logic from backend
+  const handleOpenEditModal = async (contact: Contact) => {
+    setEditError("")
+    setIsSaving(false)
+    setEditingContact(contact)
+    setEditFirstName(contact.firstName || "")
+    setEditLastName(contact.lastName || "")
+    setEditEmail(contact.email || "")
+    setEditPhone(contact.phone || "")
+    setEditCompany(contact.company || "")
+    setEditCity(contact.city || "")
+    setEditStatus(contact.status || "")
+    setEditTags(contact.tags ? contact.tags.split(",").map(t => t.trim()).filter(Boolean) : [])
+    setEditTagInputText("")
+    
+    // Fetch global tags for local autocomplete caching
+    fetchGlobalTags()
+
+    try {
+      const response = await fetch(`/api/contacts/${contact.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.permissions) {
+          setEmailPermissions(data.permissions)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load email permissions:", err)
+    }
+  }
+
+  // Handle Edit submission
+  const handleEditContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingContact) return
+
+    setIsSaving(true)
+    setEditError("")
+
+    try {
+      const payload = {
+        firstName: editFirstName,
+        lastName: editLastName,
+        email: editEmail,
+        phone: editPhone,
+        company: editCompany,
+        city: editCity,
+        status: editStatus,
+        tags: editTags.join(",")
+      }
+
+      const response = await fetch(`/api/contacts/${editingContact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        toast.success("Contact updated successfully.")
+        setEditingContact(null)
+        fetchContacts()
+      } else {
+        setEditError(data.error || "Failed to update contact")
+      }
+    } catch (err) {
+      setEditError("An unexpected error occurred.")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -179,7 +313,7 @@ export default function ContactListDetailPage() {
                   placeholder="Search contacts..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-64"
+                  className="pl-10 w-64 text-sm"
                 />
               </div>
               <Link href="/contacts/import">
@@ -213,7 +347,7 @@ export default function ContactListDetailPage() {
             {!searchTerm && (
               <Button onClick={() => setShowAddForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add First Contact
+                Add Contact
               </Button>
             )}
           </div>
@@ -232,6 +366,9 @@ export default function ContactListDetailPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tags
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
@@ -260,6 +397,19 @@ export default function ContactListDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {contact.city || "-"}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {contact.tags ? (
+                              contact.tags.split(",").map((tag) => (
+                                <Badge key={tag} variant="outline" className="text-[10px] bg-slate-50 border-slate-200 text-slate-600">
+                                  {tag}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Badge variant={contact.status === "ACTIVE" ? "default" : "secondary"}>
                             {contact.status}
@@ -267,6 +417,14 @@ export default function ContactListDetailPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEditModal(contact)}
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -336,11 +494,298 @@ export default function ContactListDetailPage() {
                   <Input id="city" name="city" placeholder="New York" />
                 </div>
 
+                <div className="relative">
+                  <Label>Tags</Label>
+                  <div className="flex flex-wrap gap-1.5 p-2 border border-slate-300 rounded-md min-h-[38px] bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+                    {modalTags.map((tag) => (
+                      <Badge key={tag} className="flex items-center gap-1 bg-blue-100 hover:bg-blue-200 text-blue-800 border-0 text-xs px-2 py-0.5">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => setModalTags(modalTags.filter(t => t !== tag))}
+                          className="font-bold hover:text-red-600 ml-1 text-sm leading-none"
+                        >
+                          &times;
+                        </button>
+                      </Badge>
+                    ))}
+                    <input
+                      type="text"
+                      placeholder={modalTags.length === 0 ? "Type tag & press Enter..." : ""}
+                      value={tagInputText}
+                      onChange={(e) => {
+                        setTagInputText(e.target.value)
+                        setShowTagDropdown(true)
+                      }}
+                      onFocus={() => setShowTagDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowTagDropdown(false), 200)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const tag = tagInputText.trim()
+                          if (tag && !modalTags.includes(tag)) {
+                            setModalTags([...modalTags, tag])
+                            setTagInputText("")
+                          }
+                        }
+                      }}
+                      className="flex-1 outline-none text-sm min-w-[120px] border-0 p-0 focus:ring-0"
+                    />
+                  </div>
+                  {showTagDropdown && uniqueSuggestions.filter(tag => tag.toLowerCase().includes(tagInputText.toLowerCase())).length > 0 && (
+                    <div className="absolute z-50 bg-white border border-slate-200 rounded-md shadow-lg max-h-40 overflow-y-auto w-full mt-1">
+                      {uniqueSuggestions
+                        .filter(tag => tag.toLowerCase().includes(tagInputText.toLowerCase()))
+                        .map((tag) => (
+                          <div
+                            key={tag}
+                            onMouseDown={() => {
+                              if (!modalTags.includes(tag)) {
+                                setModalTags([...modalTags, tag])
+                                setTagInputText("")
+                              }
+                            }}
+                            className="p-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700"
+                          >
+                            {tag}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>
                     Cancel
                   </Button>
                   <Button type="submit">Add Contact</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Edit Contact Modal */}
+      {editingContact && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-lg mx-auto shadow-xl relative overflow-hidden transition-all bg-white rounded-xl border border-slate-200">
+            {/* Modal Close (X) button */}
+            <button
+              type="button"
+              onClick={() => setEditingContact(null)}
+              aria-label="Close edit contact modal"
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 rounded-lg p-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors"
+            >
+              <span className="text-lg font-semibold leading-none">✕</span>
+            </button>
+
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl font-bold text-slate-800">Edit Contact</CardTitle>
+              <CardDescription className="text-sm text-slate-500">
+                Update details for this contact
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <form onSubmit={handleEditContactSubmit} className="space-y-4">
+                {editError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="editFirstName" className="text-xs font-semibold text-slate-700">First Name</Label>
+                    <Input 
+                      id="editFirstName" 
+                      value={editFirstName} 
+                      onChange={(e) => setEditFirstName(e.target.value)} 
+                      placeholder="Enter first name" 
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="editLastName" className="text-xs font-semibold text-slate-700">Last Name</Label>
+                    <Input 
+                      id="editLastName" 
+                      value={editLastName} 
+                      onChange={(e) => setEditLastName(e.target.value)} 
+                      placeholder="Enter last name" 
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="editEmail" className="text-xs font-semibold text-slate-700">Email *</Label>
+                    {!emailPermissions.canEditEmail && (
+                      <span className="text-xs text-amber-600" title="Email locked due to history">🔒</span>
+                    )}
+                  </div>
+                  <Input 
+                    id="editEmail" 
+                    type="email" 
+                    value={editEmail} 
+                    onChange={(e) => setEditEmail(e.target.value)} 
+                    placeholder="Enter email address" 
+                    required 
+                    disabled={!emailPermissions.canEditEmail}
+                    className={cn(
+                      "mt-1 text-sm transition-all",
+                      !emailPermissions.canEditEmail && "bg-slate-100 border-slate-300 text-slate-500 cursor-not-allowed font-medium"
+                    )}
+                  />
+                  {!emailPermissions.canEditEmail && (
+                    <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-md text-xs leading-relaxed flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                      <span>{emailPermissions.reason}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="editPhone" className="text-xs font-semibold text-slate-700">Phone</Label>
+                  <Input 
+                    id="editPhone" 
+                    value={editPhone} 
+                    onChange={(e) => setEditPhone(e.target.value)} 
+                    placeholder="Enter phone number" 
+                    className="mt-1"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="editCompany" className="text-xs font-semibold text-slate-700">Company</Label>
+                    <Input 
+                      id="editCompany" 
+                      value={editCompany} 
+                      onChange={(e) => setEditCompany(e.target.value)} 
+                      placeholder="Enter company name" 
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="editCity" className="text-xs font-semibold text-slate-700">City</Label>
+                    <Input 
+                      id="editCity" 
+                      value={editCity} 
+                      onChange={(e) => setEditCity(e.target.value)} 
+                      placeholder="Enter city" 
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Label className="text-xs font-semibold text-slate-700">Tags</Label>
+                  <div className="flex flex-wrap gap-1.5 p-2 border border-slate-300 rounded-md min-h-[38px] bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent mt-1">
+                    {editTags.map((tag) => (
+                      <Badge key={tag} className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs px-2 py-0.5 rounded-full font-medium transition-colors">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => setEditTags(editTags.filter(t => t !== tag))}
+                          className="font-bold hover:text-red-600 ml-1 text-sm leading-none"
+                        >
+                          &times;
+                        </button>
+                      </Badge>
+                    ))}
+                    <input
+                      type="text"
+                      placeholder={editTags.length === 0 ? "Type tag & press Enter..." : ""}
+                      value={editTagInputText}
+                      onChange={(e) => {
+                        setEditTagInputText(e.target.value)
+                        setShowEditTagDropdown(true)
+                      }}
+                      onFocus={() => setShowEditTagDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowEditTagDropdown(false), 250)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const tag = editTagInputText.trim()
+                          if (tag && !editTags.includes(tag)) {
+                            setEditTags([...editTags, tag])
+                            setEditTagInputText("")
+                          }
+                        }
+                      }}
+                      className="flex-1 outline-none text-sm min-w-[120px] border-0 p-0 focus:ring-0"
+                    />
+                  </div>
+                  {showEditTagDropdown && filteredEditSuggestions.length > 0 && (
+                    <div className="absolute z-50 bg-white border border-slate-200 rounded-md shadow-lg max-h-40 overflow-y-auto w-full mt-1">
+                      {filteredEditSuggestions.map((tag) => (
+                        <div
+                          key={tag}
+                          onMouseDown={() => {
+                            if (!editTags.includes(tag)) {
+                              setEditTags([...editTags, tag])
+                              setEditTagInputText("")
+                            }
+                          }}
+                          className="p-2 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 transition-colors"
+                        >
+                          {tag}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700">Status</Label>
+                  <div className="flex gap-4 mt-2">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="editStatus" 
+                        value="ACTIVE" 
+                        checked={editStatus === "ACTIVE"} 
+                        onChange={() => setEditStatus("ACTIVE")}
+                        disabled={editingContact.status === "BOUNCED" || editingContact.status === "COMPLAINED"}
+                        className="h-4 w-4"
+                      />
+                      Active
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="editStatus" 
+                        value="UNSUBSCRIBED" 
+                        checked={editStatus === "UNSUBSCRIBED"} 
+                        onChange={() => setEditStatus("UNSUBSCRIBED")}
+                        disabled={editingContact.status === "BOUNCED" || editingContact.status === "COMPLAINED"}
+                        className="h-4 w-4"
+                      />
+                      Unsubscribed
+                    </label>
+                    {(editingContact.status === "BOUNCED" || editingContact.status === "COMPLAINED") && (
+                      <span className="text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded px-2 py-1 select-none flex items-center gap-1">
+                        🔒 Locked: {editingContact.status}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setEditingContact(null)}
+                    disabled={isSaving}
+                    className="rounded-lg text-sm"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSaving} className="rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white">
+                    {isSaving ? "Saving..." : "Save Changes"}
+                  </Button>
                 </div>
               </form>
             </CardContent>

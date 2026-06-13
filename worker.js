@@ -407,7 +407,15 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
     const now = new Date();
     const scheduledCampaigns = await prisma.campaign.findMany({
       where: { status: 'SCHEDULED', scheduledAt: { lte: now } },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        scheduledAt: true,
+        createdBy: true,
+        sentAt: true,
+        createdAt: true,
+        includedTags: true,
         recipientLists: { include: { contactList: { include: { members: { include: { contact: true } } } } } },
         excludedLists: { include: { contactList: { include: { members: { select: { contactId: true } } } } } },
         template: true
@@ -423,7 +431,7 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
         take: 50000
       });
       logger.info({ count: suppressedEmails.length }, 'Suppression list loaded')
-      const suppressedSet = new Set(suppressedEmails.map(s => s.email));
+      const suppressedSet = new Set(suppressedEmails.map(s => s.email.trim().toLowerCase()));
 
       // Build excluded contact ID set from excludedLists
       const excludedContactIds = new Set();
@@ -434,15 +442,32 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
       });
       logger.info({ count: excludedContactIds.size }, 'Excluded contacts loaded');
 
+      // Tag filtering configs
+      const includedTagsStr = (campaign.includedTags || "").trim();
+      const includedTags = includedTagsStr
+        ? includedTagsStr.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+        : [];
+
       const recipientsMap = new Map();
       campaign.recipientLists.forEach(rl => {
         rl.contactList.members.forEach(m => {
           if (
             m.contact &&
             m.contact.status === 'ACTIVE' &&
-            !suppressedSet.has(m.contact.email) &&
+            !suppressedSet.has(m.contact.email.trim().toLowerCase()) &&
             !excludedContactIds.has(m.contact.id)
           ) {
+            // Tag filtering
+            const contactTags = (m.contact.tags || "")
+              .split(",")
+              .map(t => t.trim().toLowerCase())
+              .filter(Boolean);
+
+            if (includedTags.length > 0) {
+              const hasIncludedTag = contactTags.some(t => includedTags.includes(t));
+              if (!hasIncludedTag) return;
+            }
+
             if (!recipientsMap.has(m.contact.email)) {
               recipientsMap.set(m.contact.email, {
                 email: m.contact.email,
@@ -455,6 +480,7 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
         });
       });
       const recipients = Array.from(recipientsMap.values());
+
 
       await prisma.campaign.update({
         where: { id: campaign.id },

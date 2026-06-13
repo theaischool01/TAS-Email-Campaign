@@ -192,6 +192,13 @@ export class CampaignService {
           contactId
         }))
       })
+      await (prisma as any).contactToContactList.createMany({
+        data: nonOpenerIds.map(contactId => ({
+          A: contactId,
+          B: resendList.id
+        })),
+        skipDuplicates: true
+      })
     }
 
     // Link list to new campaign

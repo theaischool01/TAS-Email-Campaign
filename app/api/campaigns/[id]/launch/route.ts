@@ -196,6 +196,13 @@ export async function POST(
 
     const targetListIds = (existingCampaign.recipientLists || []).map((rl: any) => rl.contactListId)
 
+    // Prepare tags for filtering
+    const includedTagsStr = (existingCampaign.includedTags || "").trim()
+
+    const includedTags = includedTagsStr
+      ? includedTagsStr.split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean)
+      : []
+
     // Check for scheduling
     const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
     const isScheduled = scheduledAt && scheduledAt > new Date()
@@ -241,7 +248,8 @@ export async function POST(
               email: true,
               firstName: true,
               lastName: true,
-              status: true
+              status: true,
+              tags: true
             }
           }
         },
@@ -261,6 +269,18 @@ export async function POST(
         if (suppressedSet.has(emailLower)) continue
         if (excludedContactIdsSet.has(contact.id)) continue
         if (processedEmails.has(emailLower)) continue
+
+        // Tag filtering
+        const contactTags = (contact.tags || "")
+          .split(",")
+          .map((t: string) => t.trim().toLowerCase())
+          .filter(Boolean)
+
+        // If includedTags are set, contact must have at least one of the included tags
+        if (includedTags.length > 0) {
+          const hasIncludedTag = contactTags.some((t: string) => includedTags.includes(t))
+          if (!hasIncludedTag) continue
+        }
 
         processedEmails.add(emailLower)
         recipientCount++

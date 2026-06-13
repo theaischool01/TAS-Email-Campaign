@@ -10,7 +10,9 @@ const prisma = prismaClient as any
 const recipientsSchema = z.object({
   recipientListIds: z.array(z.string()).optional(),
   recipientSegmentIds: z.array(z.string()).optional(),
-  excludedListIds: z.array(z.string()).optional()
+  excludedListIds: z.array(z.string()).optional(),
+  includedTags: z.string().optional(),
+  excludedTags: z.string().optional()
 }).refine(data => (data.recipientListIds?.length || 0) + (data.recipientSegmentIds?.length || 0) >= 0, {
   message: "Invalid recipient data"
 })
@@ -93,6 +95,8 @@ export async function PUT(
     await (prisma as any).campaign.update({
       where: { id: campaignId },
       data: {
+        includedTags: validatedData.includedTags || null,
+        excludedTags: validatedData.excludedTags || null,
         recipientLists: {
           deleteMany: {},
           create: validListIds.map(listId => ({

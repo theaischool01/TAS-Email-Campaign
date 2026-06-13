@@ -195,6 +195,8 @@ export default function NewCampaignPage() {
                     selectedRecipients={wizard.state.selectedRecipients}
                     selectedSegments={wizard.state.selectedSegments}
                     excludedRecipients={wizard.state.excludedRecipients}
+                    includedTags={wizard.state.includedTags}
+                    excludedTags={wizard.state.excludedTags}
                     onChange={wizard.updateRecipients}
                     onExcludedContactsChange={wizard.updateExcludedContacts}
                     validationErrors={wizard.state.validationErrors}
@@ -213,7 +215,7 @@ export default function NewCampaignPage() {
                     refreshTemplates={wizard.refreshTemplates}
                   />
                 )}
-                {wizard.state.currentStep === 4 && (
+                 {wizard.state.currentStep === 4 && (
                   <Step4Review
                     campaignDetails={wizard.state.campaignDetails}
                     selectedRecipients={wizard.state.selectedRecipients}
@@ -226,6 +228,8 @@ export default function NewCampaignPage() {
                     isLaunching={isLaunching}
                     excludedContacts={wizard.state.excludedContacts}
                     allContactLists={wizard.contactLists}
+                    includedTags={wizard.state.includedTags}
+                    excludedTags={wizard.state.excludedTags}
                     onUpdateDetails={wizard.updateCampaignDetails}
                     onUpdateRecipients={wizard.updateRecipients}
                     onUpdateExcluded={wizard.updateExcludedContacts}

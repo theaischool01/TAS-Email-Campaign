@@ -39,6 +39,7 @@ interface Contact {
   company?: string
   city?: string
   status: string
+  tags?: string
 }
 
 interface ContactList {
@@ -69,6 +70,7 @@ function ContactsPage() {
   const [isLoadingLists, setIsLoadingLists] = useState(true)
   const [isLoadingContacts, setIsLoadingContacts] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
 
   useEffect(() => {
     fetchContactLists()
@@ -111,7 +113,7 @@ function ContactsPage() {
       const response = await fetch("/api/contacts")
       if (response.ok) {
         const data = await response.json()
-        setContacts(Array.isArray(data) ? data : [])
+        setContacts(Array.isArray(data.contacts) ? data.contacts : Array.isArray(data) ? data : [])
       } else {
         console.error("Failed to fetch contacts, status:", response.status)
         setContacts([])
@@ -128,11 +130,18 @@ function ContactsPage() {
     list.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const filteredContacts = contacts.filter((contact) =>
-    `${contact.firstName || ""} ${contact.lastName || ""} ${contact.email || ""} ${contact.company || ""}`
+  const filteredContacts = contacts.filter((contact) => {
+    const matchesSearch = `${contact.firstName || ""} ${contact.lastName || ""} ${contact.email || ""} ${contact.company || ""}`
       .toLowerCase()
       .includes(searchTerm.toLowerCase())
-  )
+    
+    const matchesTag = !tagFilter || (contact.tags || "")
+      .toLowerCase()
+      .split(",")
+      .some(t => t.trim().includes(tagFilter.toLowerCase().trim()))
+
+    return matchesSearch && matchesTag
+  })
 
   const handleDeleteList = async (listId: string) => {
     if (!confirm("Are you sure you want to delete this contact list?")) {
@@ -215,15 +224,28 @@ function ContactsPage() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-          <div className="relative md:w-1/2 dark:bg-slate-900 dark:border-slate-800">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 text-gray-400 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder={activeTab === "all" ? "Search contacts..." : "Search contact lists..."}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:border-slate-700"
-            />
+          <div className="flex flex-col md:flex-row gap-3 flex-1 max-w-2xl">
+            <div className="relative flex-1 dark:bg-slate-900 dark:border-slate-800">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 text-gray-400 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder={activeTab === "all" ? "Search contacts..." : "Search contact lists..."}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:border-slate-700 text-sm"
+              />
+            </div>
+            {activeTab === "all" && (
+              <div className="relative md:w-1/3">
+                <input
+                  type="text"
+                  placeholder="Filter by tag..."
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="px-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:border-slate-700 text-sm"
+                />
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/contacts/import">
@@ -271,6 +293,9 @@ function ContactsPage() {
                           Location
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-slate-400">
+                          Tags
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-slate-400">
                           Status
                         </th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-slate-400">
@@ -294,6 +319,19 @@ function ContactsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-slate-300 dark:bg-slate-900">
                             {contact.city || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-slate-300 dark:bg-slate-900">
+                            <div className="flex flex-wrap gap-1 max-w-[220px]">
+                              {contact.tags ? (
+                                contact.tags.split(",").map((tag) => (
+                                  <Badge key={tag} variant="outline" className="text-[10px] bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                                    {tag}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 dark:text-slate-600">-</span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap dark:bg-slate-900">
                             <Badge

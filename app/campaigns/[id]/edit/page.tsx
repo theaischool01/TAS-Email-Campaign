@@ -182,6 +182,8 @@ export default function EditCampaignPage() {
                     contactLists={wizard.contactLists}
                     selectedRecipients={wizard.state.selectedRecipients}
                     excludedRecipients={wizard.state.excludedRecipients}
+                    includedTags={wizard.state.includedTags}
+                    excludedTags={wizard.state.excludedTags}
                     onChange={wizard.updateRecipients}
                     onExcludedContactsChange={wizard.updateExcludedContacts}
                     validationErrors={wizard.state.validationErrors}
@@ -214,6 +216,8 @@ export default function EditCampaignPage() {
                     isLaunching={isLaunching}
                     excludedContacts={wizard.state.excludedContacts}
                     allContactLists={wizard.contactLists}
+                    includedTags={wizard.state.includedTags}
+                    excludedTags={wizard.state.excludedTags}
                     onUpdateDetails={wizard.updateCampaignDetails}
                     onUpdateRecipients={wizard.updateRecipients}
                     onUpdateExcluded={wizard.updateExcludedContacts}

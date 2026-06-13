@@ -183,6 +183,8 @@ model Campaign {
   totalOpened         Int                        @default(0)
   totalClicked        Int                        @default(0)
   tags                String?
+  includedTags        String?
+  excludedTags        String?
   templateId          String?
   createdBy           String
   createdAt           DateTime                   @default(now())

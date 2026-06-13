@@ -2,15 +2,13 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Users, UserMinus, AlertCircle, CheckCircle2, Target, Filter } from "lucide-react"
+import { Search, Users, AlertCircle, CheckCircle2, Target, Filter, Tags } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
 interface ContactList {
@@ -28,10 +26,17 @@ interface Step2RecipientsProps {
   selectedRecipients: string[]
   selectedSegments?: string[]
   excludedRecipients: string[]
-  onChange: (selected: string[], excluded: string[], selectedSegments: string[]) => void
+  includedTags?: string
+  excludedTags?: string
+  onChange: (selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string) => void
   validationErrors: Record<string, string>
   onValidationChange: (isValid: boolean, errors: Record<string, string>) => void
   onExcludedContactsChange?: (excluded: Record<string, string[]>) => void
+}
+
+interface TagAggregate {
+  tag: string
+  count: number
 }
 
 export function Step2Recipients({ 
@@ -40,6 +45,8 @@ export function Step2Recipients({
   selectedRecipients,
   selectedSegments = [],
   excludedRecipients,
+  includedTags = '',
+  excludedTags = '',
   onChange,
   validationErrors,
   onValidationChange,
@@ -48,11 +55,25 @@ export function Step2Recipients({
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'lists' | 'segments'>('lists')
   const [searchTerm, setSearchTerm] = useState("")
-
+  
+  // Expanded states, loaded tags by list, and loading statuses
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({})
-  const [listContacts, setListContacts] = useState<Record<string, any[]>>({})
-  const [loadingLists, setLoadingLists] = useState<Record<string, boolean>>({})
-  const [excludedContacts, setExcludedContacts] = useState<Record<string, string[]>>({})
+  const [listTags, setListTags] = useState<Record<string, TagAggregate[]>>({})
+  const [loadingTags, setLoadingTags] = useState<Record<string, boolean>>({})
+
+  // Estimator live state
+  const [estimating, setEstimating] = useState(false)
+  const [estimate, setEstimate] = useState<{
+    totalContacts: number
+    excludedContacts: number
+    finalRecipients: number
+  } | null>(null)
+
+  // Current included tags array parsed from state
+  const currentIncludedTags = useMemo(() => {
+    if (!includedTags) return []
+    return includedTags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+  }, [includedTags])
 
   // Filter contact lists based on search
   const filteredLists = useMemo(() => {
@@ -72,6 +93,42 @@ export function Step2Recipients({
     )
   }, [segments, searchTerm])
 
+  // Call estimation API whenever selected list IDs or included tags change
+  useEffect(() => {
+    let active = true
+    const fetchEstimate = async () => {
+      if (selectedRecipients.length === 0) {
+        setEstimate({ totalContacts: 0, excludedContacts: 0, finalRecipients: 0 })
+        return
+      }
+      setEstimating(true)
+      try {
+        const response = await fetch("/api/campaigns/estimate-recipients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listIds: selectedRecipients,
+            includedTags: currentIncludedTags
+          })
+        })
+        if (response.ok && active) {
+          const data = await response.json()
+          setEstimate(data)
+        }
+      } catch (err) {
+        console.error("Failed to fetch recipient estimate:", err)
+      } finally {
+        if (active) setEstimating(false)
+      }
+    }
+
+    const timer = setTimeout(fetchEstimate, 300)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [selectedRecipients, currentIncludedTags])
+
   const handleListToggle = (listId: string, checked: boolean) => {
     let newSelected = [...selectedRecipients]
     if (checked) {
@@ -79,7 +136,7 @@ export function Step2Recipients({
     } else {
       newSelected = newSelected.filter(id => id !== listId)
     }
-    onChange(newSelected, excludedRecipients, selectedSegments)
+    onChange(newSelected, excludedRecipients, selectedSegments, includedTags, excludedTags)
   }
 
   const handleSegmentToggle = (segmentId: string, checked: boolean) => {
@@ -89,7 +146,7 @@ export function Step2Recipients({
     } else {
       newSelected = newSelected.filter(id => id !== segmentId)
     }
-    onChange(selectedRecipients, excludedRecipients, newSelected)
+    onChange(selectedRecipients, excludedRecipients, newSelected, includedTags, excludedTags)
   }
 
   const handleExclusionToggle = (listId: string, checked: boolean) => {
@@ -98,10 +155,10 @@ export function Step2Recipients({
       newExcluded.push(listId)
       // If list is excluded, it cannot be selected
       const newSelected = selectedRecipients.filter(id => id !== listId)
-      onChange(newSelected, newExcluded, selectedSegments)
+      onChange(newSelected, newExcluded, selectedSegments, includedTags, excludedTags)
     } else {
       newExcluded = newExcluded.filter(id => id !== listId)
-      onChange(selectedRecipients, newExcluded, selectedSegments)
+      onChange(selectedRecipients, newExcluded, selectedSegments, includedTags, excludedTags)
     }
   }
 
@@ -112,53 +169,48 @@ export function Step2Recipients({
       [listId]: !isCurrentlyExpanded
     }))
 
-    if (!isCurrentlyExpanded && !listContacts[listId] && !loadingLists[listId]) {
-      setLoadingLists(prev => ({ ...prev, [listId]: true }))
+    if (!isCurrentlyExpanded && !listTags[listId] && !loadingTags[listId]) {
+      setLoadingTags(prev => ({ ...prev, [listId]: true }))
       try {
-        const response = await fetch(`/api/contacts/lists/${listId}/contacts`)
+        const response = await fetch(`/api/contacts/lists/${listId}/tags`)
         if (response.ok) {
           const data = await response.json()
-          setListContacts(prev => ({
+          setListTags(prev => ({
             ...prev,
             [listId]: data
           }))
         }
       } catch (error) {
-        console.error("Failed to fetch contacts for list", listId, error)
+        console.error("Failed to fetch tags for list", listId, error)
       } finally {
-        setLoadingLists(prev => ({ ...prev, [listId]: false }))
+        setLoadingTags(prev => ({ ...prev, [listId]: false }))
       }
     }
   }
 
-  const handleContactExcludeToggle = (listId: string, contactId: string, checked: boolean) => {
-    setExcludedContacts(prev => {
-      const currentExcluded = prev[listId] || []
-      let newExcluded: string[]
-      if (!checked) {
-        if (!currentExcluded.includes(contactId)) {
-          newExcluded = [...currentExcluded, contactId]
-        } else {
-          newExcluded = currentExcluded
-        }
-      } else {
-        newExcluded = currentExcluded.filter(id => id !== contactId)
-      }
-      
-      return {
-        ...prev,
-        [listId]: newExcluded
-      }
-    })
-  }
+  // Handle checking/unchecking a tag (inclusion list logic)
+  const handleTagToggle = (tag: string, isChecked: boolean) => {
+    const tagLower = tag.trim().toLowerCase()
+    let newIncluded = [...currentIncludedTags]
 
-  useEffect(() => {
-    onExcludedContactsChange?.(excludedContacts)
-  }, [excludedContacts])
+    if (isChecked) {
+      // Add to included list
+      if (!newIncluded.includes(tagLower)) {
+        newIncluded.push(tagLower)
+      }
+    } else {
+      // Remove from included list
+      newIncluded = newIncluded.filter(t => t !== tagLower)
+    }
+
+    const newIncludedTagsString = newIncluded.join(",")
+    onChange(selectedRecipients, excludedRecipients, selectedSegments, newIncludedTagsString, excludedTags)
+  }
 
   const isListSelected = (id: string) => selectedRecipients.includes(id)
   const isListExcluded = (id: string) => excludedRecipients.includes(id)
   const isSegmentSelected = (id: string) => selectedSegments.includes(id)
+
 
   return (
     <div className="w-full max-w-3xl mx-auto px-4 sm:px-0 space-y-6">
@@ -167,6 +219,34 @@ export function Step2Recipients({
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Choose Recipients</h2>
         <p className="text-slate-500 text-sm mb-6">Select the lists or segments you want to target</p>
       </div>
+
+      {/* Live Estimate Widget */}
+      {selectedRecipients.length > 0 && (
+        <Card className="border border-blue-100 bg-blue-50/30 rounded-xl shadow-none overflow-hidden">
+          <CardContent className="p-4 flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <Tags className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Live Estimate</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  {estimating ? (
+                    <span className="text-sm text-slate-500 animate-pulse">Calculating estimate...</span>
+                  ) : estimate ? (
+                    <>
+                      <span className="text-2xl font-bold text-slate-900">
+                        {estimate.finalRecipients.toLocaleString()}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        recipients (out of {estimate.totalContacts.toLocaleString()} total, {estimate.excludedContacts.toLocaleString()} excluded by tag filter/suppressions)
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tab Switcher */}
       <div className="flex justify-center">
@@ -240,11 +320,6 @@ export function Step2Recipients({
                             <Badge variant={isInactive ? "destructive" : "secondary"} className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-2">
                               {list.activeCount || 0} / {list.memberCount || 0} active
                             </Badge>
-                            {excludedContacts[list.id]?.length > 0 && (
-                              <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 font-semibold">
-                                ({excludedContacts[list.id].length} excluded)
-                              </Badge>
-                            )}
                             {isListExcluded(list.id) && <Badge variant="destructive">Excluded</Badge>}
                             {isInactive && (
                               <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
@@ -268,7 +343,7 @@ export function Step2Recipients({
                           className={isListExcluded(list.id) ? "text-blue-600" : "text-orange-600"}
                           disabled={isInactive || isEmpty}
                         >
-                          {isListExcluded(list.id) ? "Include" : "Exclude"}
+                          {isListExcluded(list.id) ? "Include List" : "Filter Tags"}
                         </Button>
                         <Button
                           variant="ghost"
@@ -276,7 +351,7 @@ export function Step2Recipients({
                           onClick={() => toggleExpandList(list.id)}
                           className="p-1 h-8 w-8 text-gray-500 hover:text-gray-900"
                           disabled={isInactive || isEmpty}
-                          title="Expand/Collapse Contacts"
+                          title="Expand/Collapse Tags"
                         >
                           <span 
                             className="text-xs transition-transform duration-200 block" 
@@ -289,29 +364,29 @@ export function Step2Recipients({
                     </div>
                     {expandedLists[list.id] && (
                       <div className="p-4 bg-gray-50/50 border-t space-y-3">
-                        {loadingLists[list.id] ? (
+                        {loadingTags[list.id] ? (
                           <div className="flex items-center gap-2 text-sm text-gray-500 justify-center py-4">
                             <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-                            Loading contacts...
+                            Loading tags...
                           </div>
-                        ) : (listContacts[list.id] || []).length === 0 ? (
-                          <div className="text-sm text-gray-500 text-center py-2">No contacts in this list.</div>
+                        ) : (listTags[list.id] || []).length === 0 ? (
+                          <div className="text-sm text-slate-500 text-center py-2 font-medium">
+                            No tags found in this list. All active contacts in this list will receive the campaign.
+                          </div>
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2">
-                            {(listContacts[list.id] || []).map(contact => {
-                              const isContactExcluded = (excludedContacts[list.id] || []).includes(contact.id)
+                            {(listTags[list.id] || []).map(item => {
+                              const isTagChecked = currentIncludedTags.includes(item.tag.toLowerCase())
                               return (
-                                <div key={contact.id} className="flex items-center gap-3 p-2 bg-white rounded border text-sm">
+                                <div key={item.tag} className="flex items-center gap-3 p-2 bg-white rounded border text-sm hover:bg-slate-50 transition-colors">
                                   <Checkbox
-                                    checked={!isContactExcluded}
+                                    checked={isTagChecked}
                                     onCheckedChange={(checked: boolean) => 
-                                      handleContactExcludeToggle(list.id, contact.id, checked)
+                                      handleTagToggle(item.tag, checked)
                                     }
                                   />
-                                  <span className="truncate">
-                                    {contact.firstName || ""} {contact.lastName || ""} 
-                                    {(contact.firstName || contact.lastName) ? " — " : ""}
-                                    <span className="text-gray-500">{contact.email}</span>
+                                  <span className="truncate text-slate-700 font-medium">
+                                    {item.tag} <span className="text-slate-400 text-xs font-normal">({item.count.toLocaleString()} contacts)</span>
                                   </span>
                                 </div>
                               )
@@ -380,7 +455,7 @@ export function Step2Recipients({
       <Alert className="rounded-xl border-slate-200 bg-slate-50">
         <CheckCircle2 className="h-4 w-4" />
         <AlertDescription>
-          <strong>Smart Targeting:</strong> You can combine multiple lists and segments. The system automatically deduplicates contacts and respects all unsubscriptions.
+          <strong>Smart Targeting:</strong> You can combine multiple lists and segments. The system automatically deduplicates contacts and respects all unsubscriptions and tag exclusions.
         </AlertDescription>
       </Alert>
     </div>

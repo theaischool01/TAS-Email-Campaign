@@ -307,12 +307,31 @@ export class UnsubscribeService {
             contactId: contact.id
           }
         })
+        await prisma.contactToContactList.upsert({
+          where: {
+            A_B: {
+              A: contact.id,
+              B: listId
+            }
+          },
+          update: {},
+          create: {
+            A: contact.id,
+            B: listId
+          }
+        })
       } else {
         // Remove from list
         await prisma.contactListMember.deleteMany({
           where: {
             contactListId: listId,
             contactId: contact.id
+          }
+        })
+        await prisma.contactToContactList.deleteMany({
+          where: {
+            A: contact.id,
+            B: listId
           }
         })
       }

@@ -53,6 +53,8 @@ interface Step4ReviewProps {
   isLaunching?: boolean
   excludedContacts: Record<string, string[]>
   allContactLists: any[]
+  includedTags?: string
+  excludedTags?: string
   onUpdateDetails: (details: Partial<any>) => void
   onUpdateRecipients: (selected: string[], excluded: string[], selectedSegments: string[]) => void
   onUpdateExcluded: (excluded: Record<string, string[]>) => void
@@ -72,6 +74,8 @@ export function Step4Review({
   isLaunching = false,
   excludedContacts,
   allContactLists,
+  includedTags,
+  excludedTags,
   onUpdateDetails,
   onUpdateRecipients,
   onUpdateExcluded,
@@ -83,11 +87,56 @@ export function Step4Review({
     selectedRecipients.includes(list.id)
   )
 
-  const totalRecipients = selectedContactLists.reduce((sum, list) => 
+  const [estimate, setEstimate] = useState<{
+    totalContacts: number
+    excludedContacts: number
+    finalRecipients: number
+  } | null>(null)
+  const [estimating, setEstimating] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const fetchEstimate = async () => {
+      if (selectedRecipients.length === 0) {
+        setEstimate({ totalContacts: 0, excludedContacts: 0, finalRecipients: 0 })
+        return
+      }
+      setEstimating(true)
+      try {
+        const currentIncludedTags = includedTags
+          ? includedTags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+          : []
+        const response = await fetch("/api/campaigns/estimate-recipients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listIds: selectedRecipients,
+            includedTags: currentIncludedTags
+          })
+        })
+        if (response.ok && active) {
+          const data = await response.json()
+          setEstimate(data)
+        }
+      } catch (err) {
+        console.error("Failed to fetch recipient estimate in Step 4 Review:", err)
+      } finally {
+        if (active) setEstimating(false)
+      }
+    }
+
+    const timer = setTimeout(fetchEstimate, 300)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [selectedRecipients, includedTags])
+
+  const totalRecipients = estimate !== null ? estimate.finalRecipients : selectedContactLists.reduce((sum, list) => 
     sum + (list.activeCount || 0), 0
   )
 
-  const totalMembers = selectedContactLists.reduce((sum, list) => 
+  const totalMembers = estimate !== null ? estimate.totalContacts : selectedContactLists.reduce((sum, list) => 
     sum + (list.memberCount || 0), 0
   )
 
@@ -713,7 +762,7 @@ export function Step4Review({
                     <div>
                       <p className="font-medium">{totalRecipients.toLocaleString()} Eligible Recipients</p>
                       <p className="text-sm text-muted-foreground">
-                        ({totalMembers.toLocaleString()} total members across {selectedContactLists.length} lists)
+                        ({totalMembers.toLocaleString()} active members before tag filters)
                       </p>
                     </div>
                     <Badge variant="secondary">
@@ -748,6 +797,24 @@ export function Step4Review({
                       </div>
                     ))}
                   </div>
+
+                  {includedTags && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tag Filters</p>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs text-slate-500 font-medium min-w-[70px] mt-0.5">Include:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {includedTags.split(",").map(t => (
+                              <Badge key={t} variant="secondary" className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
+                                {t.trim()}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>

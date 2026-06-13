@@ -22,6 +22,8 @@ export interface WizardState {
   selectedRecipients: string[]
   selectedSegments: string[]
   excludedRecipients: string[]
+  includedTags?: string
+  excludedTags?: string
   selectedTemplate?: string
   editorState?: any
   reviewState: any
@@ -62,6 +64,8 @@ export function useCampaignWizard() {
     selectedRecipients: [],
     selectedSegments: [],
     excludedRecipients: [],
+    includedTags: '',
+    excludedTags: '',
     reviewState: {},
     validationErrors: {},
     autosaveStatus: 'idle',
@@ -85,6 +89,8 @@ export function useCampaignWizard() {
     selectedRecipients: state.selectedRecipients,
     selectedSegments: state.selectedSegments,
     excludedRecipients: state.excludedRecipients,
+    includedTags: state.includedTags,
+    excludedTags: state.excludedTags,
     selectedTemplate: state.selectedTemplate,
     mode: state.mode,
     campaignId: state.campaignId
@@ -100,6 +106,8 @@ export function useCampaignWizard() {
     JSON.stringify(state.selectedRecipients),
     JSON.stringify(state.selectedSegments),
     JSON.stringify(state.excludedRecipients),
+    state.includedTags,
+    state.excludedTags,
     state.selectedTemplate,
     state.mode,
     state.campaignId,
@@ -235,6 +243,8 @@ export function useCampaignWizard() {
         },
         selectedRecipients,
         excludedRecipients,
+        includedTags: campaign.includedTags || '',
+        excludedTags: campaign.excludedTags || '',
         selectedTemplate: campaign.templateId || undefined,
         isDirty: false,
         validationErrors: {},
@@ -525,7 +535,7 @@ export function useCampaignWizard() {
       console.log(" AUTOSAVE DEBUG: Campaign saved successfully:", savedCampaign.id)
 
       // Additionally save recipients if we are on Step 2 or if we have recipients
-      if (autosavePayload.selectedRecipients.length > 0 || autosavePayload.excludedRecipients.length > 0) {
+      if (autosavePayload.selectedRecipients.length > 0 || autosavePayload.excludedRecipients.length > 0 || autosavePayload.includedTags || autosavePayload.excludedTags) {
         try {
           const recipResponse = await fetch(`/api/campaigns/${savedCampaign.id}/recipients`, {
             method: 'PUT',
@@ -533,7 +543,9 @@ export function useCampaignWizard() {
             body: JSON.stringify({
               recipientListIds: autosavePayload.selectedRecipients,
               recipientSegmentIds: autosavePayload.selectedSegments || [],
-              excludedListIds: autosavePayload.excludedRecipients || []
+              excludedListIds: autosavePayload.excludedRecipients || [],
+              includedTags: autosavePayload.includedTags || undefined,
+              excludedTags: autosavePayload.excludedTags || undefined
             })
           })
           if (!recipResponse.ok) {
@@ -668,12 +680,14 @@ export function useCampaignWizard() {
   }, [])
 
   // Update recipients
-  const updateRecipients = useCallback((selected: string[], excluded: string[], selectedSegments: string[]) => {
+  const updateRecipients = useCallback((selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string) => {
     setState(prev => ({
       ...prev,
       selectedRecipients: selected,
       excludedRecipients: excluded,
       selectedSegments: selectedSegments,
+      includedTags: includedTags !== undefined ? includedTags : prev.includedTags,
+      excludedTags: excludedTags !== undefined ? excludedTags : prev.excludedTags,
       isDirty: true,
       hasInteracted: true // Mark as interacted
     }))
@@ -765,7 +779,9 @@ export function useCampaignWizard() {
           console.log("💾 SAVING RECIPIENTS TO DATABASE:", {
             campaignId: state.campaignId,
             selectedRecipients: state.selectedRecipients,
-            excludedRecipients: state.excludedRecipients
+            excludedRecipients: state.excludedRecipients,
+            includedTags: state.includedTags,
+            excludedTags: state.excludedTags
           })
 
           const recipResponse = await fetch(`/api/campaigns/${state.campaignId}/recipients`, {
@@ -774,7 +790,9 @@ export function useCampaignWizard() {
             body: JSON.stringify({
               recipientListIds: state.selectedRecipients,
               recipientSegmentIds: state.selectedSegments || [],
-              excludedListIds: state.excludedRecipients || []
+              excludedListIds: state.excludedRecipients || [],
+              includedTags: state.includedTags || undefined,
+              excludedTags: state.excludedTags || undefined
             })
           })
 
@@ -823,7 +841,7 @@ export function useCampaignWizard() {
         // Don't fail the navigation if database save fails
       }
     }
-  }, [validateCurrentStepErrors, state.campaignId, state.currentStep, state.selectedRecipients, state.excludedRecipients, state.selectedTemplate, state.campaignDetails, state.status, session])
+  }, [validateCurrentStepErrors, state.campaignId, state.currentStep, state.selectedRecipients, state.excludedRecipients, state.includedTags, state.excludedTags, state.selectedTemplate, state.campaignDetails, state.status, session])
 
   // Save recipients to campaign
   const saveRecipients = useCallback(async () => {
@@ -837,7 +855,9 @@ export function useCampaignWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipientListIds: state.selectedRecipients,
-          excludedListIds: state.excludedRecipients
+          excludedListIds: state.excludedRecipients,
+          includedTags: state.includedTags || null,
+          excludedTags: state.excludedTags || null
         })
       })
 
@@ -850,7 +870,7 @@ export function useCampaignWizard() {
       console.error('Error saving recipients:', error)
       toast.error('Failed to save recipients')
     }
-  }, [state.campaignId, state.selectedRecipients, state.excludedRecipients, session])
+  }, [state.campaignId, state.selectedRecipients, state.excludedRecipients, state.includedTags, state.excludedTags, session])
 
   const handleFinish = async () => {
     try {
