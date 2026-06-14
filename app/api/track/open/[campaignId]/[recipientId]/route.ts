@@ -18,19 +18,30 @@ export async function GET(
   try {
     // Use a transaction to prevent race conditions
     await prisma.$transaction(async (tx: any) => {
+      // Check if contact exists
+      let contactExists = false
+      if (recipientId && recipientId !== 'unknown') {
+        const contact = await tx.contact.findUnique({
+          where: { id: recipientId },
+          select: { id: true }
+        })
+        if (contact) contactExists = true
+      }
+      const dbContactId = contactExists ? recipientId : null
+
       // 1. Check if a HUMAN (non-bot) has already opened this campaign
       // Note: We use a more direct check for isBot in metadata
-      const existingHumanOpen = await tx.campaignActivityLog.findFirst({
+      const existingHumanOpen = dbContactId ? await tx.campaignActivityLog.findFirst({
         where: {
           campaignId,
-          contactId: recipientId,
+          contactId: dbContactId,
           action: 'EMAIL_OPENED',
           metadata: {
             path: ['isBot'],
             equals: false
           }
         }
-      })
+      }) : null
 
       // 2. Record the activity (Always record, even if it's a bot or repeated)
       await tx.campaignActivityLog.create({
@@ -38,7 +49,7 @@ export async function GET(
           campaignId,
           action: 'EMAIL_OPENED',
           actorId: recipientId,
-          contactId: recipientId,
+          contactId: dbContactId,
           metadata: {
             userAgent,
             ip,

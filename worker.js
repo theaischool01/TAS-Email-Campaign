@@ -892,6 +892,7 @@ async function processQueue() {
           emailHtml = emailHtml.replace(/{{last_name}}/gi, recipient.lastName || '');
           emailHtml = emailHtml.replace(/{{email}}/gi, recipient.email);
           emailHtml = emailHtml.replace(/{{UNSUBSCRIBE_URL}}/gi, footerUnsubscribeUrl);
+          emailHtml = emailHtml.replace(/{{unsubscribeLink}}/gi, footerUnsubscribeUrl);
 
           // 2. Click Tracking (Safe wrap)
           emailHtml = emailHtml.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {

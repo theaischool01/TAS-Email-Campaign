@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 import { UnsubscribeService } from "@/lib/services/unsubscribe.service"
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, List-Unsubscribe-Post",
+}
+
+/**
+ * Handles CORS Preflight (OPTIONS request)
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  })
+}
+
 /**
  * Handles RFC 8058 One-Click Unsubscribe (POST request)
  */
@@ -12,7 +28,7 @@ export async function POST(request: NextRequest) {
     console.log(`[ONE-CLICK UNSUBSCRIBE] Received POST request for UID: ${uid}`)
 
     if (!uid) {
-      return NextResponse.json({ error: "Missing token" }, { status: 400 })
+      return NextResponse.json({ error: "Missing token" }, { status: 400, headers: corsHeaders })
     }
     
     const ip = request.headers.get('x-forwarded-for') || 'unknown'
@@ -21,14 +37,17 @@ export async function POST(request: NextRequest) {
     const result = await UnsubscribeService.unsubscribe(uid, 'gmail_one_click', { ip, userAgent })
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 })
+      return NextResponse.json({ error: result.error }, { status: 400, headers: corsHeaders })
     }
 
     // RFC 8058 requires a 200 OK response
-    return new NextResponse("Unsubscribed successfully", { status: 200 })
+    return new NextResponse("Unsubscribed successfully", {
+      status: 200,
+      headers: corsHeaders,
+    })
   } catch (error) {
     console.error("[ONE-CLICK UNSUBSCRIBE] Error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500, headers: corsHeaders })
   }
 }
 
@@ -45,3 +64,4 @@ export async function GET(request: NextRequest) {
   
   return NextResponse.redirect(redirectUrl)
 }
+
