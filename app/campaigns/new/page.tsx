@@ -203,6 +203,8 @@ export default function NewCampaignPage() {
                     onValidationChange={(isValid, errors) => {
                       // Validation is handled by the wizard hook
                     }}
+                    audienceFilters={wizard.state.audienceFilters}
+                    campaignId={wizard.state.campaignId}
                   />
                 )}
                 {wizard.state.currentStep === 3 && (
@@ -234,6 +236,9 @@ export default function NewCampaignPage() {
                     onUpdateRecipients={wizard.updateRecipients}
                     onUpdateExcluded={wizard.updateExcludedContacts}
                     onUpdateTemplate={wizard.updateTemplate}
+                    selectedSegments={wizard.state.selectedSegments}
+                    segments={wizard.segments}
+                    audienceFilters={wizard.state.audienceFilters}
                   />
                 )}
               </>

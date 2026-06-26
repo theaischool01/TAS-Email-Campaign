@@ -8,6 +8,9 @@ import { z } from "zod"
 const prisma = prismaClient as any // Temporary workaround for Windows permission issues preventing proper Prisma generation
 
 // Validation schemas - more lenient for drafts
+import { SegmentCriteriaSchema } from "@/lib/segments/schema"
+
+// Validation schemas - more lenient for drafts
 const createCampaignSchema = z.object({
   name: z.string().min(1, "Campaign name is required").max(100, "Campaign name too long").trim(),
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long").trim(),
@@ -17,7 +20,8 @@ const createCampaignSchema = z.object({
   replyToEmail: z.string().email("Invalid reply-to email").optional().or(z.literal("")),
   templateId: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  currentStep: z.number().int().min(1).max(4).optional()
+  currentStep: z.number().int().min(1).max(4).optional(),
+  audienceFilters: SegmentCriteriaSchema.optional().nullable()
 })
 
 const campaignFiltersSchema = z.object({
@@ -255,7 +259,8 @@ export async function POST(request: NextRequest) {
           tags: validatedData.tags && validatedData.tags.length > 0 ? JSON.stringify(validatedData.tags) : null,
           currentStep: validatedData.currentStep || 1,
           createdBy: session.user.id,
-          status: 'DRAFT'
+          status: 'DRAFT',
+          audienceFilters: validatedData.audienceFilters !== undefined ? validatedData.audienceFilters : null
         },
         include: {
           user: {

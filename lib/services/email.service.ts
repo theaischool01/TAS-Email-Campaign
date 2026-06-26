@@ -58,53 +58,6 @@ function personalize(html: string, recipient: EmailRecipient): string {
     .replace(/\{\{email\}\}/gi, recipient.email)
 }
 
-/**
- * Injects an open-tracking pixel and unsubscribe link into campaign HTML
- */
-function injectTrackingAndUnsubscribe(
-  html: string,
-  campaignId: string,
-  recipient: EmailRecipient,
-  baseUrl: string
-): string {
-  const contactId = recipient.contactId || 'unknown'
-  const encodedEmail = encodeURIComponent(recipient.email)
-  
-  // 1. Unsubscribe URL
-  const unsubscribeUrl = `${baseUrl}/unsubscribe?cid=${contactId}&campaign=${campaignId}&email=${encodedEmail}`
-  
-  // 2. Open Tracking Pixel (Path parameters as defined in API)
-  const trackingPixel = `<img src="${baseUrl}/api/track/open/${campaignId}/${contactId}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />`
-  
-  // 3. Link Wrapping (Click Tracking)
-  // This regex finds all href="..." in <a> tags
-  let processedHtml = html.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
-    // Skip anchor links, tel, mailto, and the unsubscribe link itself
-    if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || url === unsubscribeUrl) {
-      return match
-    }
-    const trackingUrl = `${baseUrl}/api/track/click/${campaignId}/${contactId}?url=${encodeURIComponent(url)}`
-    return match.replace(url, trackingUrl)
-  })
-
-  const unsubscribeBar = `
-    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:20px;">
-      <tr>
-        <td style="padding:15px;text-align:center;font-family:Arial,sans-serif;font-size:11px;color:#888888;border-top:1px solid #e5e7eb;">
-          You received this email because you are subscribed to our mailing list.<br/>
-          <a href="${unsubscribeUrl}" style="color:#888888;text-decoration:underline;">Unsubscribe</a>
-        </td>
-      </tr>
-    </table>
-  `
-
-  // Inject before </body> if present, otherwise append
-  if (processedHtml.includes("</body>")) {
-    return processedHtml.replace("</body>", `${trackingPixel}${unsubscribeBar}</body>`)
-  }
-  return processedHtml + trackingPixel + unsubscribeBar
-}
-
 // ─── Core Send Functions ──────────────────────────────────────────────────────
 
 const transporter = nodemailer.createTransport({
@@ -122,15 +75,6 @@ export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
   const encodedEmail = encodeURIComponent(params.to.email)
 
   let processedHtml = personalize(params.html, params.to)
-
-  if (params.campaignId) {
-    processedHtml = injectTrackingAndUnsubscribe(
-      processedHtml,
-      params.campaignId,
-      params.to,
-      baseUrl
-    )
-  }
 
   // Secure Unsubscribe Token (uid)
   const uid = UnsubscribeService.encodeToken({

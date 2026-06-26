@@ -137,6 +137,11 @@ export async function POST(
       ? includedTagsStr.split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean)
       : []
 
+    const excludedTagsStr = (campaign.excludedTags || "").trim()
+    const excludedTags = excludedTagsStr
+      ? excludedTagsStr.split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean)
+      : []
+
     // Fetch active list members to resolve unique contacts
     const members = await prisma.contactListMember.findMany({
       where: { contactListId: { in: listIds } },
@@ -146,7 +151,16 @@ export async function POST(
             id: true,
             email: true,
             status: true,
-            tags: true
+            contactTags: {
+              select: {
+                tag: {
+                  select: {
+                    name: true,
+                    slug: true
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -166,19 +180,40 @@ export async function POST(
       if (processedEmails.has(emailLower)) continue
 
       // Tag filtering
-      const contactTags = (contact.tags || "")
-        .split(",")
-        .map((t: string) => t.trim().toLowerCase())
-        .filter(Boolean)
+      const contactTags = [
+        ...new Set(
+          (contact.contactTags || [])
+            .flatMap((ct: any) => [
+              ct.tag?.name?.trim().toLowerCase(),
+              ct.tag?.slug?.trim().toLowerCase(),
+            ])
+            .filter(Boolean)
+        )
+      ] as string[]
 
       if (includedTags.length > 0) {
         const hasIncludedTag = contactTags.some((t: string) => includedTags.includes(t))
         if (!hasIncludedTag) continue
       }
 
+      if (excludedTags.length > 0) {
+        const hasExcludedTag = contactTags.some((t: string) => excludedTags.includes(t))
+        if (hasExcludedTag) continue
+      }
+
       processedEmails.add(emailLower)
       recipientCount++
     }
+
+    const totalMembers = members.length
+    const matchedContacts = recipientCount
+
+    console.log("Tag filtering summary", {
+      totalMembers,
+      matchedContacts,
+      includedTags,
+      excludedTags
+    })
 
     const totalContacts = recipientCount
 

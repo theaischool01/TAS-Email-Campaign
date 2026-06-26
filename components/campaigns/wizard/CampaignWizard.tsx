@@ -24,6 +24,7 @@ export interface WizardState {
   excludedRecipients: string[]
   includedTags?: string
   excludedTags?: string
+  audienceFilters?: any
   selectedTemplate?: string
   editorState?: any
   reviewState: any
@@ -42,13 +43,13 @@ export function useCampaignWizard() {
   const { data: session } = useSession()
   const router = useRouter()
   const params = useParams()
-  
+
   // Refs to track initialization and prevent race conditions
   const initializedRef = useRef(false)
   const loadingRef = useRef(false)
   const autosaveInFlightRef = useRef(false)
   const hydrationCompleteRef = useRef(false)
-  
+
   const [state, setState] = useState<WizardState>({
     currentStep: 1,
     mode: 'create',
@@ -66,6 +67,7 @@ export function useCampaignWizard() {
     excludedRecipients: [],
     includedTags: '',
     excludedTags: '',
+    audienceFilters: undefined,
     reviewState: {},
     validationErrors: {},
     autosaveStatus: 'idle',
@@ -91,6 +93,14 @@ export function useCampaignWizard() {
     excludedRecipients: state.excludedRecipients,
     includedTags: state.includedTags,
     excludedTags: state.excludedTags,
+    // Null-serialize empty audienceFilters before reaching the API boundary.
+    // SegmentCriteriaSchema requires rules.length >= 1, so empty rule groups
+    // must be represented as null, not { conjunction, rules: [] }.
+    audienceFilters: (
+      state.audienceFilters &&
+      Array.isArray(state.audienceFilters.rules) &&
+      state.audienceFilters.rules.length > 0
+    ) ? state.audienceFilters : null,
     selectedTemplate: state.selectedTemplate,
     mode: state.mode,
     campaignId: state.campaignId
@@ -108,6 +118,7 @@ export function useCampaignWizard() {
     JSON.stringify(state.excludedRecipients),
     state.includedTags,
     state.excludedTags,
+    JSON.stringify(state.audienceFilters),
     state.selectedTemplate,
     state.mode,
     state.campaignId,
@@ -147,17 +158,17 @@ export function useCampaignWizard() {
   const loadCampaignData = useCallback(async (campaignId: string) => {
     // Prevent restore loops
     if (initializedRef.current) return
-    
+
     let shouldRedirect = false
     let redirectPath = '/campaigns'
     let errorMessage = ''
-    
+
     try {
       console.log("📥 CAMPAIGN LOAD: Starting load for", campaignId)
-      
+
       const campaignUrl = `/api/campaigns/${campaignId}`
       console.log("🌐 FETCHING CAMPAIGN:", campaignUrl)
-      
+
       const response = await fetch(campaignUrl)
       if (!response.ok) {
         if (response.status === 404) {
@@ -200,7 +211,7 @@ export function useCampaignWizard() {
       // Extract recipient list IDs from relational data
       const selectedRecipients = campaign.recipientLists?.map((rl: any) => rl.contactList.id) || []
       const excludedRecipients = campaign.excludedLists?.map((el: any) => el.contactList.id) || []
-      
+
       // Parse tags from JSON string if needed
       let parsedTags: string[] = []
       if (campaign.tags) {
@@ -245,6 +256,8 @@ export function useCampaignWizard() {
         excludedRecipients,
         includedTags: campaign.includedTags || '',
         excludedTags: campaign.excludedTags || '',
+        // Hydrate audienceFilters from DB — null means no filters configured
+        audienceFilters: (campaign as any).audienceFilters || undefined,
         selectedTemplate: campaign.templateId || undefined,
         isDirty: false,
         validationErrors: {},
@@ -260,9 +273,9 @@ export function useCampaignWizard() {
         selectedTemplate: campaign.templateId,
         campaignName: campaign.name
       })
-      
+
       console.log("✅ CAMPAIGN LOAD: Successfully loaded campaign", campaign.id)
-      
+
     } catch (error) {
       console.error('❌ CAMPAIGN LOAD: Error loading campaign data:', error)
       toast.error('Failed to load campaign data')
@@ -302,7 +315,7 @@ export function useCampaignWizard() {
         console.log("🌐 FETCHING CONTACT LISTS:", listsUrl)
         console.log("🌐 FETCHING SEGMENTS:", segmentsUrl)
         console.log("🌐 FETCHING TEMPLATES:", templatesUrl)
-        
+
         const [listsRes, segmentsRes, templatesRes] = await Promise.all([
           fetch(listsUrl),
           fetch(segmentsUrl),
@@ -318,13 +331,13 @@ export function useCampaignWizard() {
             rawData: listsData,
             hasContactLists: 'contactLists' in listsData
           })
-          
+
           // MANDATORY SAFE PARSE
-          const contactLists = 
-            listsData.contactLists || 
-            listsData.data || 
+          const contactLists =
+            listsData.contactLists ||
+            listsData.data ||
             []
-          
+
           setContactLists(
             Array.isArray(contactLists)
               ? contactLists
@@ -349,11 +362,11 @@ export function useCampaignWizard() {
 
         if (templatesRes.ok) {
           const templatesData = await templatesRes.json()
-          const templates = 
-            templatesData.templates || 
-            templatesData.data || 
+          const templates =
+            templatesData.templates ||
+            templatesData.data ||
             []
-          
+
           setTemplates(
             Array.isArray(templates)
               ? templates
@@ -407,11 +420,11 @@ export function useCampaignWizard() {
     }
 
     // Check minimum threshold for draft creation
-    const hasMinimumData = autosavePayload.campaignDetails.name?.trim() && 
-                          autosavePayload.campaignDetails.subject?.trim()
-    
+    const hasMinimumData = autosavePayload.campaignDetails.name?.trim() &&
+      autosavePayload.campaignDetails.subject?.trim()
+
     const isCreatingDraft = !autosavePayload.campaignId
-    
+
     if (!hasMinimumData) {
       console.log("🚫 AUTOSAVE DEBUG: Skipped - name and subject required", {
         hasName: !!autosavePayload.campaignDetails.name?.trim(),
@@ -439,7 +452,11 @@ export function useCampaignWizard() {
         name: autosavePayload.campaignDetails.name || '',
         subject: autosavePayload.campaignDetails.subject || '',
         currentStep: autosavePayload.currentStep,
-        tags: autosavePayload.campaignDetails.tags || []
+        tags: autosavePayload.campaignDetails.tags || [],
+        // Always include audienceFilters: null clears existing filters,
+        // a valid object sets them. autosavePayload already null-serialized
+        // empty rule groups so SegmentCriteriaSchema is always satisfied.
+        audienceFilters: autosavePayload.audienceFilters ?? null
       }
 
       if (autosavePayload.campaignDetails.previewText)
@@ -456,10 +473,10 @@ export function useCampaignWizard() {
       console.log(" AUTOSAVE DEBUG: Campaign data to save:", campaignData)
 
       let response
-      const autosaveUrl = isCreatingDraft 
-        ? '/api/campaigns' 
+      const autosaveUrl = isCreatingDraft
+        ? '/api/campaigns'
         : `/api/campaigns/${autosavePayload.campaignId}`
-      
+
       console.log("🌐 AUTOSAVE FETCH:", {
         url: autosaveUrl,
         method: isCreatingDraft ? 'POST' : 'PUT',
@@ -505,8 +522,8 @@ export function useCampaignWizard() {
                 isDirty: false
               }))
               window.history.replaceState(
-                null, 
-                '', 
+                null,
+                '',
                 `/campaigns/${existingId}/edit`
               )
               return
@@ -565,7 +582,7 @@ export function useCampaignWizard() {
           newMode: 'edit',
           timestamp: new Date().toISOString()
         })
-        
+
         return {
           ...prev,
           campaignId: savedCampaign.id,
@@ -581,8 +598,8 @@ export function useCampaignWizard() {
       if (isCreatingDraft) {
         console.log(" AUTOSAVE DEBUG: Updating URL to edit mode")
         window.history.replaceState(
-          null, 
-          '', 
+          null,
+          '',
           `/campaigns/${savedCampaign.id}/edit`
         )
         return // CRITICAL: Early return to prevent duplicate execution
@@ -680,7 +697,7 @@ export function useCampaignWizard() {
   }, [])
 
   // Update recipients
-  const updateRecipients = useCallback((selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string) => {
+  const updateRecipients = useCallback((selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string, audienceFilters?: any) => {
     setState(prev => ({
       ...prev,
       selectedRecipients: selected,
@@ -688,6 +705,8 @@ export function useCampaignWizard() {
       selectedSegments: selectedSegments,
       includedTags: includedTags !== undefined ? includedTags : prev.includedTags,
       excludedTags: excludedTags !== undefined ? excludedTags : prev.excludedTags,
+      // Store raw audienceFilters in state; null-serialization happens at payload build time
+      audienceFilters: audienceFilters !== undefined ? audienceFilters : prev.audienceFilters,
       isDirty: true,
       hasInteracted: true // Mark as interacted
     }))
@@ -734,12 +753,12 @@ export function useCampaignWizard() {
         const response = await fetch(`/api/campaigns/${state.campaignId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             templateId,
             currentStep: state.currentStep
           })
         })
-        
+
         if (!response.ok) throw new Error("Failed to persist template selection")
         console.log("✅ Template selection saved successfully")
       } catch (error) {
@@ -759,10 +778,10 @@ export function useCampaignWizard() {
     // Validate current step before moving (this will show all validation errors)
     const errors = validateCurrentStepErrors()
     if (Object.keys(errors).length > 0) {
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         validationErrors: errors,
-        submitAttempted: true 
+        submitAttempted: true
       }))
       return
     }
@@ -808,27 +827,27 @@ export function useCampaignWizard() {
         }
       }
 
-        // Persist current step to database
-        try {
-          console.log("💾 SAVING PROGRESS TO DATABASE:", { step, campaignId: state.campaignId, templateId: state.selectedTemplate })
-          
-          // CRITICAL: Only send what's necessary for step navigation.
-          // Spreading ...state.campaignDetails can cause race conditions with autosave.
-          const saveBody: any = { 
-            currentStep: step,
-            status: state.status
-          }
-          
-          // Only include templateId if it's set in state to avoid overwriting with null
-          if (state.selectedTemplate) {
-            saveBody.templateId = state.selectedTemplate
-          }
+      // Persist current step to database
+      try {
+        console.log("💾 SAVING PROGRESS TO DATABASE:", { step, campaignId: state.campaignId, templateId: state.selectedTemplate })
 
-          const response = await fetch(`/api/campaigns/${state.campaignId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(saveBody)
-          })
+        // CRITICAL: Only send what's necessary for step navigation.
+        // Spreading ...state.campaignDetails can cause race conditions with autosave.
+        const saveBody: any = {
+          currentStep: step,
+          status: state.status
+        }
+
+        // Only include templateId if it's set in state to avoid overwriting with null
+        if (state.selectedTemplate) {
+          saveBody.templateId = state.selectedTemplate
+        }
+
+        const response = await fetch(`/api/campaigns/${state.campaignId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saveBody)
+        })
 
         if (!response.ok) {
           console.error("❌ Failed to save campaign data to database:", response.status)
@@ -875,19 +894,19 @@ export function useCampaignWizard() {
   const handleFinish = async () => {
     try {
       setLaunching(true)
-      
+
       // FORCE-SYNC: Save current state one last time before launching to ensure DB is up to date
       console.log("💾 LAUNCH: Performing pre-launch force-sync...")
       const syncResponse = await fetch(`/api/campaigns/${state.campaignId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           templateId: state.selectedTemplate,
           currentStep: state.currentStep,
           status: 'DRAFT' // Ensure it stays in draft for the launch API
         })
       })
-      
+
       if (!syncResponse.ok) {
         console.warn("⚠️ LAUNCH: Pre-launch sync warning (non-fatal):", await syncResponse.text())
       } else {
@@ -902,7 +921,7 @@ export function useCampaignWizard() {
           excludedContactIds: Object.values(state.excludedContacts).flat()
         })
       })
-      
+
       const payload = await response.json()
       console.log("📡 LAUNCH: Response status:", response.status)
       console.log("📡 LAUNCH: Response payload:", payload)
@@ -973,7 +992,7 @@ export function useCampaignWizard() {
     canCreate,
     launching,
     setLaunching,
-    
+
     // Actions
     updateCampaignDetails,
     updateRecipients,
@@ -984,16 +1003,16 @@ export function useCampaignWizard() {
     updateStatus,
     handleFinish,
     refreshTemplates,
-    
+
     // Computed
     validateCurrentStepErrors,
     validateCurrentStep,
-    
+
     // Autosave functionality
     autosave,
     autosaveStatus: state.autosaveStatus,
     lastSavedAt: state.lastSavedAt,
-    
+
     // Interaction state
     hasInteracted: state.hasInteracted,
     submitAttempted: state.submitAttempted

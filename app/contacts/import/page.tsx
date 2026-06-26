@@ -7,6 +7,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { 
   ArrowLeft, 
   Upload, 
@@ -18,7 +20,11 @@ import {
   Check,
   UserCheck,
   ShieldCheck,
-  Database
+  Database,
+  ChevronRight,
+  Settings,
+  HelpCircle,
+  X
 } from "lucide-react"
 // @ts-ignore
 import Papa from "papaparse"
@@ -27,60 +33,98 @@ export default function ImportContactsPage() {
   const { data: session } = useSession()
   const router = useRouter()
   
-  // File & List selection state
+  // Base State
   const [file, setFile] = useState<File | null>(null)
-  const [rowCount, setRowCount] = useState<number>(0)
-  const [isDragging, setIsDragging] = useState(false)
+  const [csvText, setCsvText] = useState<string>("")
   const [contactLists, setContactLists] = useState<any[]>([])
   const [selectedListId, setSelectedListId] = useState<string>("")
   const [isCreatingNewList, setIsCreatingNewList] = useState<boolean>(false)
   const [newListName, setNewListName] = useState<string>("")
   const [loadingLists, setLoadingLists] = useState(false)
-  
-  // Pipeline/Import state
+  const [error, setError] = useState("")
+
+  // Wizard Steps:
+  // 0: Upload & List Select
+  // 1: Column Mapping Grid
+  // 2: Inline Custom Fields Configuration
+  // 3: Execution Progress
+  // 4: Summary Results
+  const [wizardStep, setWizardStep] = useState<number>(0)
+
+  // CSV Analysis Response
+  const [analysis, setAnalysis] = useState<{
+    totalRows: number
+    columns: Array<{
+      header: string
+      suggestion: { type: string; field?: string; fieldId?: string } | null
+    }>
+  } | null>(null)
+
+  // Mappings constructed by user
+  const [userMappings, setUserMappings] = useState<Record<string, any>>({})
+
+  // Custom Fields to create inline
+  const [inlineFields, setInlineFields] = useState<Record<string, {
+    displayName: string
+    fieldType: string
+    options: string[]
+    isRequired: boolean
+  }>>({})
+
+  // Custom Fields available in tenant
+  const [tenantCustomFields, setTenantCustomFields] = useState<any[]>([])
+
+  // Modal and pending field creation states
+  const [showCreateFieldModal, setShowCreateFieldModal] = useState(false)
+  const [pendingMappingHeader, setPendingMappingHeader] = useState("")
+  const [newFieldDisplayName, setNewFieldDisplayName] = useState("")
+  const [newFieldType, setNewFieldType] = useState("TEXT")
+  const [newFieldOptions, setNewFieldOptions] = useState("")
+  const [modalError, setModalError] = useState("")
+
+  // Import options
+  const [autoCreateDropdownOptions, setAutoCreateDropdownOptions] = useState(true)
+
+  // Progress/Results State
   const [isProcessing, setIsProcessing] = useState(false)
-  const [currentStep, setCurrentStep] = useState<number>(0) // 0: Idle, 1: Parsing, 2: Validating, 3: Deduplicating, 4: Saving, 5: Done
   const [results, setResults] = useState<{
     total: number
     newContactsCreated: number
+    existingContactsUpdated: number
     existingContactsAddedToList: number
     alreadyInList: number
     ignored: number
+    failed: number
   } | null>(null)
-  const [error, setError] = useState("")
-  
+  const [failedRows, setFailedRows] = useState<Array<{ row: number; email?: string; error: string }>>([])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-
-
-  // Fetch available contact lists
+  // Fetch available contact lists and custom fields
   useEffect(() => {
     if (session) {
       setLoadingLists(true)
-      fetch("/api/contacts/lists")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.contactLists) {
-            setContactLists(data.contactLists)
-          } else {
-            console.error("Failed to load contact lists:", data)
+      Promise.all([
+        fetch("/api/contacts/lists").then((res) => res.json()),
+        fetch("/api/contacts/custom-fields").then((res) => res.json())
+      ])
+        .then(([listsData, fieldsData]) => {
+          if (listsData.success && listsData.contactLists) {
+            setContactLists(listsData.contactLists)
+          }
+          if (Array.isArray(fieldsData)) {
+            setTenantCustomFields(fieldsData)
           }
         })
-        .catch((err) => console.error("Error loading contact lists:", err))
-        .finally(() => setLoadingLists(false))
+          .catch((err) => console.error("Error loading import resources:", err))
+          .finally(() => setLoadingLists(false))
     }
   }, [session])
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (selectedFile) {
-      processFile(selectedFile)
-    }
-  }
-
-  const processFile = (selectedFile: File) => {
-    if (!selectedFile.name.endsWith('.csv')) {
-      setError('Please select a CSV file')
+  const processFile = async (selectedFile: File) => {
+    const name = selectedFile.name.toLowerCase()
+    if (!name.endsWith('.csv') && !name.endsWith('.xlsx') && !name.endsWith('.xls')) {
+      setError('Please select a CSV or Excel (.xlsx, .xls) file')
       return
     }
     
@@ -89,77 +133,72 @@ export default function ImportContactsPage() {
       return
     }
 
-    setFile(selectedFile)
     setError("")
     setResults(null)
-    setCurrentStep(0)
-    
-    // Parse on client to count total rows (excluding headers/empty lines)
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      if (text) {
-        Papa.parse(text, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (parsed: any) => {
-            setRowCount(parsed.data.length)
-          },
-          error: () => {
-            setError("Failed to preview CSV file structure")
-          }
-        })
+
+    if (name.endsWith('.csv')) {
+      setFile(selectedFile)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target?.result as string
+        if (text) {
+          setCsvText(text)
+        }
       }
+      reader.readAsText(selectedFile)
+    } else {
+      setFile(selectedFile) // Set the display file first
+      // Parse Excel file using xlsx library dynamically
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer
+          const XLSX = await import("xlsx")
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+          const firstSheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[firstSheetName]
+          const csvTextResult = XLSX.utils.sheet_to_csv(worksheet)
+          
+          setCsvText(csvTextResult)
+          // Create a virtual CSV file to pass to the upload analyzer
+          const csvFile = new File(
+            [csvTextResult],
+            selectedFile.name.replace(/\.xlsx?$/, '.csv'),
+            { type: 'text/csv' }
+          )
+          setFile(csvFile)
+        } catch (err: any) {
+          console.error("Excel parse error:", err)
+          setError("Failed to parse Excel file: " + err.message)
+        }
+      }
+      reader.readAsArrayBuffer(selectedFile)
     }
-    reader.readAsText(selectedFile)
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    
-    const droppedFile = e.dataTransfer.files?.[0]
-    if (droppedFile) {
-      processFile(droppedFile)
-    }
-  }
-
-  const handleImport = async () => {
-    if (!file) {
-      setError("Please select a file to import")
+  // Step 1 -> Step 2: Trigger /api/contacts/import/analyze
+  const handleAnalyze = async () => {
+    if (!file || !csvText) {
+      setError("Please select a valid CSV file.")
       return
     }
 
     if (!selectedListId && (!isCreatingNewList || !newListName.trim())) {
-      setError("Please select a target contact list or enter a new list name")
+      setError("Please select a target contact list or enter a new list name.")
       return
     }
 
     setIsProcessing(true)
     setError("")
-    setResults(null)
-    setCurrentStep(1) // Step 1: Parsing
 
-    // Start API request immediately
-    const importPromise = (async () => {
+    try {
       let targetListId = selectedListId
 
+      // Create list if needed
       if (isCreatingNewList && newListName.trim()) {
         const createListRes = await fetch("/api/contacts/lists", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: newListName.trim() }),
         })
 
@@ -167,101 +206,121 @@ export default function ImportContactsPage() {
         if (!createListRes.ok) {
           throw new Error(createListData.error || "Failed to create new list")
         }
-
         targetListId = createListData.id
+        setSelectedListId(targetListId)
       }
 
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('targetListId', targetListId)
 
-      const response = await fetch('/api/contacts/import', {
+      const response = await fetch('/api/contacts/import/analyze', {
         method: 'POST',
         body: formData,
       })
 
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Import failed')
+        throw new Error(data.error || 'File analysis failed')
       }
-      return data.results
-    })()
 
-    try {
-      // Step 1: Parsing (simulate UI step duration)
-      await new Promise((resolve) => setTimeout(resolve, 600))
-      setCurrentStep(2) // Step 2: Validating
+      setAnalysis(data)
 
-      // Step 2: Validating (simulate UI step duration)
-      await new Promise((resolve) => setTimeout(resolve, 600))
-      setCurrentStep(3) // Step 3: Deduplicating
+      // Initialize mappings from recommendations
+      const initialMappings: Record<string, any> = {}
+      const initialInlineFields: Record<string, any> = {}
 
-      // Step 3: Deduplicating (simulate UI step duration)
-      await new Promise((resolve) => setTimeout(resolve, 600))
-      setCurrentStep(4) // Step 4: Saving
+      data.columns.forEach((col: any) => {
+        if (col.suggestion) {
+          if (col.suggestion.type === "SYSTEM") {
+            initialMappings[col.header] = {
+              action: "SYSTEM",
+              field: col.suggestion.field
+            }
+          } else if (col.suggestion.type === "CUSTOM") {
+            initialMappings[col.header] = {
+              action: "MAP_CUSTOM_FIELD",
+              fieldId: col.suggestion.fieldId
+            }
+          }
+        } else {
+          initialMappings[col.header] = { action: "IGNORE" }
+        }
+      })
 
-      // Wait for actual API response to finish
-      const apiResults = await importPromise
-      
-      // Step 4: Saving (simulate UI step duration)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      setCurrentStep(5) // Done
-
-      setResults(apiResults)
-      setFile(null)
-      setRowCount(0)
+      setUserMappings(initialMappings)
+      setInlineFields(initialInlineFields)
+      setWizardStep(1)
     } catch (err: any) {
-      setError(err.message || 'An error occurred during import')
-      setCurrentStep(0)
+      setError(err.message || 'An error occurred during file analysis')
     } finally {
       setIsProcessing(false)
     }
   }
 
-  if (!session) {
-    return null
+  // Handle Mapping updates
+  const handleMappingChange = (header: string, val: string) => {
+    const nextMappings = { ...userMappings }
+
+    if (val === "IGNORE") {
+      nextMappings[header] = { action: "IGNORE" }
+    } else if (val.startsWith("SYSTEM:")) {
+      const field = val.split(":")[1]
+      nextMappings[header] = { action: "SYSTEM", field }
+    } else if (val.startsWith("CUSTOM:")) {
+      const fieldId = val.split(":")[1]
+      nextMappings[header] = { action: "MAP_CUSTOM_FIELD", fieldId }
+    } else if (val === "CREATE_CUSTOM") {
+      setPendingMappingHeader(header)
+      setNewFieldDisplayName(header)
+      setNewFieldType("TEXT")
+      setNewFieldOptions("")
+      setShowCreateFieldModal(true)
+      return
+    }
+
+    setUserMappings(nextMappings)
   }
 
-
-
-  // Helper render for each pipeline step
-  const renderStep = (stepNumber: number, title: string, description: string, IconComponent: any) => {
-    const isCompleted = currentStep > stepNumber
-    const isActive = currentStep === stepNumber
-    const isPending = currentStep < stepNumber
-
-    return (
-      <div className={`flex items-start space-x-4 p-4 rounded-xl border transition-all duration-300 ${
-        isActive 
-          ? "bg-blue-50/50 border-blue-200 shadow-sm" 
-          : isCompleted 
-            ? "bg-green-50/30 border-green-100" 
-            : "bg-white border-gray-100 opacity-60"
-      }`}>
-        <div className={`flex items-center justify-center h-10 w-10 rounded-full border transition-all ${
-          isCompleted 
-            ? "bg-green-500 border-green-500 text-white" 
-            : isActive 
-              ? "bg-blue-600 border-blue-600 text-white animate-pulse" 
-              : "bg-gray-50 border-gray-200 text-gray-400"
-        }`}>
-          {isCompleted ? (
-            <Check className="h-5 w-5" />
-          ) : isActive ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <IconComponent className="h-5 w-5" />
-          )}
-        </div>
-        <div className="flex-1">
-          <h4 className={`text-sm font-semibold transition-colors ${
-            isActive ? "text-blue-900" : isCompleted ? "text-green-900" : "text-gray-900"
-          }`}>{title}</h4>
-          <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-        </div>
-      </div>
-    )
+  // Go to step 3 (Confirm / Execution) directly since custom fields are created inline
+  const handleNextFromMapping = () => {
+    setWizardStep(3)
   }
+
+  // Step 4: Execute Ingestion
+  const handleExecuteImport = async () => {
+    setIsProcessing(true)
+    setError("")
+    setWizardStep(3)
+
+    try {
+      const response = await fetch("/api/contacts/import/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csvText,
+          targetListId: selectedListId,
+          mappings: userMappings,
+          autoCreateDropdownOptions
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Ingestion failed.")
+      }
+
+      setResults(data.results)
+      setFailedRows(data.errors || [])
+      setWizardStep(4)
+    } catch (err: any) {
+      setError(err.message || "An error occurred during import execution.")
+      setWizardStep(1)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  if (!session) return null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -272,7 +331,7 @@ export default function ImportContactsPage() {
             <div className="flex items-center">
               <Link href="/contacts" className="flex items-center text-gray-600 hover:text-gray-900">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                <h1 className="text-xl font-semibold">Import Contacts</h1>
+                <h1 className="text-xl font-semibold">Dynamic Import Wizard</h1>
               </Link>
             </div>
           </div>
@@ -282,15 +341,48 @@ export default function ImportContactsPage() {
       {/* Main Content */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left Card: Configuration & Upload */}
-            <div className="space-y-6">
+
+          {/* Stepper Wizard Progress bar */}
+          <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
+            {[
+              { idx: 0, name: "Upload File" },
+              { idx: 1, name: "Map Columns" },
+              { idx: 3, name: "Importing" },
+              { idx: 4, name: "Done" }
+            ].map((step) => {
+              const isActive = wizardStep === step.idx
+              const isPassed = (step.idx === 3 && wizardStep === 4) || (step.idx < wizardStep)
+              return (
+                <div key={step.idx} className="flex items-center space-x-2">
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center font-semibold text-sm transition-all ${
+                    isPassed ? "bg-green-500 text-white" : isActive ? "bg-blue-600 text-white animate-pulse" : "bg-gray-100 text-gray-400"
+                  }`}>
+                    {isPassed ? <Check className="h-4 w-4" /> : step.idx === 3 ? 3 : step.idx === 4 ? 4 : step.idx + 1}
+                  </div>
+                  <span className={`text-xs font-medium hidden md:inline ${isActive ? "text-blue-600" : isPassed ? "text-green-600" : "text-gray-400"}`}>
+                    {step.name}
+                  </span>
+                  {step.idx < 4 && <ChevronRight className="h-4 w-4 text-gray-300 hidden md:inline" />}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <Alert variant="destructive" className="shadow-sm">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="font-medium">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* STEP 0: Upload & List Select */}
+          {wizardStep === 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card className="shadow-sm">
                 <CardHeader>
                   <CardTitle>1. Select Contact List</CardTitle>
-                  <CardDescription>
-                    Choose the target contact list for import.
-                  </CardDescription>
+                  <CardDescription>Choose the target CRM list for import.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loadingLists ? (
@@ -305,8 +397,7 @@ export default function ImportContactsPage() {
                         placeholder="Enter new list name"
                         value={newListName}
                         onChange={(e) => setNewListName(e.target.value)}
-                        disabled={isProcessing}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 disabled:opacity-50"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                       />
                       <div className="flex justify-end">
                         <button
@@ -315,7 +406,6 @@ export default function ImportContactsPage() {
                             setIsCreatingNewList(false)
                             setNewListName("")
                           }}
-                          disabled={isProcessing}
                           className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium"
                         >
                           Back to selector
@@ -334,8 +424,7 @@ export default function ImportContactsPage() {
                           setSelectedListId(val)
                         }
                       }}
-                      disabled={isProcessing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 disabled:opacity-50"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     >
                       <option value="">Select a contact list...</option>
                       {contactLists.map((list) => (
@@ -351,29 +440,22 @@ export default function ImportContactsPage() {
 
               <Card className="shadow-sm">
                 <CardHeader>
-                  <CardTitle>2. Upload CSV File</CardTitle>
-                  <CardDescription>
-                    Upload a CSV file containing your contacts.
-                  </CardDescription>
+                  <CardTitle>2. Upload CSV / Excel File</CardTitle>
+                  <CardDescription>Upload contact dataset with an Email column.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div
-                    className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
-                      isDragging 
-                        ? 'border-blue-400 bg-blue-50/50' 
-                        : 'border-gray-200 hover:border-gray-300 bg-gray-50/30'
-                    }`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => !isProcessing && fileInputRef.current?.click()}
+                    className="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer border-gray-200 hover:border-gray-300 bg-gray-50/30"
+                    onClick={() => fileInputRef.current?.click()}
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv"
-                      onChange={handleFileSelect}
-                      disabled={isProcessing}
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) processFile(f)
+                      }}
                       className="hidden"
                     />
                     
@@ -385,7 +467,7 @@ export default function ImportContactsPage() {
                             {file.name}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {rowCount.toLocaleString()} rows detected
+                            {(file.size / 1024).toFixed(1)} KB
                           </p>
                         </div>
                       </div>
@@ -403,158 +485,365 @@ export default function ImportContactsPage() {
                       </div>
                     )}
                   </div>
-                  
-                  <div className="flex justify-between items-center pt-2">
+
+                  <div className="flex justify-center pt-2">
                     <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isProcessing}
-                      size="sm"
+                      onClick={handleAnalyze}
+                      disabled={isProcessing || !file || (!selectedListId && (!isCreatingNewList || !newListName.trim()))}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                     >
-                      Choose File
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Analyzing CSV...
+                        </>
+                      ) : (
+                        "Analyze CSV Schema"
+                      )}
                     </Button>
-                    {file && (
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full font-medium">
-                        {(file.size / 1024).toFixed(1)} KB
-                      </span>
-                    )}
                   </div>
                 </CardContent>
               </Card>
             </div>
+          )}
 
-            {/* Right Card: Dynamic Pipeline / Results Area */}
-            <div className="flex flex-col">
-              {isProcessing || currentStep > 0 ? (
-                <Card className="flex-1 shadow-sm border-blue-100 bg-white">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center">
-                      {currentStep === 5 ? (
-                        <span className="flex items-center text-green-700">
-                          <CheckCircle className="h-5 w-5 mr-2 text-green-600 animate-bounce" />
-                          Import Completed Successfully
-                        </span>
-                      ) : (
-                        <span className="flex items-center text-blue-900">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2 text-blue-600" />
-                          Processing Import Pipeline...
-                        </span>
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      Tracks current CSV parser, validation rules, and DB ingestion states.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {renderStep(
-                      1, 
-                      "Read & Parse CSV", 
-                      "Parsing file content safely using PapaParse format engine.", 
-                      FileText
-                    )}
-                    {renderStep(
-                      2, 
-                      "Validate Email Formats", 
-                      "Verifying RFC compliant email formats per contact row.", 
-                      ShieldCheck
-                    )}
-                    {renderStep(
-                      3, 
-                      "Check Duplicates", 
-                      "Screening emails against existing database records.", 
-                      UserCheck
-                    )}
-                    {renderStep(
-                      4, 
-                      "Save to database", 
-                      "Ingesting new entities and linking list memberships.", 
-                      Database
-                    )}
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card className="flex-1 shadow-sm border-dashed border-2 border-gray-200 flex items-center justify-center p-8 bg-gray-50/10">
-                  <div className="text-center max-w-sm">
-                    <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                    <h4 className="text-sm font-semibold text-gray-700">Pipeline Status: Idle</h4>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      Configure your target list and select a valid CSV file to start the automated import pipeline.
-                    </p>
-                  </div>
-                </Card>
-              )}
-            </div>
-          </div>
-
-          {/* Results Summary Card */}
-          {results && currentStep === 5 && (
-            <Card className="shadow-md border-green-200 bg-green-50/10">
-              <CardHeader className="border-b border-green-100/50 bg-green-50/30">
-                <CardTitle className="text-green-800 flex items-center text-lg">
-                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  Import Statistics Summary
-                </CardTitle>
-                <CardDescription className="text-green-700/80">
-                  Successfully imported contacts into the database.
+          {/* STEP 1: Column Mapping Grid */}
+          {wizardStep === 1 && analysis && (
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>Map CSV Columns</CardTitle>
+                <CardDescription>
+                  Confirm or modify how each column from your CSV maps to system fields or custom CRM fields.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-                  <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-                    <p className="text-2xl font-bold text-gray-900">{results.total}</p>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mt-1">Total Rows</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border border-green-100 shadow-sm">
-                    <p className="text-2xl font-bold text-green-600">{results.newContactsCreated}</p>
-                    <p className="text-xs font-semibold text-green-700 uppercase mt-1">New Contacts Created</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
-                    <p className="text-2xl font-bold text-blue-600">{results.existingContactsAddedToList}</p>
-                    <p className="text-xs font-semibold text-blue-700 uppercase mt-1">Existing Added To List</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm">
-                    <p className="text-2xl font-bold text-amber-600">{results.alreadyInList}</p>
-                    <p className="text-xs font-semibold text-amber-700 uppercase mt-1">Already In List</p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                    <p className="text-2xl font-bold text-red-600">{results.ignored}</p>
-                    <p className="text-xs font-semibold text-red-700 uppercase mt-1">Ignored</p>
-                  </div>
+              <CardContent className="space-y-4">
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase">
+                      <tr>
+                        <th className="p-3">CSV Column Header</th>
+                        <th className="p-3">Auto Mapping Recommendation</th>
+                        <th className="p-3">Final Mapping Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-sm text-gray-700">
+                      {analysis.columns.map((col) => {
+                        const currentVal = (() => {
+                          const mapping = userMappings[col.header]
+                          if (!mapping || mapping.action === "IGNORE") return "IGNORE"
+                          if (mapping.action === "SYSTEM") return `SYSTEM:${mapping.field}`
+                          if (mapping.action === "MAP_CUSTOM_FIELD") return `CUSTOM:${mapping.fieldId}`
+                          if (mapping.action === "CREATE_CUSTOM_FIELD") return "CREATE_CUSTOM"
+                          return "IGNORE"
+                        })()
+
+                        return (
+                          <tr key={col.header} className="hover:bg-gray-50/50">
+                            <td className="p-3 font-medium text-gray-900">{col.header}</td>
+                            <td className="p-3">
+                              {col.suggestion ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                  {col.suggestion.type === "SYSTEM" 
+                                    ? `System: ${col.suggestion.field}` 
+                                    : `Custom Field ID: ${col.suggestion.fieldId}`}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                                  Unmapped / New Field
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <select
+                                value={currentVal}
+                                onChange={(e) => handleMappingChange(col.header, e.target.value)}
+                                className="w-full max-w-[240px] px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-900"
+                              >
+                                <option value="IGNORE">Ignore Column</option>
+                                <optgroup label="System Columns">
+                                  <option value="SYSTEM:email">Email (Required)</option>
+                                  <option value="SYSTEM:firstName">First Name</option>
+                                  <option value="SYSTEM:lastName">Last Name</option>
+                                  <option value="SYSTEM:name">Full Name (Splits)</option>
+                                  <option value="SYSTEM:phone">Phone</option>
+                                  <option value="SYSTEM:company">Company</option>
+                                  <option value="SYSTEM:city">City</option>
+                                  <option value="SYSTEM:tags">Tags (Comma-separated)</option>
+                                </optgroup>
+                                <optgroup label="Existing Custom Fields">
+                                  {tenantCustomFields.map((cf) => (
+                                    <option key={cf.id} value={`CUSTOM:${cf.id}`}>
+                                      {cf.displayName} ({cf.type})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                                <optgroup label="Actions">
+                                  <option value="CREATE_CUSTOM">+ Create Custom Field</option>
+                                </optgroup>
+                              </select>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Auto-create dropdown options toggle */}
+                <div className="flex items-center space-x-2 pt-3 pb-1 border-t border-gray-100">
+                  <input
+                    type="checkbox"
+                    id="autoCreateDropdown"
+                    checked={autoCreateDropdownOptions}
+                    onChange={(e) => setAutoCreateDropdownOptions(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="autoCreateDropdown" className="text-sm text-gray-700 font-medium cursor-pointer">
+                    Automatically create missing dropdown options during import
+                  </label>
+                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                </div>
+
+                <div className="flex justify-between items-center pt-4">
+                  <Button variant="outline" onClick={() => setWizardStep(0)}>
+                    Back
+                  </Button>
+                  <Button onClick={handleNextFromMapping} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    Continue
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Error Display */}
-          {error && (
-            <Alert variant="destructive" className="shadow-sm">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription className="font-medium">{error}</AlertDescription>
-            </Alert>
+          {/* Modal Overlay for Inline Custom Field Creation */}
+          {showCreateFieldModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <Card className="w-full max-w-md mx-auto shadow-xl relative overflow-hidden bg-white rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateFieldModal(false)
+                    setPendingMappingHeader("")
+                    setModalError("")
+                  }}
+                  className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 rounded-lg p-1.5 focus:outline-none"
+                >
+                  <span className="text-lg font-semibold leading-none">✕</span>
+                </button>
+                <CardHeader>
+                  <CardTitle>Create Custom Field</CardTitle>
+                  <CardDescription>
+                    Configure a new custom field to map the CSV/Excel column "{pendingMappingHeader}" dynamically.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {modalError && (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-sm font-medium">{modalError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      setModalError("")
+                      if (!newFieldDisplayName.trim()) return
+
+                      try {
+                        const optionsArray = (newFieldType === "DROPDOWN" || newFieldType === "MULTI_SELECT")
+                          ? newFieldOptions.split(",").map(o => o.trim()).filter(Boolean)
+                          : undefined
+
+                        const response = await fetch("/api/contacts/custom-fields", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            displayName: newFieldDisplayName.trim(),
+                            type: newFieldType,
+                            options: optionsArray,
+                            isRequired: false,
+                            displayOrder: tenantCustomFields.length
+                          })
+                        })
+
+                        const data = await response.json()
+                        if (response.ok) {
+                          setTenantCustomFields(prev => [...prev, data])
+                          setUserMappings(prev => ({
+                            ...prev,
+                            [pendingMappingHeader]: {
+                              action: "MAP_CUSTOM_FIELD",
+                              fieldId: data.id
+                            }
+                          }))
+                          setShowCreateFieldModal(false)
+                          setPendingMappingHeader("")
+                        } else {
+                          setModalError(data.error || "Failed to create custom field")
+                        }
+                      } catch (err) {
+                        console.error(err)
+                        setModalError("An error occurred while creating custom field")
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <Label htmlFor="fieldName" className="text-xs font-semibold text-slate-700">Display Name</Label>
+                      <Input
+                        id="fieldName"
+                        value={newFieldDisplayName}
+                        onChange={(e) => setNewFieldDisplayName(e.target.value)}
+                        placeholder="e.g. Course Level"
+                        required
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="fieldType" className="text-xs font-semibold text-slate-700">Field Type</Label>
+                      <select
+                        id="fieldType"
+                        value={newFieldType}
+                        onChange={(e) => {
+                          setNewFieldType(e.target.value)
+                          if (e.target.value !== "DROPDOWN" && e.target.value !== "MULTI_SELECT") {
+                            setNewFieldOptions("")
+                          }
+                        }}
+                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="TEXT">Text</option>
+                        <option value="NUMBER">Number</option>
+                        <option value="DATE">Date</option>
+                        <option value="BOOLEAN">Boolean</option>
+                        <option value="DROPDOWN">Dropdown List</option>
+                        <option value="MULTI_SELECT">Multi Select</option>
+                      </select>
+                    </div>
+                    {(newFieldType === "DROPDOWN" || newFieldType === "MULTI_SELECT") && (
+                      <div>
+                        <Label htmlFor="fieldOptions" className="text-xs font-semibold text-slate-700">Options (Comma separated)</Label>
+                        <Input
+                          id="fieldOptions"
+                          value={newFieldOptions}
+                          onChange={(e) => setNewFieldOptions(e.target.value)}
+                          placeholder="e.g. Beginner, Intermediate, Advanced"
+                          required
+                          className="mt-1"
+                        />
+                      </div>
+                    )}
+                    <div className="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setShowCreateFieldModal(false)
+                          setPendingMappingHeader("")
+                          setModalError("")
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
+                        Create Field
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
-          {/* Import Button Container */}
-          <div className="flex justify-center pt-4">
-            <Button
-              onClick={handleImport}
-              disabled={isProcessing || !file || (!selectedListId && (!isCreatingNewList || !newListName.trim()))}
-              size="lg"
-              className="px-10 py-6 text-base font-semibold shadow-md bg-blue-600 hover:bg-blue-700 text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Importing Contacts...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-5 w-5" />
-                  Start Ingestion Pipeline
-                </>
+          {/* STEP 3: Confirm & Progress */}
+          {wizardStep === 3 && (
+            <Card className="shadow-sm border-blue-100 bg-white">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2 text-blue-600" />
+                  Ingesting Data Dataset...
+                </CardTitle>
+                <CardDescription>
+                  Executing database updates, linking lists, and validating custom field records.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 py-8 text-center max-w-md mx-auto">
+                <Settings className="mx-auto h-12 w-12 text-blue-500 animate-spin" />
+                <h4 className="text-sm font-semibold text-gray-700">Writing changes to database</h4>
+                <p className="text-xs text-gray-500">
+                  Please keep this window open while contacts are being validated and created.
+                </p>
+                {!isProcessing && (
+                  <Button onClick={handleExecuteImport} className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                    Start Import Ingestion
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* STEP 4: Summary Results */}
+          {wizardStep === 4 && results && (
+            <div className="space-y-6">
+              <Card className="shadow-md border-green-200 bg-green-50/10">
+                <CardHeader className="border-b border-green-100/50 bg-green-50/30">
+                  <CardTitle className="text-green-800 flex items-center text-lg">
+                    <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                    Ingestion Successfully Completed
+                  </CardTitle>
+                  <CardDescription className="text-green-700/80">
+                    Import statistics logs summary details:
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
+                      <p className="text-2xl font-bold text-gray-900">{results.total}</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mt-1">Total Rows</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-green-100 shadow-sm">
+                      <p className="text-2xl font-bold text-green-600">{results.newContactsCreated}</p>
+                      <p className="text-xs font-semibold text-green-700 uppercase mt-1">New Contacts</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                      <p className="text-2xl font-bold text-blue-600">{results.existingContactsUpdated}</p>
+                      <p className="text-xs font-semibold text-blue-700 uppercase mt-1">Updated Contacts</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-red-100 shadow-sm">
+                      <p className="text-2xl font-bold text-red-600">{results.failed}</p>
+                      <p className="text-xs font-semibold text-red-700 uppercase mt-1">Failed Rows</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Row Level Error logs */}
+              {failedRows.length > 0 && (
+                <Card className="shadow-sm border-red-100">
+                  <CardHeader>
+                    <CardTitle className="text-red-800 text-sm font-semibold">Row Processing Failures (Capped at 100 entries)</CardTitle>
+                    <CardDescription>Below are error details for rows that failed validation or parsing.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="max-h-[300px] overflow-y-auto space-y-2">
+                    {failedRows.map((err, idx) => (
+                      <div key={idx} className="flex justify-between text-xs p-2 bg-red-50 border border-red-100 rounded text-red-700">
+                        <span><strong>Row {err.row}:</strong> {err.email || "Unknown email"}</span>
+                        <span>{err.error}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               )}
-            </Button>
-          </div>
+
+              <div className="flex justify-center pt-2">
+                <Button onClick={() => router.push("/contacts")} className="px-8 bg-blue-600 hover:bg-blue-700 text-white">
+                  Back to Contacts list
+                </Button>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

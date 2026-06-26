@@ -13,6 +13,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [
       {
@@ -23,11 +26,15 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
-  org: "email-campaign-platform",
-  project: "email-campaign-platform",
-  silent: true,
-  disableLogger: true,
-  automaticVercelMonitors: true,
-});
+const isDev = process.env.NODE_ENV === "development";
+
+export default isDev 
+  ? nextConfig 
+  : withSentryConfig(nextConfig, {
+      org: "email-campaign-platform",
+      project: "email-campaign-platform",
+      silent: true,
+      disableLogger: true,
+      automaticVercelMonitors: true,
+    });
 

@@ -7,6 +7,8 @@ import { z } from "zod"
 
 const prisma = prismaClient as any
 
+import { SegmentCriteriaSchema } from "@/lib/segments/schema"
+
 // Validation schemas
 const updateCampaignSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -21,7 +23,8 @@ const updateCampaignSchema = z.object({
     z.array(z.string()),
     z.string()
   ]).optional(),
-  currentStep: z.number().int().min(1).max(4).optional()
+  currentStep: z.number().int().min(1).max(4).optional(),
+  audienceFilters: SegmentCriteriaSchema.optional().nullable()
 })
 
 const testSendSchema = z.object({
@@ -91,6 +94,11 @@ export async function GET(
                 }
               }
             }
+          }
+        },
+        recipientSegments: {
+          include: {
+            segment: true
           }
         },
         excludedLists: {
@@ -263,6 +271,7 @@ export async function PUT(
 
     if (validatedData.currentStep !== undefined) updatePayload.currentStep = validatedData.currentStep
     if (validatedData.tags !== undefined) updatePayload.tags = normalizedTags
+    if (validatedData.audienceFilters !== undefined) updatePayload.audienceFilters = validatedData.audienceFilters
     
     console.log("🔧 CAMPAIGN UPDATE: Starting update", {
       campaignId,

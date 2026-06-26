@@ -7,6 +7,14 @@ import { z } from "zod"
 
 const prisma = prismaClient as any
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 async function getEmailEditPermission(contactId: string) {
   // Check if contact has any email deliveries or campaign activity logs
   const [deliveriesCount, logsCount] = await Promise.all([
@@ -43,6 +51,16 @@ export async function GET(
           include: {
             contactList: true
           }
+        },
+        customFieldValues: {
+          include: {
+            customField: true
+          }
+        },
+        contactTags: {
+          include: {
+            tag: true
+          }
         }
       }
     })
@@ -55,10 +73,21 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     }
 
+    const { CustomValueService } = require("@/lib/custom-fields/value-service")
+    const customFields = CustomValueService.flattenCustomFieldValues(contact.customFieldValues)
+
+    const relationTagsStr = contact.contactTags.map((ct: any) => ct.tag.name).join(",")
+
+    const { customFieldValues, contactTags, ...cleanContact } = contact
+    cleanContact.tags = relationTagsStr
+
     const permissions = await getEmailEditPermission(id)
 
     return NextResponse.json({
-      contact,
+      contact: {
+        ...cleanContact,
+        customFields
+      },
       permissions
     })
   } catch (error) {
@@ -78,7 +107,8 @@ const patchContactSchema = z.object({
   company: z.string().optional(),
   city: z.string().optional(),
   tags: z.string().optional(),
-  status: z.enum(["ACTIVE", "UNSUBSCRIBED", "BOUNCED", "COMPLAINED"]).optional()
+  status: z.enum(["ACTIVE", "UNSUBSCRIBED", "BOUNCED", "COMPLAINED"]).optional(),
+  customFields: z.record(z.string(), z.any()).optional()
 })
 
 export async function PATCH(
@@ -176,24 +206,164 @@ export async function PATCH(
       normalizedTags = uniqueTags.join(",")
     }
 
-    const updatedContact = await prisma.contact.update({
-      where: { id },
-      data: {
-        firstName: validatedData.firstName !== undefined ? validatedData.firstName : contact.firstName,
-        lastName: validatedData.lastName !== undefined ? validatedData.lastName : contact.lastName,
-        email: validatedData.email !== undefined ? validatedData.email.trim() : contact.email,
-        phone: validatedData.phone !== undefined ? validatedData.phone : contact.phone,
-        company: validatedData.company !== undefined ? validatedData.company : contact.company,
-        city: validatedData.city !== undefined ? validatedData.city : contact.city,
-        status: validatedData.status !== undefined ? validatedData.status : contact.status,
-        tags: normalizedTags,
-        updatedAt: new Date()
+    // 4. Validate custom fields using value-service
+    let operations: any[] = []
+    if (validatedData.customFields !== undefined) {
+      const { CustomValueService } = require("@/lib/custom-fields/value-service")
+      try {
+        operations = await CustomValueService.validateCustomFieldValues(
+          session.user.id,
+          validatedData.customFields
+        )
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
       }
+    }
+
+    const updatedContact = await prisma.$transaction(async (tx: any) => {
+      // Update legacy contact fields
+      const contactUpdate = await tx.contact.update({
+        where: { id },
+        data: {
+          firstName: validatedData.firstName !== undefined ? validatedData.firstName : contact.firstName,
+          lastName: validatedData.lastName !== undefined ? validatedData.lastName : contact.lastName,
+          email: validatedData.email !== undefined ? validatedData.email.trim() : contact.email,
+          phone: validatedData.phone !== undefined ? validatedData.phone : contact.phone,
+          company: validatedData.company !== undefined ? validatedData.company : contact.company,
+          city: validatedData.city !== undefined ? validatedData.city : contact.city,
+          status: validatedData.status !== undefined ? validatedData.status : contact.status,
+          updatedAt: new Date()
+        }
+      })
+
+      // Perform custom fields operations
+      for (const op of operations) {
+        if (op.action === "UPSERT") {
+          await tx.contactFieldValue.upsert({
+            where: {
+              contactId_fieldId: {
+                contactId: id,
+                fieldId: op.fieldId
+              }
+            },
+            update: op.values,
+            create: {
+              contactId: id,
+              fieldId: op.fieldId,
+              ...op.values
+            }
+          })
+        } else if (op.action === "DELETE") {
+          const exists = await tx.contactFieldValue.findUnique({
+            where: {
+              contactId_fieldId: {
+                contactId: id,
+                fieldId: op.fieldId
+              }
+            }
+          })
+          if (exists) {
+            await tx.contactFieldValue.delete({
+              where: {
+                contactId_fieldId: {
+                  contactId: id,
+                  fieldId: op.fieldId
+                }
+              }
+            })
+          }
+        }
+      }
+
+      // Delta updates for tags
+      if (validatedData.tags !== undefined) {
+        const tagList = validatedData.tags
+          .split(",")
+          .map(t => t.trim())
+          .filter(Boolean)
+
+        const uniqueTags = Array.from(new Set(tagList))
+        const tagSlugs = uniqueTags.map(t => slugify(t)).filter(Boolean)
+
+        // Find existing contact tags
+        const existingLinks = await tx.contactTag.findMany({
+          where: { contactId: id },
+          include: { tag: true }
+        })
+
+        const existingSlugs = existingLinks.map((l: any) => l.tag.slug)
+
+        // Remove deleted tags
+        const linksToRemove = existingLinks.filter((l: any) => !tagSlugs.includes(l.tag.slug))
+        if (linksToRemove.length > 0) {
+          await tx.contactTag.deleteMany({
+            where: {
+              id: { in: linksToRemove.map((l: any) => l.id) }
+            }
+          })
+        }
+
+        // Add missing tags
+        for (const name of uniqueTags) {
+          const slug = slugify(name)
+          if (!slug) continue
+          if (!existingSlugs.includes(slug)) {
+            // Find or create the tag first
+            let tag = await tx.tag.findUnique({
+              where: {
+                userId_slug: {
+                  userId: session.user.id,
+                  slug
+                }
+              }
+            })
+            if (!tag) {
+              tag = await tx.tag.create({
+                data: {
+                  name,
+                  slug,
+                  userId: session.user.id,
+                  color: "#3B82F6"
+                }
+              })
+            }
+            // Create contact-tag association
+            await tx.contactTag.create({
+              data: {
+                contactId: id,
+                tagId: tag.id
+              }
+            })
+          }
+        }
+      }
+
+      return contactUpdate
     })
+
+    // Fetch the updated values to return a fresh flat customFields structure
+    const [freshValues, freshContactTags] = await Promise.all([
+      prisma.contactFieldValue.findMany({
+        where: { contactId: id },
+        include: { customField: true }
+      }),
+      prisma.contactTag.findMany({
+        where: { contactId: id },
+        include: { tag: true }
+      })
+    ])
+
+    const { CustomValueService } = require("@/lib/custom-fields/value-service")
+    const customFields = CustomValueService.flattenCustomFieldValues(freshValues)
+    const relationTagsStr = freshContactTags.map((ct: any) => ct.tag.name).join(",")
 
     return NextResponse.json({
       success: true,
-      contact: updatedContact
+      contact: {
+        ...updatedContact,
+        tags: relationTagsStr,
+        customFields
+      }
     })
   } catch (error: any) {
     console.error("Error updating contact:", error)

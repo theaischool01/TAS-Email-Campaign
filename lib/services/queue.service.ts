@@ -19,7 +19,18 @@ export interface QueueMessage {
     firstName?: string | null
     lastName?: string | null
     contactId?: string
+    company?: string | null
   }
+}
+
+export interface AnalyticsMessage {
+  version: 1
+  type: "OPEN" | "CLICK"
+  deliveryId: string
+  timestamp: string
+  ip: string
+  userAgent: string
+  trackedLinkId?: string
 }
 
 export class QueueService {
@@ -117,6 +128,18 @@ export class QueueService {
     const command = new SendMessageCommand({
       QueueUrl: queueUrl,
       MessageBody: JSON.stringify(message),
+    })
+    await sqsClient.send(command)
+  }
+
+  static async enqueueAnalyticsEvent(event: AnalyticsMessage): Promise<void> {
+    const queueUrl = process.env.AWS_ANALYTICS_QUEUE_URL
+    if (!queueUrl) {
+      throw new Error("AWS_ANALYTICS_QUEUE_URL is not configured")
+    }
+    const command = new SendMessageCommand({
+      QueueUrl: queueUrl,
+      MessageBody: JSON.stringify(event),
     })
     await sqsClient.send(command)
   }

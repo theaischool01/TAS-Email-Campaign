@@ -42,13 +42,15 @@ export default function ContactDetailPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const params = useParams()
-  const [contact, setContact] = useState<Contact | null>(null)
+  const [contact, setContact] = useState<any | null>(null)
+  const [customFieldsMetadata, setCustomFieldsMetadata] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
 
   useEffect(() => {
     if (params.id) {
       fetchContact()
+      fetchCustomFields()
     }
   }, [params.id])
 
@@ -58,7 +60,7 @@ export default function ContactDetailPage() {
       const data = await response.json()
 
       if (response.ok) {
-        setContact(data)
+        setContact(data.contact)
       } else {
         setError(data.error || "Failed to fetch contact")
       }
@@ -66,6 +68,18 @@ export default function ContactDetailPage() {
       setError("An error occurred")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchCustomFields = async () => {
+    try {
+      const response = await fetch("/api/contacts/custom-fields")
+      if (response.ok) {
+        const data = await response.json()
+        setCustomFieldsMetadata(data)
+      }
+    } catch (e) {
+      console.error("Failed to load custom fields metadata:", e)
     }
   }
 
@@ -201,22 +215,26 @@ export default function ContactDetailPage() {
               <CardContent>
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">
-                    This contact belongs to {(contact as any).contactLists?.length || 0} list(s)
+                    This contact belongs to {contact.lists?.length || 0} list(s)
                   </p>
                   <div className="space-y-2">
-                    {(contact as any).contactLists?.map((list: ContactList) => (
-                      <div key={list.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{list.name}</h4>
-                          {list.description && (
-                            <p className="text-sm text-gray-600">{list.description}</p>
-                          )}
+                    {contact.lists?.map((item: any) => {
+                      const list = item.contactList
+                      if (!list) return null
+                      return (
+                        <div key={list.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <h4 className="font-medium text-gray-900">{list.name}</h4>
+                            {list.description && (
+                              <p className="text-sm text-gray-600">{list.description}</p>
+                            )}
+                          </div>
+                          <Link href={`/contacts/lists/${list.id}`}>
+                            <Button variant="outline" size="sm">View List</Button>
+                          </Link>
                         </div>
-                        <Link href={`/contacts/lists/${list.id}`}>
-                          <Button variant="outline" size="sm">View List</Button>
-                        </Link>
-                      </div>
-                    )) || (
+                      )
+                    }) || (
                       <p className="text-sm text-gray-500">No contact lists found</p>
                     )}
                   </div>
@@ -224,21 +242,74 @@ export default function ContactDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Actions Card */}
+            {/* Tags Card */}
             <Card>
+              <CardHeader>
+                <CardTitle>Tags</CardTitle>
+                <CardDescription>Tags assigned to this contact</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-1.5">
+                  {contact.tags ? (
+                    contact.tags.split(",").map((tag: string) => (
+                      <Badge key={tag} variant="secondary" className="bg-blue-50 border-blue-200 text-blue-800 rounded-full px-3 py-1 text-xs font-medium">
+                        {tag}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-gray-500">No tags assigned</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Custom Fields Card */}
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle>Custom Fields</CardTitle>
+                <CardDescription>Custom user-defined contact properties</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {customFieldsMetadata.length === 0 ? (
+                  <p className="text-sm text-gray-500">No custom fields defined in this workspace.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {customFieldsMetadata.map((field) => {
+                      const rawValue = contact.customFields?.[field.key]
+                      let displayValue = rawValue
+                      if (rawValue === undefined || rawValue === null || rawValue === "") {
+                        displayValue = "-"
+                      } else if (field.type === "BOOLEAN") {
+                        displayValue = rawValue === true || String(rawValue) === "true" ? "Yes" : "No"
+                      } else if (field.type === "DATE") {
+                        displayValue = new Date(rawValue).toLocaleDateString()
+                      } else if (field.type === "MULTI_SELECT") {
+                        displayValue = Array.isArray(rawValue) ? rawValue.join(", ") : String(rawValue)
+                      }
+                      
+                      return (
+                        <div key={field.id} className="p-3 bg-gray-50 rounded-lg">
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">{field.displayName}</label>
+                          <p className="text-sm font-medium text-gray-900 mt-1">{displayValue}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Actions Card */}
+            <Card className="lg:col-span-3">
               <CardHeader>
                 <CardTitle>Actions</CardTitle>
                 <CardDescription>Manage this contact</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex space-x-3">
-                  <Button variant="outline" className="flex-1">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Contact
-                  </Button>
                   <Button 
                     variant="destructive" 
-                    className="flex-1"
+                    className="flex-1 max-w-xs"
                     onClick={handleDeleteContact}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />

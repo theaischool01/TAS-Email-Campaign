@@ -24,7 +24,11 @@ const QueuePayloadSchema = z.object({
   userId: z.string().optional(),
   recipient: z.object({
     email: z.string().email(),
-    contactId: z.string().optional()
+    contactId: z.string().optional(),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    company: z.string().optional(),
+    customFields: z.record(z.any()).optional()
   })
 });
 
@@ -36,7 +40,7 @@ function isPermanentError(error) {
     error instanceof InvalidPayloadError
   );
 }
-const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, SendMessageCommand, ChangeMessageVisibilityCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
+const { SQSClient, ReceiveMessageCommand, DeleteMessageCommand, GetQueueUrlCommand, CreateQueueCommand, ChangeMessageVisibilityCommand, GetQueueAttributesCommand, SetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
 const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const fs = require('fs');
 const path = require('path');
@@ -103,6 +107,8 @@ if (missingVars.length > 0) {
 const http = require('http');
 
 const UnsubscribeTokenService = require('./lib/services/unsubscribe-token');
+const { CampaignLaunchService } = require('./lib/services/campaign-launch-service');
+const { TrackingRewriter } = require('./lib/email/tracking-rewriter');
 const { decrypt } = require('./lib/security/encryption');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
@@ -153,8 +159,37 @@ const prisma = new PrismaClient();
 const campaignCache = new Map();
 const settingsCache = new Map();
 const suppressionCache = new Map();
+const trackedLinksCache = new Map();
 
 // --- Cached Fetch Helpers ---
+async function getCampaignTrackedLinks(campaignId) {
+  const now = Date.now();
+  const cached = trackedLinksCache.get(campaignId);
+  if (cached && cached.expiresAt > now) {
+    return cached.links;
+  }
+
+  const links = await prisma.trackedLink.findMany({
+    where: { campaignId },
+    select: {
+      id: true,
+      originalUrl: true
+    }
+  });
+
+  const linksMap = {};
+  for (const link of links) {
+    linksMap[link.originalUrl] = link.id;
+  }
+
+  trackedLinksCache.set(campaignId, {
+    links: linksMap,
+    expiresAt: now + 30000 // 30 seconds cache
+  });
+
+  return linksMap;
+}
+
 async function getCampaign(campaignId) {
   const now = Date.now();
   const cached = campaignCache.get(campaignId);
@@ -249,6 +284,9 @@ setInterval(() => {
   }
   for (const [key, val] of suppressionCache.entries()) {
     if (val.expiresAt <= now) suppressionCache.delete(key);
+  }
+  for (const [key, val] of trackedLinksCache.entries()) {
+    if (val.expiresAt <= now) trackedLinksCache.delete(key);
   }
 }, 60000);
 const awsConfig = {
@@ -409,90 +447,20 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
       where: { status: 'SCHEDULED', scheduledAt: { lte: now } },
       select: {
         id: true,
-        name: true,
-        status: true,
-        scheduledAt: true,
-        createdBy: true,
-        sentAt: true,
-        createdAt: true,
-        includedTags: true,
-        recipientLists: { include: { contactList: { include: { members: { include: { contact: true } } } } } },
-        excludedLists: { include: { contactList: { include: { members: { select: { contactId: true } } } } } },
-        template: true
+        name: true
       }
     });
 
     for (const campaign of scheduledCampaigns) {
-      logger.info(`🚀 Launching Campaign: ${campaign.name}`);
-      // Fetch all suppressed emails to filter them out efficiently
-      const suppressedEmails = await prisma.suppressionList.findMany({
-        where: { userId: campaign.createdBy },
-        select: { email: true },
-        take: 50000
-      });
-      logger.info({ count: suppressedEmails.length }, 'Suppression list loaded')
-      const suppressedSet = new Set(suppressedEmails.map(s => s.email.trim().toLowerCase()));
-
-      // Build excluded contact ID set from excludedLists
-      const excludedContactIds = new Set();
-      (campaign.excludedLists || []).forEach(el => {
-        (el.contactList?.members || []).forEach(m => {
-          excludedContactIds.add(m.contactId);
+      logger.info(`🚀 Launching Scheduled Campaign: ${campaign.name}`);
+      try {
+        const result = await CampaignLaunchService.launchCampaign({
+          campaignId: campaign.id,
+          triggeredBy: "SCHEDULED"
         });
-      });
-      logger.info({ count: excludedContactIds.size }, 'Excluded contacts loaded');
-
-      // Tag filtering configs
-      const includedTagsStr = (campaign.includedTags || "").trim();
-      const includedTags = includedTagsStr
-        ? includedTagsStr.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
-        : [];
-
-      const recipientsMap = new Map();
-      campaign.recipientLists.forEach(rl => {
-        rl.contactList.members.forEach(m => {
-          if (
-            m.contact &&
-            m.contact.status === 'ACTIVE' &&
-            !suppressedSet.has(m.contact.email.trim().toLowerCase()) &&
-            !excludedContactIds.has(m.contact.id)
-          ) {
-            // Tag filtering
-            const contactTags = (m.contact.tags || "")
-              .split(",")
-              .map(t => t.trim().toLowerCase())
-              .filter(Boolean);
-
-            if (includedTags.length > 0) {
-              const hasIncludedTag = contactTags.some(t => includedTags.includes(t));
-              if (!hasIncludedTag) return;
-            }
-
-            if (!recipientsMap.has(m.contact.email)) {
-              recipientsMap.set(m.contact.email, {
-                email: m.contact.email,
-                firstName: m.contact.firstName || undefined,
-                lastName: m.contact.lastName || undefined,
-                contactId: m.contact.id || undefined
-              });
-            }
-          }
-        });
-      });
-      const recipients = Array.from(recipientsMap.values());
-
-
-      await prisma.campaign.update({
-        where: { id: campaign.id },
-        data: { status: 'SENDING', recipientCount: recipients.length, sentAt: new Date(), totalSent: 0, totalFailed: 0 }
-      });
-
-      const qUrl = await getQueueUrl();
-      for (const recipient of recipients) {
-        await sqsClient.send(new SendMessageCommand({
-          QueueUrl: qUrl,
-          MessageBody: JSON.stringify({ campaignId: campaign.id, recipient })
-        }));
+        logger.info({ campaignId: campaign.id, result }, "Scheduled campaign launch execution completed");
+      } catch (err) {
+        logger.error({ campaignId: campaign.id, error: err.message }, "Scheduled campaign launch failed");
       }
     }
 
@@ -725,13 +693,13 @@ async function processQueue() {
         let contactId = null;
 
         try {
-          
+
           // 1. JSON Parse
           const parsedBody = JSON.parse(message.Body);
-          
+
           // 2. Zod Payload Validation
           const payload = QueuePayloadSchema.parse(parsedBody);
-          
+
           campaignId = payload.campaignId;
           recipient = payload.recipient;
           contactId = recipient.contactId && recipient.contactId !== 'unknown' ? recipient.contactId : null;
@@ -820,7 +788,7 @@ async function processQueue() {
                 const STALE_THRESHOLD = 15 * 60 * 1000; // 15 minutes
 
                 if (ageMs < STALE_THRESHOLD) {
-                  logger.info(`⏳ Lock is fresh for ${recipient.email} (age: ${Math.round(ageMs/1000)}s). Retrying later.`);
+                  logger.info(`⏳ Lock is fresh for ${recipient.email} (age: ${Math.round(ageMs / 1000)}s). Retrying later.`);
                   throw new Error(`Lock is fresh for ${recipient.email}. Retrying later.`);
                 } else {
                   logger.warn(`⚠️ Stale delivery detected for ${recipient.email}. Setting status to FAILED and aborting (no resend).`);
@@ -835,7 +803,7 @@ async function processQueue() {
                   await prisma.campaign.update({
                     where: { id: campaignId },
                     data: { totalFailed: { increment: 1 } }
-                  }).catch(() => {});
+                  }).catch(() => { });
                   await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
                   continue;
                 }
@@ -847,7 +815,7 @@ async function processQueue() {
 
           // FINAL PROTECTION: Check if recipient is suppressed using cached Set
           const suppressionSet = await getSuppressionSet(campaign.createdBy);
-          
+
           if (suppressionSet.has(recipient.email.toLowerCase())) {
             logger.info(`⏩ Skipping ${recipient.email}: Contact is suppressed (cache check).`);
             await prisma.emailDelivery.update({
@@ -870,11 +838,11 @@ async function processQueue() {
           const fromEmail = process.env.DEFAULT_FROM_EMAIL || process.env.SES_FROM_EMAIL || "official@campaign.theaischool.co";
           const fromName = process.env.DEFAULT_FROM_NAME || "THE AI SCHOOL";
           const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-          
+
           if (!appUrl) {
             throw new Error("CRITICAL: NEXT_PUBLIC_APP_URL is missing in environment variables.");
           }
-          
+
           // Secure Unsubscribe Token (uid)
           const uid = UnsubscribeTokenService.encodeToken({
             cid: contactId || 'unknown',
@@ -883,41 +851,58 @@ async function processQueue() {
           });
 
           const footerUnsubscribeUrl = `${appUrl}/unsubscribe?uid=${uid}`;
-          const trackingPixel = `<img src="${appUrl}/api/track/open/${campaignId}/${contactId || 'unknown'}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;" />`;
-          
-          let emailHtml = campaign.template?.html || "No content";
-          
-          // 1. Core replacements
-          emailHtml = emailHtml.replace(/{{first_name}}/gi, recipient.firstName || 'Friend');
-          emailHtml = emailHtml.replace(/{{last_name}}/gi, recipient.lastName || '');
-          emailHtml = emailHtml.replace(/{{email}}/gi, recipient.email);
-          emailHtml = emailHtml.replace(/{{UNSUBSCRIBE_URL}}/gi, footerUnsubscribeUrl);
-          emailHtml = emailHtml.replace(/{{unsubscribeLink}}/gi, footerUnsubscribeUrl);
 
-          // 2. Click Tracking (Safe wrap)
-          emailHtml = emailHtml.replace(/<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1/gi, (match, quote, url) => {
-            if (url.startsWith('#') || url.startsWith('tel:') || url.startsWith('mailto:') || 
-                url === footerUnsubscribeUrl || url.includes('/unsubscribe')) {
-              return match;
+          let emailHtml = campaign.template?.html || "No content";
+
+          // 1. Core replacements (centralized merge tag alias support)
+          const settings = await getUserSettings(campaign.createdBy);
+          const companyNameResolved = recipient.company || settings?.orgName || fromName;
+          const supportEmailResolved = settings?.defaultFromEmail || campaign.senderEmail || fromEmail;
+
+          const mergeMap = {
+            'first_name': recipient.firstName || 'Friend',
+            'firstName': recipient.firstName || 'Friend',
+            'last_name': recipient.lastName || '',
+            'lastName': recipient.lastName || '',
+            'email': recipient.email,
+            'company': companyNameResolved,
+            'companyName': companyNameResolved,
+            'supportEmail': supportEmailResolved,
+            'unsubscribeLink': footerUnsubscribeUrl,
+            'UNSUBSCRIBE_URL': footerUnsubscribeUrl
+          };
+
+          for (const [key, value] of Object.entries(mergeMap)) {
+            emailHtml = emailHtml.replace(new RegExp(`{{${key}}}`, 'gi'), value);
+          }
+
+          // 1.5. Dynamic custom field merge tags replacement
+          if (recipient.customFields && typeof recipient.customFields === 'object') {
+            for (const [key, value] of Object.entries(recipient.customFields)) {
+              let stringValue = '';
+              if (value !== null && value !== undefined) {
+                stringValue = String(value);
+              }
+              emailHtml = emailHtml.replace(new RegExp(`{{custom.${key}}}`, 'gi'), stringValue);
             }
-            if (!url.startsWith('http')) return match;
-            
-            const trackingUrl = `${appUrl}/api/track/click/${campaignId}/${contactId || 'unknown'}?url=${encodeURIComponent(url)}`;
-            return match.replace(url, trackingUrl);
+          }
+          // Replace any remaining unresolved {{custom.*}} tags with empty string
+          emailHtml = emailHtml.replace(/{{custom\.[a-z0-9_]+}}/gi, '');
+
+          // 2. Tracking Rewrite (Encrypted click tracking & open tracking pixel injection)
+          const trackedLinks = await getCampaignTrackedLinks(campaignId);
+          emailHtml = TrackingRewriter.rewrite(emailHtml, {
+            deliveryId: delivery.id,
+            trackedLinks,
+            appUrl,
+            unsubscribeLink: footerUnsubscribeUrl
           });
 
-          // 3. Final Injection (Append tracking pixel at end of body if exists)
-          if (emailHtml.includes('</body>')) {
-            emailHtml = emailHtml.replace('</body>', `${trackingPixel}</body>`);
-          } else {
-            emailHtml = emailHtml + trackingPixel;
-          }
-          
           const fullHtml = emailHtml;
 
           // List-Unsubscribe Header implementation
           const listUnsubscribeUrl = `${appUrl}/api/unsubscribe?uid=${uid}`;
-          
+
           // Inject unsubscribe footer securely
           const unsubscribeBar = `
             <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top:20px;">
@@ -931,8 +916,8 @@ async function processQueue() {
             </table>
           `;
 
-          const finalHtml = fullHtml.includes('</body>') 
-            ? fullHtml.replace('</body>', `${unsubscribeBar}</body>`) 
+          const finalHtml = fullHtml.includes('</body>')
+            ? fullHtml.replace('</body>', `${unsubscribeBar}</body>`)
             : `${fullHtml}${unsubscribeBar}`;
 
           const sendResult = await globalTransporter.sendMail({
@@ -1084,20 +1069,20 @@ async function processQueue() {
               stack: innerError instanceof Error ? innerError.stack : undefined,
               type: innerError.name || 'Error'
             }, `[PERMANENT FAILURE] Poison message detected:`);
-            
+
             // Delete message from SQS immediately to prevent poison retry loops
             await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
             continue;
           }
 
           const isRetryable = classifyError(innerError);
-          
+
           if (isRetryable) {
             logger.warn({
               message: innerError instanceof Error ? innerError.message : String(innerError),
               stack: innerError instanceof Error ? innerError.stack : undefined
             }, `[RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} will be retried:`);
-            
+
             if (delivery) {
               await prisma.emailDelivery.update({
                 where: { id: delivery.id },
@@ -1106,13 +1091,13 @@ async function processQueue() {
                   failureCode: 'TEMPORARY_ERROR',
                   failureReason: innerError.message
                 }
-              }).catch(() => {});
+              }).catch(() => { });
             }
 
             // Adjust Visibility Timeout with exponential backoff
             const receiveCount = Number(message.Attributes?.ApproximateReceiveCount) || 1;
             const backoffSeconds = Math.min(300, Math.pow(2, receiveCount) * 10);
-            
+
             await sqsClient.send(new ChangeMessageVisibilityCommand({
               QueueUrl: qUrl,
               ReceiptHandle: message.ReceiptHandle,
@@ -1126,7 +1111,7 @@ async function processQueue() {
               message: innerError instanceof Error ? innerError.message : String(innerError),
               stack: innerError instanceof Error ? innerError.stack : undefined
             }, `[NON-RETRYABLE ERROR] SQS Message for ${recipient ? recipient.email : 'unknown'} failed permanently:`);
-            
+
             if (delivery) {
               await prisma.emailDelivery.update({
                 where: { id: delivery.id },
@@ -1135,15 +1120,15 @@ async function processQueue() {
                   failureCode: classifyFailureCode(innerError),
                   failureReason: innerError.message
                 }
-              }).catch(() => {});
+              }).catch(() => { });
             }
 
             if (campaignId) {
               await prisma.campaign.update({
                 where: { id: campaignId },
                 data: { totalFailed: { increment: 1 } }
-              }).catch(() => {});
-              
+              }).catch(() => { });
+
               await prisma.campaignActivityLog.create({
                 data: {
                   campaignId,
@@ -1152,7 +1137,7 @@ async function processQueue() {
                   contactId,
                   metadata: { email: recipient ? recipient.email : 'unknown', error: innerError.message }
                 }
-              }).catch(() => {});
+              }).catch(() => { });
             }
 
             await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));

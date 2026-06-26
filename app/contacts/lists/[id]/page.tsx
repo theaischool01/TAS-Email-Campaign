@@ -23,6 +23,12 @@ import {
 import { getCreatedByText } from "@/lib/role-helpers"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 
 interface Contact {
   id: string
@@ -34,6 +40,7 @@ interface Contact {
   city?: string
   status: string
   tags?: string
+  customFields?: Record<string, any>
 }
 
 interface ContactList {
@@ -63,6 +70,25 @@ export default function ContactListDetailPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [error, setError] = useState("")
   
+  // Custom Fields Schema
+  const [customFieldsSchema, setCustomFieldsSchema] = useState<any[]>([])
+  const [visibleCustomFields, setVisibleCustomFields] = useState<string[]>([])
+  
+  // Load defaults once schema is fetched
+  useEffect(() => {
+    if (customFieldsSchema.length > 0 && visibleCustomFields.length === 0) {
+      const defaults = ["state", "qualification", "stream", "address"];
+      const activeKeys = customFieldsSchema.map(f => f.key);
+      const initialVisible = defaults.filter(d => activeKeys.includes(d));
+      
+      if (initialVisible.length > 0) {
+        setVisibleCustomFields(initialVisible);
+      } else {
+        setVisibleCustomFields(activeKeys.slice(0, 5));
+      }
+    }
+  }, [customFieldsSchema])
+  
   // Tag input states for Add Modal
   const [modalTags, setModalTags] = useState<string[]>([])
   const [tagInputText, setTagInputText] = useState("")
@@ -80,12 +106,25 @@ export default function ContactListDetailPage() {
   const [editTags, setEditTags] = useState<string[]>([])
   const [editTagInputText, setEditTagInputText] = useState("")
   const [showEditTagDropdown, setShowEditTagDropdown] = useState(false)
+  const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [editError, setEditError] = useState("")
   const [emailPermissions, setEmailPermissions] = useState({ canEditEmail: true, reason: "" })
 
   // Global cached tags state
   const [globalCachedTags, setGlobalCachedTags] = useState<string[]>([])
+
+  const fetchCustomFieldsSchema = async () => {
+    try {
+      const response = await fetch("/api/contacts/custom-fields")
+      if (response.ok) {
+        const data = await response.json()
+        setCustomFieldsSchema(data)
+      }
+    } catch (err) {
+      console.error("Failed to load custom fields schema:", err)
+    }
+  }
 
   // Fetch global tags once when edit modal opens
   const fetchGlobalTags = async () => {
@@ -121,6 +160,7 @@ export default function ContactListDetailPage() {
     if (params.id) {
       fetchContactList()
       fetchContacts()
+      fetchCustomFieldsSchema()
     }
   }, [params.id])
 
@@ -154,6 +194,22 @@ export default function ContactListDetailPage() {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     formData.append("tags", modalTags.join(","))
+    
+    // Build customFields object
+    const customFieldsObj: Record<string, any> = {}
+    customFieldsSchema.forEach(field => {
+      const val = formData.get(`cf_${field.key}`)
+      if (val !== null && val !== undefined) {
+        if (field.type === "NUMBER") {
+          customFieldsObj[field.key] = val === "" ? null : Number(val)
+        } else if (field.type === "BOOLEAN") {
+          customFieldsObj[field.key] = val === "true"
+        } else {
+          customFieldsObj[field.key] = val
+        }
+      }
+    })
+    formData.append("customFields", JSON.stringify(customFieldsObj))
     
     try {
       const response = await fetch(`/api/contacts/lists/${params.id}/contacts`, {
@@ -208,6 +264,7 @@ export default function ContactListDetailPage() {
     setEditStatus(contact.status || "")
     setEditTags(contact.tags ? contact.tags.split(",").map(t => t.trim()).filter(Boolean) : [])
     setEditTagInputText("")
+    setEditCustomFields(contact.customFields || {})
     
     // Fetch global tags for local autocomplete caching
     fetchGlobalTags()
@@ -223,6 +280,13 @@ export default function ContactListDetailPage() {
     } catch (err) {
       console.error("Failed to load email permissions:", err)
     }
+  }
+
+  const handleEditCustomFieldChange = (key: string, value: any) => {
+    setEditCustomFields(prev => ({
+      ...prev,
+      [key]: value
+    }))
   }
 
   // Handle Edit submission
@@ -242,7 +306,8 @@ export default function ContactListDetailPage() {
         company: editCompany,
         city: editCity,
         status: editStatus,
-        tags: editTags.join(",")
+        tags: editTags.join(","),
+        customFields: editCustomFields
       }
 
       const response = await fetch(`/api/contacts/${editingContact.id}`, {
@@ -316,6 +381,36 @@ export default function ContactListDetailPage() {
                   className="pl-10 w-64 text-sm"
                 />
               </div>
+              {customFieldsSchema.length > 0 && (
+                <div className="relative">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="text-sm py-2 h-[38px]">
+                        Columns ({visibleCustomFields.length})
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg z-50">
+                      {customFieldsSchema.map((field) => {
+                        const isVisible = visibleCustomFields.includes(field.key)
+                        return (
+                          <DropdownMenuItem
+                            key={field.key}
+                            onClick={() => {
+                              setVisibleCustomFields(prev =>
+                                isVisible ? prev.filter(k => k !== field.key) : [...prev, field.key]
+                              )
+                            }}
+                            className="flex items-center justify-between cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm"
+                          >
+                            <span>{field.displayName}</span>
+                            {isVisible && <span className="text-blue-600 font-bold">✓</span>}
+                          </DropdownMenuItem>
+                        )
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
               <Link href="/contacts/import">
                 <Button variant="outline">
                   <Upload className="h-4 w-4 mr-2" />
@@ -367,6 +462,14 @@ export default function ContactListDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
+                      {visibleCustomFields.map(key => {
+                        const field = customFieldsSchema.find(f => f.key === key)
+                        return (
+                          <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            {field?.displayName || key}
+                          </th>
+                        )
+                      })}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Tags
                       </th>
@@ -397,6 +500,14 @@ export default function ContactListDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {contact.city || "-"}
                         </td>
+                        {visibleCustomFields.map(key => {
+                          const val = contact.customFields?.[key]
+                          return (
+                            <td key={key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {val === true ? "Yes" : val === false ? "No" : val !== null && val !== undefined ? String(val) : "-"}
+                            </td>
+                          )
+                        })}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="flex flex-wrap gap-1 max-w-[200px]">
                             {contact.tags ? (
@@ -455,7 +566,7 @@ export default function ContactListDetailPage() {
                 Add a contact to {contactList?.name}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="max-h-[75vh] overflow-y-auto">
               <form onSubmit={handleAddContact} className="space-y-4">
                 {error && (
                   <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">
@@ -493,6 +604,38 @@ export default function ContactListDetailPage() {
                   <Label htmlFor="city">City</Label>
                   <Input id="city" name="city" placeholder="New York" />
                 </div>
+
+                {/* Custom Fields Inputs */}
+                {customFieldsSchema.map((field) => (
+                  <div key={field.id} className="space-y-1">
+                    <Label htmlFor={`cf_${field.key}`} className="text-xs font-semibold text-slate-700">
+                      {field.displayName}{field.isRequired && " *"}
+                    </Label>
+                    {field.type === "TEXT" && (
+                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} placeholder={field.displayName} required={field.isRequired} className="mt-1" />
+                    )}
+                    {field.type === "NUMBER" && (
+                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} type="number" placeholder="0" required={field.isRequired} className="mt-1" />
+                    )}
+                    {field.type === "DATE" && (
+                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} type="date" required={field.isRequired} className="mt-1" />
+                    )}
+                    {field.type === "BOOLEAN" && (
+                      <select id={`cf_${field.key}`} name={`cf_${field.key}`} required={field.isRequired} className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                      </select>
+                    )}
+                    {field.type === "DROPDOWN" && (
+                      <select id={`cf_${field.key}`} name={`cf_${field.key}`} required={field.isRequired} className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1">
+                        <option value="">Select option...</option>
+                        {field.options?.map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ))}
 
                 <div className="relative">
                   <Label>Tags</Label>
@@ -586,7 +729,7 @@ export default function ContactListDetailPage() {
                 Update details for this contact
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-2">
+            <CardContent className="pt-2 max-h-[75vh] overflow-y-auto">
               <form onSubmit={handleEditContactSubmit} className="space-y-4">
                 {editError && (
                   <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
@@ -679,6 +822,72 @@ export default function ContactListDetailPage() {
                     />
                   </div>
                 </div>
+
+                {/* Custom Fields Edit Inputs */}
+                {customFieldsSchema.map((field) => (
+                  <div key={field.id} className="space-y-1">
+                    <Label htmlFor={`edit_cf_${field.key}`} className="text-xs font-semibold text-slate-700">
+                      {field.displayName}{field.isRequired && " *"}
+                    </Label>
+                    {field.type === "TEXT" && (
+                      <Input 
+                        id={`edit_cf_${field.key}`} 
+                        value={editCustomFields[field.key] || ""} 
+                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)} 
+                        placeholder={field.displayName} 
+                        required={field.isRequired}
+                        className="mt-1"
+                      />
+                    )}
+                    {field.type === "NUMBER" && (
+                      <Input 
+                        id={`edit_cf_${field.key}`} 
+                        type="number" 
+                        value={editCustomFields[field.key] !== undefined && editCustomFields[field.key] !== null ? editCustomFields[field.key] : ""} 
+                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value === "" ? "" : Number(e.target.value))} 
+                        placeholder="0" 
+                        required={field.isRequired}
+                        className="mt-1"
+                      />
+                    )}
+                    {field.type === "DATE" && (
+                      <Input 
+                        id={`edit_cf_${field.key}`} 
+                        type="date" 
+                        value={editCustomFields[field.key] || ""} 
+                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)} 
+                        required={field.isRequired}
+                        className="mt-1"
+                      />
+                    )}
+                    {field.type === "BOOLEAN" && (
+                      <select 
+                        id={`edit_cf_${field.key}`} 
+                        value={editCustomFields[field.key] ? "true" : "false"} 
+                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value === "true")}
+                        required={field.isRequired}
+                        className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1"
+                      >
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                      </select>
+                    )}
+                    {field.type === "DROPDOWN" && (
+                      <select 
+                        id={`edit_cf_${field.key}`} 
+                        value={editCustomFields[field.key] || ""} 
+                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)}
+                        required={field.isRequired}
+                        className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1"
+                      >
+                        <option value="">Select option...</option>
+                        {field.options?.map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ))}
 
                 <div className="relative">
                   <Label className="text-xs font-semibold text-slate-700">Tags</Label>

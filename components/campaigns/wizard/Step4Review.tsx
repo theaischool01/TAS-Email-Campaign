@@ -59,6 +59,9 @@ interface Step4ReviewProps {
   onUpdateRecipients: (selected: string[], excluded: string[], selectedSegments: string[]) => void
   onUpdateExcluded: (excluded: Record<string, string[]>) => void
   onUpdateTemplate: (templateId: string) => void
+  selectedSegments?: string[]
+  segments?: any[]
+  audienceFilters?: any
 }
 
 export function Step4Review({
@@ -79,7 +82,10 @@ export function Step4Review({
   onUpdateDetails,
   onUpdateRecipients,
   onUpdateExcluded,
-  onUpdateTemplate
+  onUpdateTemplate,
+  selectedSegments = [],
+  segments = [],
+  audienceFilters
 }: Step4ReviewProps) {
   const router = useRouter()
   const selectedTemplateData = templates.find(t => t.id === selectedTemplate)
@@ -94,10 +100,15 @@ export function Step4Review({
   } | null>(null)
   const [estimating, setEstimating] = useState(false)
 
+  // Recipient Preview states
+  const [previewContacts, setPreviewContacts] = useState<any[]>([])
+  const [loadingPreview, setLoadingPreview] = useState(false)
+
+  // Estimator Effect
   useEffect(() => {
     let active = true
     const fetchEstimate = async () => {
-      if (selectedRecipients.length === 0) {
+      if (selectedRecipients.length === 0 && selectedSegments.length === 0) {
         setEstimate({ totalContacts: 0, excludedContacts: 0, finalRecipients: 0 })
         return
       }
@@ -106,12 +117,18 @@ export function Step4Review({
         const currentIncludedTags = includedTags
           ? includedTags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
           : []
+        const currentExcludedTags = excludedTags
+          ? excludedTags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+          : []
         const response = await fetch("/api/campaigns/estimate-recipients", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             listIds: selectedRecipients,
-            includedTags: currentIncludedTags
+            includedTags: currentIncludedTags,
+            segmentIds: selectedSegments,
+            excludedTags: currentExcludedTags,
+            audienceFilters: audienceFilters || undefined
           })
         })
         if (response.ok && active) {
@@ -130,7 +147,31 @@ export function Step4Review({
       active = false
       clearTimeout(timer)
     }
-  }, [selectedRecipients, includedTags])
+  }, [selectedRecipients, selectedSegments, includedTags, excludedTags, audienceFilters])
+
+  // Preview Load Effect
+  useEffect(() => {
+    if (!campaignId) return
+    let active = true
+    const fetchPreview = async () => {
+      setLoadingPreview(true)
+      try {
+        const response = await fetch(`/api/campaigns/${campaignId}/preview`)
+        if (response.ok && active) {
+          const data = await response.json()
+          setPreviewContacts(data.contacts || [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch recipient preview in Step 4 Review:", err)
+      } finally {
+        if (active) setLoadingPreview(false)
+      }
+    }
+    fetchPreview()
+    return () => {
+      active = false
+    }
+  }, [campaignId, selectedRecipients, selectedSegments, includedTags, excludedTags])
 
   const totalRecipients = estimate !== null ? estimate.finalRecipients : selectedContactLists.reduce((sum, list) => 
     sum + (list.activeCount || 0), 0
@@ -762,60 +803,169 @@ export function Step4Review({
                     <div>
                       <p className="font-medium">{totalRecipients.toLocaleString()} Eligible Recipients</p>
                       <p className="text-sm text-muted-foreground">
-                        ({totalMembers.toLocaleString()} active members before tag filters)
+                        ({totalMembers.toLocaleString()} active members before tag filters/segments/exclusions)
                       </p>
                     </div>
-                    <Badge variant="secondary">
-                      {selectedContactLists.length} Lists
-                    </Badge>
+                    <div className="flex gap-2">
+                      {selectedContactLists.length > 0 && (
+                        <Badge variant="secondary">
+                          {selectedContactLists.length} Lists
+                        </Badge>
+                      )}
+                      {selectedSegments.length > 0 && (
+                        <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+                          {selectedSegments.length} Segments
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="space-y-2">
-                    {selectedContactLists.map(list => (
-                      <div key={list.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium">{list.name}</p>
-                            {excludedContacts[list.id]?.length > 0 && (
-                              <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 font-semibold">
-                                ({excludedContacts[list.id].length} excluded)
-                              </Badge>
-                            )}
-                            {excludedRecipients?.includes(list.id) && (
-                              <Badge variant="destructive">Excluded</Badge>
-                            )}
+                  {selectedContactLists.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Target Lists</p>
+                      {selectedContactLists.map(list => (
+                        <div key={list.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium">{list.name}</p>
+                              {excludedContacts[list.id]?.length > 0 && (
+                                <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 font-semibold">
+                                  ({excludedContacts[list.id].length} excluded)
+                                </Badge>
+                              )}
+                              {excludedRecipients?.includes(list.id) && (
+                                <Badge variant="destructive">Excluded</Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {list.activeCount || 0} / {list.memberCount || 0} active
+                            </p>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {list.activeCount || 0} / {list.memberCount || 0} active
-                          </p>
+                          {(list.activeCount || 0) > 0 ? (
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                          ) : (
+                            <AlertCircle className="h-5 w-5 text-orange-600" />
+                          )}
                         </div>
-                        {(list.activeCount || 0) > 0 ? (
-                          <CheckCircle className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <AlertCircle className="h-5 w-5 text-orange-600" />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Segments Summary */}
+                  {selectedSegments.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Target Segments</p>
+                      <div className="space-y-2">
+                        {segments
+                          .filter(s => selectedSegments.includes(s.id))
+                          .map(segment => (
+                            <div key={segment.id} className="flex items-center justify-between p-3 bg-muted rounded-md">
+                              <div>
+                                <p className="font-medium">{segment.name}</p>
+                                <p className="text-xs text-slate-500 truncate max-w-md">{segment.description || 'Dynamic Segment'}</p>
+                              </div>
+                              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 flex items-center gap-1">
+                                <Filter className="h-3 w-3" />
+                                Segment
+                              </Badge>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Included/Excluded Tags Summary */}
+                  {(includedTags || excludedTags) && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tag Targeting & Filters</p>
+                      <div className="space-y-2">
+                        {includedTags && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs text-slate-500 font-medium min-w-[70px] mt-0.5">Include:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {includedTags.split(",").map(t => (
+                                <Badge key={t} variant="secondary" className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
+                                  {t.trim()}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {excludedTags && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs text-slate-500 font-medium min-w-[70px] mt-0.5">Exclude:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {excludedTags.split(",").map(t => (
+                                <Badge key={t} variant="destructive" className="bg-red-50 text-red-700 border border-red-100 text-[10px] hover:bg-red-50">
+                                  {t.trim()}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
 
-                  {includedTags && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tag Filters</p>
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <span className="text-xs text-slate-500 font-medium min-w-[70px] mt-0.5">Include:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {includedTags.split(",").map(t => (
-                              <Badge key={t} variant="secondary" className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
-                                {t.trim()}
+                  {/* Dynamic Custom Field Filters Summary */}
+                  {audienceFilters && audienceFilters.rules && audienceFilters.rules.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Dynamic Audience Filters</p>
+                      <div className="space-y-1.5">
+                        {audienceFilters.rules.map((rule: any, index: number) => {
+                          if (rule.type !== "RULE") return null
+                          const cleanField = rule.field.startsWith("custom.") ? rule.field.split(".")[1] : rule.field
+                          return (
+                            <div key={index} className="flex items-center gap-2 text-xs text-slate-700">
+                              <Badge variant="outline" className="bg-slate-50 border-slate-200">
+                                {cleanField} {rule.operator.replace("_", " ")} {String(rule.value)}
                               </Badge>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+          {/* Recipient Preview */}
+          <Card className="border border-slate-200 rounded-2xl shadow-none mb-4">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Recipient Preview (First 20 matching contacts)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {loadingPreview ? (
+                <div className="flex items-center justify-center py-6 text-sm text-slate-500 gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading preview...
+                </div>
+              ) : previewContacts.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-4">No matching recipients found.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {previewContacts.map((contact: any) => (
+                    <div key={contact.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                      <div>
+                        <p className="font-semibold text-slate-800">
+                          {contact.firstName || contact.lastName ? `${contact.firstName} ${contact.lastName}` : "Unnamed Contact"}
+                        </p>
+                        <p className="text-slate-500 mt-0.5">{contact.email}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 justify-end max-w-[180px]">
+                        {contact.tags?.map((t: string) => (
+                          <Badge key={t} variant="secondary" className="text-[9px] py-0 px-1.5 bg-slate-200 text-slate-700">
+                            {t}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>

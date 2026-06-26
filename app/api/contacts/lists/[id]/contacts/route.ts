@@ -5,6 +5,14 @@ import { prisma } from "@/app/lib/prisma"
 import { canAccessResource, createContactListMemberFilter } from "@/lib/rbac-filters"
 import { validateEmail } from "@/lib/email-validator"
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -43,12 +51,36 @@ export async function GET(
           }
         }
       },
+      include: {
+        contactTags: {
+          include: {
+            tag: true
+          }
+        },
+        customFieldValues: {
+          include: {
+            customField: true
+          }
+        }
+      },
       orderBy: {
         createdAt: "desc"
       }
     })
 
-    return NextResponse.json(contacts)
+    const mappedContacts = contacts.map((contact: any) => {
+      const relationTagsStr = contact.contactTags.map((ct: any) => ct.tag.name).join(",")
+      const { CustomValueService } = require("@/lib/custom-fields/value-service")
+      const customFields = CustomValueService.flattenCustomFieldValues(contact.customFieldValues)
+      const { contactTags, customFieldValues, ...cleanContact } = contact
+      return {
+        ...cleanContact,
+        tags: relationTagsStr,
+        customFields
+      }
+    })
+
+    return NextResponse.json(mappedContacts)
   } catch (error) {
     console.error("Error fetching contacts:", error)
     return NextResponse.json(
@@ -94,9 +126,25 @@ export async function POST(
     const company = formData.get("company") as string
     const city = formData.get("city") as string
     const rawTags = (formData.get("tags") as string) || ""
+    const customFieldsJson = formData.get("customFields") as string
+    const customFieldsData = customFieldsJson ? JSON.parse(customFieldsJson) : {}
 
     if (!email || !email.trim()) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
+    }
+
+    // Validate custom fields
+    let operations: any[] = []
+    if (customFieldsData && Object.keys(customFieldsData).length > 0) {
+      const { CustomValueService } = require("@/lib/custom-fields/value-service")
+      try {
+        operations = await CustomValueService.validateCustomFieldValues(
+          session.user.id,
+          customFieldsData
+        )
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
     }
 
     // 3-layer Email Validation
@@ -128,39 +176,119 @@ export async function POST(
       .filter(Boolean)
       .join(",")
 
-    // Create new contact
-    const newContact = await prisma.contact.create({
-      data: {
-        email: sanitizedEmail,
-        userId: session.user.id,
-        firstName: firstName?.trim() || null,
-        lastName: lastName?.trim() || null,
-        phone: phone?.trim() || null,
-        company: company?.trim() || null,
-        city: city?.trim() || null,
-        tags: sanitizedTags || null,
-        status: "ACTIVE",
-        source: "MANUAL"
-      }
-    })
+    // Create new contact and list associations in transaction along with tag creation/association
+    const newContact = await prisma.$transaction(async (tx: any) => {
+      const contact = await tx.contact.create({
+        data: {
+          email: sanitizedEmail,
+          userId: session.user.id,
+          firstName: firstName?.trim() || null,
+          lastName: lastName?.trim() || null,
+          phone: phone?.trim() || null,
+          company: company?.trim() || null,
+          city: city?.trim() || null,
+          status: "ACTIVE",
+          source: "MANUAL"
+        }
+      })
 
-    // Add contact to the list
-    await prisma.$transaction([
-      prisma.contactListMember.create({
+      // Add contact to the list
+      await tx.contactListMember.create({
         data: {
           contactListId: id,
-          contactId: newContact.id
+          contactId: contact.id
         }
-      }),
-      prisma.contactToContactList.create({
+      })
+      await tx.contactToContactList.create({
         data: {
-          A: newContact.id,
+          A: contact.id,
           B: id
         }
       })
+
+      // Tag assignments
+      if (rawTags.trim()) {
+        const tagList = rawTags
+          .split(",")
+          .map(t => t.trim())
+          .filter(Boolean)
+        const uniqueTags = Array.from(new Set(tagList))
+
+        for (const name of uniqueTags) {
+          const slug = slugify(name)
+          if (!slug) continue
+
+          let tag = await tx.tag.findUnique({
+            where: {
+              userId_slug: {
+                userId: session.user.id,
+                slug
+              }
+            }
+          })
+          if (!tag) {
+            tag = await tx.tag.create({
+              data: {
+                name,
+                slug,
+                userId: session.user.id,
+                color: "#3B82F6"
+              }
+            })
+          }
+          await tx.contactTag.create({
+            data: {
+              contactId: contact.id,
+              tagId: tag.id
+            }
+          })
+        }
+      }
+
+      // Perform custom fields operations
+      for (const op of operations) {
+        if (op.action === "UPSERT") {
+          await tx.contactFieldValue.upsert({
+            where: {
+              contactId_fieldId: {
+                contactId: contact.id,
+                fieldId: op.fieldId
+              }
+            },
+            update: op.values,
+            create: {
+              contactId: contact.id,
+              fieldId: op.fieldId,
+              ...op.values
+            }
+          })
+        }
+      }
+
+      return contact
+    })
+
+    // Fetch the updated values to return a fresh flat customFields structure
+    const [freshValues, freshContactTags] = await Promise.all([
+      prisma.contactFieldValue.findMany({
+        where: { contactId: newContact.id },
+        include: { customField: true }
+      }),
+      prisma.contactTag.findMany({
+        where: { contactId: newContact.id },
+        include: { tag: true }
+      })
     ])
 
-    return NextResponse.json(newContact, { status: 201 })
+    const { CustomValueService } = require("@/lib/custom-fields/value-service")
+    const customFields = CustomValueService.flattenCustomFieldValues(freshValues)
+    const relationTagsStr = freshContactTags.map((ct: any) => ct.tag.name).join(",")
+
+    return NextResponse.json({
+      ...newContact,
+      tags: relationTagsStr,
+      customFields
+    }, { status: 201 })
   } catch (error) {
     console.error("CONTACT CREATE ERROR:", {
       error: error,

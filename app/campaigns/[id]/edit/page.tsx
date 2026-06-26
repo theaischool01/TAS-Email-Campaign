@@ -180,7 +180,9 @@ export default function EditCampaignPage() {
                 {wizard.state.currentStep === 2 && (
                   <Step2Recipients
                     contactLists={wizard.contactLists}
+                    segments={wizard.segments}
                     selectedRecipients={wizard.state.selectedRecipients}
+                    selectedSegments={wizard.state.selectedSegments}
                     excludedRecipients={wizard.state.excludedRecipients}
                     includedTags={wizard.state.includedTags}
                     excludedTags={wizard.state.excludedTags}
@@ -190,6 +192,8 @@ export default function EditCampaignPage() {
                     onValidationChange={(isValid, errors) => {
                       // Validation is handled by the wizard hook
                     }}
+                    audienceFilters={wizard.state.audienceFilters}
+                    campaignId={wizard.state.campaignId || (params.id as string)}
                   />
                 )}
                 {wizard.state.currentStep === 3 && (
@@ -222,6 +226,9 @@ export default function EditCampaignPage() {
                     onUpdateRecipients={wizard.updateRecipients}
                     onUpdateExcluded={wizard.updateExcludedContacts}
                     onUpdateTemplate={wizard.updateTemplate}
+                    selectedSegments={wizard.state.selectedSegments}
+                    segments={wizard.segments}
+                    audienceFilters={wizard.state.audienceFilters}
                   />
                 )}
               </>

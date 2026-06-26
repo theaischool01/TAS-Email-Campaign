@@ -10,6 +10,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { FilterBuilder } from "@/components/shared/filter-builder/FilterBuilder"
+import { SegmentRuleGroup } from "@/components/shared/filter-builder/types"
+import { AudienceSelector } from "./AudienceSelector"
 
 interface ContactList {
   id: string
@@ -28,10 +34,12 @@ interface Step2RecipientsProps {
   excludedRecipients: string[]
   includedTags?: string
   excludedTags?: string
-  onChange: (selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string) => void
+  onChange: (selected: string[], excluded: string[], selectedSegments: string[], includedTags?: string, excludedTags?: string, audienceFilters?: any) => void
   validationErrors: Record<string, string>
   onValidationChange: (isValid: boolean, errors: Record<string, string>) => void
   onExcludedContactsChange?: (excluded: Record<string, string[]>) => void
+  audienceFilters?: any
+  campaignId?: string
 }
 
 interface TagAggregate {
@@ -50,11 +58,157 @@ export function Step2Recipients({
   onChange,
   validationErrors,
   onValidationChange,
-  onExcludedContactsChange
+  onExcludedContactsChange,
+  audienceFilters,
+  campaignId
 }: Step2RecipientsProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'lists' | 'segments'>('lists')
   const [searchTerm, setSearchTerm] = useState("")
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  
+  // Custom Field / Counts Schema
+  const [customFields, setCustomFields] = useState<any[]>([])
+
+  useEffect(() => {
+    const loadSchema = async () => {
+      try {
+        const fieldsRes = await fetch("/api/contacts/custom-fields")
+        if (fieldsRes.ok) {
+          const fields = await fieldsRes.json()
+          setCustomFields(fields)
+        }
+      } catch (err) {
+        console.error("Failed to load schema in Step 2:", err)
+      }
+    }
+    loadSchema()
+  }, [])
+
+  const customFieldValueCounts = useMemo(() => {
+    return {} as Record<string, number>
+  }, [])
+
+  const contacts = useMemo(() => [] as any[], [])
+
+  // Save Segment States
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [segmentName, setSegmentName] = useState("")
+  const [segmentDesc, setSegmentDesc] = useState("")
+  const [savingSegment, setSavingSegment] = useState(false)
+
+  const handleSaveAudienceAsSegment = async () => {
+    if (!segmentName.trim()) {
+      toast.error("Please enter a segment name")
+      return
+    }
+
+    setSavingSegment(true)
+    try {
+      const subFilters: any[] = []
+
+      // 1. List/Tag union
+      if (selectedRecipients.length > 0 || currentIncludedTags.length > 0 || excludedRecipients.length > 0) {
+        const rules: any[] = []
+        if (selectedRecipients.length > 0) {
+          rules.push({
+            type: "RULE",
+            field: "list.id",
+            operator: "in_list",
+            value: selectedRecipients
+          })
+        }
+        if (excludedRecipients.length > 0) {
+          rules.push({
+            type: "RULE",
+            field: "list.id",
+            operator: "not_in_list",
+            value: excludedRecipients
+          })
+        }
+        if (currentIncludedTags.length > 0) {
+          rules.push({
+            type: "RULE",
+            field: "contact.tags",
+            operator: "contains_any",
+            value: currentIncludedTags
+          })
+        }
+        subFilters.push({
+          conjunction: "AND",
+          rules
+        })
+      }
+
+      // 2. Segments
+      const segmentRules = segments
+        .filter(s => selectedSegments.includes(s.id))
+        .map(s => s.criteria)
+        .filter(Boolean)
+
+      if (segmentRules.length > 0) {
+        if (segmentRules.length === 1) {
+          subFilters.push(segmentRules[0])
+        } else {
+          subFilters.push({
+            conjunction: "OR",
+            rules: segmentRules
+          })
+        }
+      }
+
+      // 3. Excluded tags
+      const currentExcludedTags = excludedTags
+        ? excludedTags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+        : []
+      if (currentExcludedTags.length > 0) {
+        const exclusionRules = currentExcludedTags.map(tag => ({
+          type: "RULE",
+          field: "contact.tags",
+          operator: "not_equals",
+          value: tag
+        }))
+        subFilters.push(...exclusionRules)
+      }
+
+      let criteria: any = null
+      if (subFilters.length === 1) {
+        criteria = subFilters[0]
+      } else if (subFilters.length > 1) {
+        criteria = {
+          conjunction: "AND",
+          rules: subFilters
+        }
+      }
+
+      const response = await fetch("/api/segments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: segmentName,
+          description: segmentDesc,
+          criteria
+        })
+      })
+
+      if (response.ok) {
+        const payload = await response.json()
+        toast.success("Audience saved as segment successfully!")
+        setSaveDialogOpen(false)
+        setSegmentName("")
+        setSegmentDesc("")
+        router.refresh()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Failed to save segment")
+      }
+    } catch (err: any) {
+      toast.error("Failed to save segment")
+      console.error(err)
+    } finally {
+      setSavingSegment(false)
+    }
+  }
   
   // Expanded states, loaded tags by list, and loading statuses
   const [expandedLists, setExpandedLists] = useState<Record<string, boolean>>({})
@@ -68,6 +222,38 @@ export function Step2Recipients({
     excludedContacts: number
     finalRecipients: number
   } | null>(null)
+
+  // Segment counts cache
+  const [segmentCounts, setSegmentCounts] = useState<Record<string, number>>({})
+  const [loadingSegmentCounts, setLoadingSegmentCounts] = useState<Record<string, boolean>>({})
+
+  // Load counts for segments in parallel
+  useEffect(() => {
+    if (!segments || segments.length === 0) return
+
+    segments.forEach(async (segment) => {
+      if (segmentCounts[segment.id] !== undefined || loadingSegmentCounts[segment.id]) return
+      
+      setLoadingSegmentCounts(prev => ({ ...prev, [segment.id]: true }))
+      try {
+        const response = await fetch("/api/segments/estimate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ criteria: segment.criteria })
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.count !== undefined) {
+            setSegmentCounts(prev => ({ ...prev, [segment.id]: data.count }))
+          }
+        }
+      } catch (err) {
+        console.error("Failed to estimate segment count:", segment.id, err)
+      } finally {
+        setLoadingSegmentCounts(prev => ({ ...prev, [segment.id]: false }))
+      }
+    })
+  }, [segments])
 
   // Current included tags array parsed from state
   const currentIncludedTags = useMemo(() => {
@@ -93,11 +279,11 @@ export function Step2Recipients({
     )
   }, [segments, searchTerm])
 
-  // Call estimation API whenever selected list IDs or included tags change
+  // Call estimation API whenever selected list IDs, segments, or included tags change
   useEffect(() => {
     let active = true
     const fetchEstimate = async () => {
-      if (selectedRecipients.length === 0) {
+      if (selectedRecipients.length === 0 && selectedSegments.length === 0) {
         setEstimate({ totalContacts: 0, excludedContacts: 0, finalRecipients: 0 })
         return
       }
@@ -108,7 +294,9 @@ export function Step2Recipients({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             listIds: selectedRecipients,
-            includedTags: currentIncludedTags
+            includedTags: currentIncludedTags,
+            segmentId: selectedSegments.length > 0 ? selectedSegments[0] : undefined,
+            audienceFilters: audienceFilters || undefined
           })
         })
         if (response.ok && active) {
@@ -127,7 +315,7 @@ export function Step2Recipients({
       active = false
       clearTimeout(timer)
     }
-  }, [selectedRecipients, currentIncludedTags])
+  }, [selectedRecipients, selectedSegments, currentIncludedTags, audienceFilters])
 
   const handleListToggle = (listId: string, checked: boolean) => {
     let newSelected = [...selectedRecipients]
@@ -136,7 +324,7 @@ export function Step2Recipients({
     } else {
       newSelected = newSelected.filter(id => id !== listId)
     }
-    onChange(newSelected, excludedRecipients, selectedSegments, includedTags, excludedTags)
+    onChange(newSelected, excludedRecipients, selectedSegments, includedTags, excludedTags, audienceFilters)
   }
 
   const handleSegmentToggle = (segmentId: string, checked: boolean) => {
@@ -146,7 +334,7 @@ export function Step2Recipients({
     } else {
       newSelected = newSelected.filter(id => id !== segmentId)
     }
-    onChange(selectedRecipients, excludedRecipients, newSelected, includedTags, excludedTags)
+    onChange(selectedRecipients, excludedRecipients, newSelected, includedTags, excludedTags, audienceFilters)
   }
 
   const handleExclusionToggle = (listId: string, checked: boolean) => {
@@ -155,10 +343,10 @@ export function Step2Recipients({
       newExcluded.push(listId)
       // If list is excluded, it cannot be selected
       const newSelected = selectedRecipients.filter(id => id !== listId)
-      onChange(newSelected, newExcluded, selectedSegments, includedTags, excludedTags)
+      onChange(newSelected, newExcluded, selectedSegments, includedTags, excludedTags, audienceFilters)
     } else {
       newExcluded = newExcluded.filter(id => id !== listId)
-      onChange(selectedRecipients, newExcluded, selectedSegments, includedTags, excludedTags)
+      onChange(selectedRecipients, newExcluded, selectedSegments, includedTags, excludedTags, audienceFilters)
     }
   }
 
@@ -204,7 +392,7 @@ export function Step2Recipients({
     }
 
     const newIncludedTagsString = newIncluded.join(",")
-    onChange(selectedRecipients, excludedRecipients, selectedSegments, newIncludedTagsString, excludedTags)
+    onChange(selectedRecipients, excludedRecipients, selectedSegments, newIncludedTagsString, excludedTags, audienceFilters)
   }
 
   const isListSelected = (id: string) => selectedRecipients.includes(id)
@@ -221,7 +409,7 @@ export function Step2Recipients({
       </div>
 
       {/* Live Estimate Widget */}
-      {selectedRecipients.length > 0 && (
+      {(selectedRecipients.length > 0 || selectedSegments.length > 0) && (
         <Card className="border border-blue-100 bg-blue-50/30 rounded-xl shadow-none overflow-hidden">
           <CardContent className="p-4 flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-2">
@@ -244,6 +432,47 @@ export function Step2Recipients({
                 </div>
               </div>
             </div>
+            <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="border-blue-200 text-blue-700 bg-white hover:bg-blue-50 font-semibold rounded-xl gap-1">
+                  Save Audience as Segment
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Save Audience as Segment</DialogTitle>
+                  <DialogDescription>
+                    Save your current campaign targeting criteria as a reusable dynamic segment.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="seg-name">Segment Name</Label>
+                    <Input 
+                      id="seg-name"
+                      placeholder="e.g. Telangana Active VIPs" 
+                      value={segmentName}
+                      onChange={(e) => setSegmentName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="seg-desc">Description</Label>
+                    <Input 
+                      id="seg-desc"
+                      placeholder="e.g. Contacts located in Telangana who are VIPs" 
+                      value={segmentDesc}
+                      onChange={(e) => setSegmentDesc(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveAudienceAsSegment} disabled={savingSegment}>
+                    {savingSegment ? "Saving..." : "Save Segment"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       )}
@@ -274,6 +503,49 @@ export function Step2Recipients({
             Segments ({segments.length})
           </Button>
         </div>
+      </div>
+
+      <AudienceSelector
+        listId={selectedRecipients.length > 0 ? selectedRecipients.join(",") : null}
+        audienceFilters={audienceFilters}
+        onChange={(newFilters) => {
+          onChange(selectedRecipients, excludedRecipients, selectedSegments, includedTags, excludedTags, newFilters)
+        }}
+        campaignId={campaignId}
+      />
+
+      {/* Advanced Filters (Collapsed Rule Builder) */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1 focus:outline-none transition-colors"
+        >
+          <span>Advanced Filters</span>
+          <span>{showAdvancedFilters ? "▲" : "▼"}</span>
+        </button>
+
+        {showAdvancedFilters && (
+          <Card className="border border-slate-200 rounded-xl shadow-none p-5 mt-4 space-y-4 transition-all">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-blue-600" />
+              <div>
+                <h3 className="font-semibold text-slate-850 text-sm">Advanced Rule Combinations</h3>
+                <p className="text-xs text-slate-500">Use the rule builder for complex boolean logic filters.</p>
+              </div>
+            </div>
+            <FilterBuilder
+              value={audienceFilters || { conjunction: "AND", rules: [] }}
+              onChange={(newFilters) => {
+                onChange(selectedRecipients, excludedRecipients, selectedSegments, includedTags, excludedTags, newFilters)
+              }}
+              customFields={customFields}
+              customFieldValueCounts={customFieldValueCounts}
+              contacts={contacts}
+              allowSystemFields={false}
+            />
+          </Card>
+        )}
       </div>
 
       {/* Search */}
@@ -421,12 +693,21 @@ export function Step2Recipients({
                     checked={isSegmentSelected(segment.id)}
                     onCheckedChange={(checked: boolean) => handleSegmentToggle(segment.id, checked)}
                   />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{segment.name}</span>
-                      <Badge variant="outline" className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-slate-800">{segment.name}</span>
+                      <Badge variant="outline" className="flex items-center gap-1 text-slate-500 bg-slate-50">
                         <Filter className="h-3 w-3" />
                         Dynamic
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full ml-2">
+                        {loadingSegmentCounts[segment.id] ? (
+                          <span className="w-2.5 h-2.5 border border-slate-500 border-t-transparent rounded-full animate-spin inline-block mr-1"></span>
+                        ) : segmentCounts[segment.id] !== undefined ? (
+                          `${segmentCounts[segment.id].toLocaleString()} members`
+                        ) : (
+                          "0 members"
+                        )}
                       </Badge>
                     </div>
                     <p className="text-sm text-gray-500">{segment.description}</p>

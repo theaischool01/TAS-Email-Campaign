@@ -30,6 +30,8 @@ model User {
   settings         Settings?
   suppressionList  SuppressionList[]
   emailDeliveries  EmailDelivery[]
+  customFields     ContactCustomField[]
+  tags             Tag[]
 
   @@map("users")
 }
@@ -104,13 +106,14 @@ model Contact {
   updatedAt            DateTime               @updatedAt
   city                 String?
   company              String?
-  tags                 String?
   softBounceCount      Int                    @default(0)
   ContactToContactList ContactToContactList[]
   activityLogs         CampaignActivityLog[]
   lists                ContactListMember[]
   emailDeliveries      EmailDelivery[]
   user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customFieldValues    ContactFieldValue[]
+  contactTags          ContactTag[]
 
   @@unique([userId, email])
   @@index([userId, createdAt])
@@ -182,6 +185,11 @@ model Campaign {
   totalSent           Int                        @default(0)
   totalOpened         Int                        @default(0)
   totalClicked        Int                        @default(0)
+  totalDelivered      Int                        @default(0)
+  uniqueOpens         Int                        @default(0)
+  totalOpens          Int                        @default(0)
+  uniqueClicks        Int                        @default(0)
+  totalClicks         Int                        @default(0)
   tags                String?
   includedTags        String?
   excludedTags        String?
@@ -202,8 +210,10 @@ model Campaign {
   recipientSegments   CampaignRecipientSegment[]
   testSends           CampaignTestSend[]
   emailDeliveries     EmailDelivery[]
+  trackedLinks        TrackedLink[]
   user                User                       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   template            EmailTemplate?             @relation(fields: [templateId], references: [id])
+  audienceFilters     Json?
 
   @@unique([createdBy, name])
   @@index([templateId])
@@ -388,6 +398,10 @@ model EmailDelivery {
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  openEvents     EmailOpenEvent[]
+  uniqueOpen     UniqueEmailOpen?
+  clickEvents    EmailClickEvent[]
+  uniqueClicks   UniqueEmailClick[]
 
   @@unique([campaignId, recipientEmail])
 
@@ -422,3 +436,182 @@ model WorkerHeartbeat {
   @@index([status, lastSeenAt])
   @@map("worker_heartbeats")
 }
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  DROPDOWN
+  MULTI_SELECT
+}
+
+enum ValidationType {
+  NONE
+  EMAIL
+  PHONE
+  URL
+  REGEX
+}
+
+model ContactCustomField {
+  id           String              @id @default(cuid())
+  userId       String
+  key          String
+  displayName  String
+  type         CustomFieldType
+  validationType   ValidationType      @default(NONE)
+  validationRegex  String?
+  options      String?             // JSON string array of options for dropdown/multiselect
+  defaultValue String?
+  isRequired   Boolean             @default(false)
+  displayOrder Int                 @default(0)
+  isArchived   Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  values       ContactFieldValue[]
+
+  @@unique([userId, key])
+  @@index([userId, isArchived])
+  @@map("contact_custom_fields")
+}
+
+model ContactFieldValue {
+  id           String             @id @default(cuid())
+  contactId    String
+  fieldId      String
+  textValue    String?
+  numberValue  Float?
+  dateValue    DateTime?
+  booleanValue Boolean?
+  jsonValue    String?            // To support MULTI_SELECT or complex options dynamically
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  contact      Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  customField  ContactCustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, fieldId])
+  @@index([fieldId, textValue])
+  @@index([fieldId, numberValue])
+  @@index([fieldId, dateValue])
+  @@index([fieldId, booleanValue])
+  @@map("contact_field_values")
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String
+  color     String       @default("#3B82F6")
+  userId    String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts  ContactTag[]
+
+  @@unique([userId, slug])
+  @@map("tags")
+}
+
+model ContactTag {
+  id        String   @id @default(cuid())
+  contactId String
+  tagId     String
+  createdAt DateTime @default(now())
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, tagId])
+  @@index([tagId, contactId])
+  @@map("contact_tags")
+}
+
+model TrackedLink {
+  id           String             @id @default(cuid())
+  campaignId   String
+  originalUrl  String             @db.Text
+  urlHash      String             @db.VarChar(64)
+  createdAt    DateTime           @default(now())
+
+  campaign     Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  clickEvents  EmailClickEvent[]
+  uniqueClicks UniqueEmailClick[]
+
+  @@unique([campaignId, urlHash])
+  @@index([campaignId])
+  @@map("tracked_links")
+}
+
+model EmailOpenEvent {
+  id            String        @id @default(cuid())
+  deliveryId    String        @db.VarChar(30)
+  createdAt     DateTime      @default(now())
+  
+  deviceType    String?       @db.VarChar(50)
+  browser       String?       @db.VarChar(50)
+  os            String?       @db.VarChar(50)
+  userAgentHash String?       @db.VarChar(64)
+  
+  ipHash        String?       @db.VarChar(64)
+  isBot         Boolean       @default(false)
+
+  delivery      EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, createdAt])
+  @@index([createdAt])
+  @@map("email_open_events")
+}
+
+model UniqueEmailOpen {
+  deliveryId    String        @id @db.VarChar(30)
+  firstOpenedAt DateTime      @default(now())
+
+  delivery      EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@map("unique_email_opens")
+}
+
+model EmailClickEvent {
+  id            String        @id @default(cuid())
+  deliveryId    String        @db.VarChar(30)
+  trackedLinkId String        @db.VarChar(30)
+  createdAt     DateTime      @default(now())
+  
+  deviceType    String?       @db.VarChar(50)
+  browser       String?       @db.VarChar(50)
+  os            String?       @db.VarChar(50)
+  userAgentHash String?       @db.VarChar(64)
+  
+  ipHash        String?       @db.VarChar(64)
+  isBot         Boolean       @default(false)
+
+  delivery      EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  trackedLink   TrackedLink   @relation(fields: [trackedLinkId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, createdAt])
+  @@index([createdAt])
+  @@map("email_click_events")
+}
+
+model UniqueEmailClick {
+  deliveryId     String        @db.VarChar(30)
+  trackedLinkId  String        @db.VarChar(30)
+  firstClickedAt DateTime      @default(now())
+
+  delivery       EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  trackedLink    TrackedLink   @relation(fields: [trackedLinkId], references: [id], onDelete: Cascade)
+
+  @@id([deliveryId, trackedLinkId])
+  @@map("unique_email_clicks")
+}
+
+model ProcessedWebhookEvent {
+  eventId     String   @id @db.VarChar(100)
+  processedAt DateTime @default(now())
+
+  @@map("processed_webhook_events")
+}
+

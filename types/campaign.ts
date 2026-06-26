@@ -61,6 +61,7 @@ export interface Campaign {
   createdBy: string
   createdAt: Date
   updatedAt: Date
+  audienceFilters?: any
   
   // Relations
   user?: {

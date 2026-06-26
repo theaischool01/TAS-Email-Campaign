@@ -30,19 +30,22 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    // Database-level SQL aggregation of unique normalized tags with active counts
-    const rawTags: { tag: string; count: number }[] = await prisma.$queryRawUnsafe(`
-      SELECT LOWER(TRIM(unnest(string_to_array(c.tags, ',')))) AS tag, COUNT(*)::integer AS count
-      FROM contacts c
-      JOIN "_ContactToContactList" m ON m."A" = c.id
-      WHERE m."B" = $1 AND c.status = 'ACTIVE' AND c.tags IS NOT NULL AND c.tags != ''
-      GROUP BY tag
+    // Database-level SQL aggregation of unique relational tags with active counts
+    const rawTags: { id: string; name: string; count: number }[] = await prisma.$queryRawUnsafe(`
+      SELECT t.id AS id, t.name AS name, COUNT(*)::integer AS count
+      FROM contact_tags ct
+      JOIN tags t ON t.id = ct."tagId"
+      JOIN contacts c ON c.id = ct."contactId"
+      JOIN contact_list_members m ON m."contactId" = c.id
+      WHERE m."contactListId" = $1 AND c.status = 'ACTIVE'
+      GROUP BY t.id, t.name
       ORDER BY count DESC
     `, id)
 
-    // Capitalize tag output for display in UI, e.g. "student" -> "Student"
     const tags = rawTags.map(item => ({
-      tag: item.tag.charAt(0).toUpperCase() + item.tag.slice(1),
+      id: item.id,
+      name: item.name,
+      tag: item.name, // for backward compatibility
       count: item.count
     }))
 

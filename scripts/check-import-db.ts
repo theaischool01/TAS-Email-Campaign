@@ -31,7 +31,7 @@ async function main() {
 
     console.log(`Email: ${email}`)
     console.log(`  Contact ID: ${contact.id}`)
-    console.log(`  Tags: ${JSON.stringify(contact.tags)}`)
+    console.log(`  Tags: ${JSON.stringify((contact as any).tags)}`)
     console.log(`  contact_list_members memberships:`, listMembers.map((m: any) => ({ listId: m.contactListId, listName: m.contactList.name })))
     console.log(`  _ContactToContactList memberships:`, relationMembers.map((m: any) => ({ A: m.A, B: m.B })))
     console.log('-----------------------------')

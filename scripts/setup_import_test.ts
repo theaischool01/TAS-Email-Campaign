@@ -28,19 +28,51 @@ async function testScenario() {
   // 3. Ensure john@gmail.com exists with tags "new" in Jarvis list but not Sandbox Test
   const email = 'john@gmail.com'
   let john = await prisma.contact.findFirst({ where: { email, userId: ownerId } })
-  if (john) {
-    await prisma.contact.update({
-      where: { id: john.id },
-      data: { tags: 'new' }
-    })
-  } else {
+  if (!john) {
     john = await prisma.contact.create({
       data: {
         email,
         userId: ownerId,
-        tags: 'new',
         status: 'ACTIVE',
         source: 'MANUAL'
+      }
+    })
+  }
+
+  // Ensure Tag "new" exists
+  let tag = await prisma.tag.findUnique({
+    where: {
+      userId_slug: {
+        userId: ownerId,
+        slug: 'new'
+      }
+    }
+  })
+  if (!tag) {
+    tag = await prisma.tag.create({
+      data: {
+        name: 'new',
+        slug: 'new',
+        userId: ownerId,
+        color: '#3B82F6'
+      }
+    })
+  }
+
+  // Link Tag to John
+  const contactTag = await prisma.contactTag.findUnique({
+    where: {
+      contactId_tagId: {
+        contactId: john.id,
+        tagId: tag.id
+      }
+    }
+  })
+  if (!contactTag) {
+    await prisma.contactTag.create({
+      data: {
+        contactId: john.id,
+        tagId: tag.id
       }
     })
   }
