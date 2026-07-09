@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation"
 import { Sidebar } from "./sidebar"
 import { NotificationsBell } from "./NotificationsBell"
 import { ThemeToggle } from "./ThemeToggle"
+import { useState } from "react"
+import { WorkspacePanel } from "./WorkspacePanel"
+import { FAQDrawer } from "./FAQDrawer"
 
 // Simple page title mapper based on pathname
 function getPageTitle(pathname: string): string {
@@ -20,6 +23,8 @@ function getPageTitle(pathname: string): string {
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const pathname = usePathname()
+  const [isWorkspacePanelOpen, setIsWorkspacePanelOpen] = useState(false)
+  const [isFAQOpen, setIsFAQOpen] = useState(false)
 
   if (status === "loading") {
     return (
@@ -67,7 +72,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
 
             {/* Profile Summary */}
-            <div className="flex items-center space-x-2.5 pl-2 border-l border-slate-200">
+            <div 
+              onClick={() => setIsWorkspacePanelOpen(true)}
+              className="flex items-center space-x-2.5 pl-2 border-l border-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
+            >
               <div className="h-7 w-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
                 {initials}
               </div>
@@ -83,6 +91,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Workspace Center Panel */}
+      <WorkspacePanel 
+        isOpen={isWorkspacePanelOpen} 
+        onClose={() => setIsWorkspacePanelOpen(false)} 
+        onOpenFAQ={() => {
+          setIsWorkspacePanelOpen(false)
+          setIsFAQOpen(true)
+        }}
+      />
+
+      {/* FAQ Drawer */}
+      <FAQDrawer 
+        isOpen={isFAQOpen}
+        onClose={() => setIsFAQOpen(false)}
+      />
     </div>
   )
 }

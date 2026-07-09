@@ -25,12 +25,14 @@ export async function seedDefaultTemplatesForUser(userId: string, tx?: Prisma.Tr
       return;
     }
 
+    const { renderBlocksToHTML } = require("../../components/templates/utils/html-renderer")
+
     await db.emailTemplate.createMany({
       data: templatesToSeed.map(template => ({
         name: template.name,
         category: template.category,
         thumbnail: template.thumbnail,
-        html: template.html,
+        html: renderBlocksToHTML(template.blocks),
         json: template.json,
         isPublic: template.isPublic,
         isSystem: template.isSystem,

@@ -92,10 +92,7 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Seed default templates for this user using the transaction client
-      await seedDefaultTemplatesForUser(newUser.id, tx)
-
-      return newUser
+      return newUser;
     })
 
     logger.info(`[ADMIN-SETUP] ADMIN created successfully and templates seeded: ${email}`)

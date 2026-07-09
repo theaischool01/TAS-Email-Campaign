@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/next-auth"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { TemplateService } from "@/lib/services/template.service"
 import { sanitizeEmailHTML } from "@/lib/security/html-sanitizer"
+import { renderBlocksToHTML } from "@/components/templates/utils/html-renderer"
 
 const prisma = prismaClient as any
 
@@ -45,10 +46,22 @@ export async function POST(request: NextRequest) {
 
 
     const body = await request.json()
-    const { name, category, html, json, isPublic = false } = body
+    // Note: client-submitted `html` is intentionally ignored.
+    // We always regenerate HTML server-side from `json` to guarantee
+    // template.html is always the canonical render of the block model.
+    const { name, category, json, isPublic = false } = body
 
-    if (!name || !html) {
-      return NextResponse.json({ error: "Name and HTML content are required" }, { status: 400 })
+    if (!name || !json) {
+      return NextResponse.json({ error: "Name and JSON content are required" }, { status: 400 })
+    }
+
+    // Always regenerate HTML server-side from the block JSON
+    let generatedHtml = ""
+    try {
+      const parsedBlocks = JSON.parse(json)
+      generatedHtml = renderBlocksToHTML(parsedBlocks)
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON block data" }, { status: 400 })
     }
 
     try {
@@ -56,7 +69,7 @@ export async function POST(request: NextRequest) {
         data: {
           name,
           category,
-          html: sanitizeEmailHTML(html),
+          html: sanitizeEmailHTML(generatedHtml),
           json,
           isPublic,
           createdBy: session.user.id

@@ -985,7 +985,13 @@ export function Step4Review({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleEditTemplateClick}
+                    onClick={() => {
+                      if (selectedTemplate) {
+                        router.push(`/templates/${selectedTemplate}`)
+                      } else {
+                        toast.error("No template is currently selected for this campaign.")
+                      }
+                    }}
                     disabled={activeEditSection !== null}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 h-auto p-0"
                   >
@@ -1077,7 +1083,18 @@ export function Step4Review({
                         )
                       })}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => setIsEditorOpen(true)} className="h-8">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        if (tempSelectedTemplate) {
+                          router.push(`/templates/${tempSelectedTemplate}`)
+                        } else {
+                          toast.error("Please select a template first")
+                        }
+                      }} 
+                      className="h-8"
+                    >
                       <Palette className="h-4 w-4 mr-1" />
                       Edit Content
                     </Button>

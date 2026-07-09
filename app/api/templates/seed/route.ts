@@ -87,6 +87,78 @@ export function generateHtmlFromBlocks(blocks: any[]): string {
           </div>
         `
         break
+      case 'social':
+      case 'social-follow':
+        const alignment = block.content.alignment || "center";
+        const layout = block.content.layout || "icons-only";
+        const heading = block.content.heading || "";
+        const description = block.content.description || "";
+        const iconStyle = block.content.iconStyle || "brand";
+        const activeNetworks = block.content.networks || ["facebook", "twitter", "linkedin", "instagram", "youtube"];
+
+        let headerHtml = "";
+        if (block.type === "social-follow") {
+          headerHtml = `
+            <tr>
+              <td align="${alignment}" style="font-family: Arial, sans-serif; padding-bottom: 10px;">
+                <h4 style="margin: 0; font-size: 16px; font-weight: 750; color: #1e293b;">${heading || "Follow Us"}</h4>
+                ${description ? `<p style="margin: 4px 0 0 0; font-size: 13px; color: #64748b;">${description}</p>` : ""}
+              </td>
+            </tr>
+          `;
+        }
+
+        let iconsList = "";
+        activeNetworks.forEach((net: string) => {
+          iconsList += `
+            <td style="padding: 0 ${block.content.spacing !== undefined ? block.content.spacing : 12}px;">
+              <a href="#" style="text-decoration: none;">
+                <span style="font-size: 13px; color: #3b82f6; font-weight: bold;">${net.toUpperCase()}</span>
+              </a>
+            </td>
+          `;
+        });
+
+        html += `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="padding: 20px 0;">
+            ${headerHtml}
+            <tr>
+              <td align="${alignment}">
+                <table border="0" cellspacing="0" cellpadding="0" style="display: inline-block;">
+                  <tr>
+                    ${iconsList}
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        `;
+        break;
+      case '2column':
+      case '3column':
+        const cols = [];
+        if (block.type === '3column') {
+          cols.push(block.content.text1 || "Column 1 content");
+          cols.push(block.content.text2 || "Column 2 content");
+          cols.push(block.content.text3 || "Column 3 content");
+        } else {
+          cols.push(block.content.text1 || "Column 1 content");
+          cols.push(block.content.text2 || "Column 2 content");
+        }
+        const colWidth = Math.floor(100 / cols.length);
+        const cells = cols.map(c => `
+          <td width="${colWidth}%" style="padding: 10px; vertical-align: top; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5;">
+            ${c}
+          </td>
+        `).join("");
+        html += `
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="${styles}">
+            <tr>
+              ${cells}
+            </tr>
+          </table>
+        `;
+        break;
     }
   }
 

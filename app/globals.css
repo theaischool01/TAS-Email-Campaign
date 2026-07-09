@@ -250,3 +250,15 @@
 .dark .hover\:bg-slate-100:hover {
   background-color: oklch(0.269 0 0) !important;
 }
+
+/* ─── Stepper Number Inputs (Padding & Margin controls) ─── */
+/* Removes browser-native spin arrows so the +/- buttons are the only controls */
+input.stepper-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input.stepper-input[type='number']::-webkit-outer-spin-button,
+input.stepper-input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

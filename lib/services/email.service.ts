@@ -3,6 +3,7 @@ import nodemailer from "nodemailer"
 import { UnsubscribeService } from "./unsubscribe.service"
 import { prisma as prismaClient } from "@/app/lib/prisma"
 import { decrypt } from "../security/encryption"
+import { resolveSenderIdentity } from "./sender-identity"
 
 const prisma = prismaClient as any
 
@@ -69,8 +70,11 @@ const transporter = nodemailer.createTransport({
  */
 export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000"
-  const fromEmail = process.env.DEFAULT_FROM_EMAIL || process.env.SES_FROM_EMAIL || "official@campaign.theaischool.co"
-  const fromName = process.env.DEFAULT_FROM_NAME || "THE AI SCHOOL"
+  const { fromName, fromEmail, replyToEmail } = resolveSenderIdentity({
+    senderName: params.fromName,
+    senderEmail: params.fromEmail,
+    replyToEmail: params.replyTo
+  })
   const contactId = params.to.contactId || params.contactId || 'unknown'
   const encodedEmail = encodeURIComponent(params.to.email)
 
@@ -94,7 +98,7 @@ export async function sendSingleEmail(params: SendEmailParams): Promise<void> {
     to: params.to.email,
     subject: personalize(params.subject, params.to),
     html: processedHtml,
-    replyTo: params.replyTo,
+    replyTo: replyToEmail || undefined,
     headers: {
       'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'

@@ -65,7 +65,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: {
-        status: "SENT",
+        status: result.status,
         recipientCount: result.recipientCount,
       },
     })

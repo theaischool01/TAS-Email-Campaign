@@ -186,7 +186,9 @@ export function Step3Design({
             <p className="text-muted-foreground mb-4">
               Want to create your own design? Use our advanced template editor to build a custom email from scratch.
             </p>
-            <Button variant="outline" onClick={() => setIsEditorOpen(true)}>
+            <Button variant="outline" onClick={() => {
+              window.open('/templates/new', '_blank')
+            }}>
               <Palette className="h-4 w-4 mr-2" />
               Create Custom Template
             </Button>

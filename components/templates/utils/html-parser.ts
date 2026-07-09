@@ -255,8 +255,58 @@ export function parseHTMLToBlocks(html: string): ParseResult {
         return;
       }
 
+      // Define layout tables (presentation tables, outer wrappers, max-width structures) that should be flattened
+      const isLayoutTable = tagName === "table" && (
+        element.getAttribute("role") === "presentation" ||
+        !element.getAttribute("border") ||
+        element.getAttribute("border") === "0" ||
+        element.style.maxWidth === "600px" ||
+        element.getAttribute("width") === "100%"
+      );
+
+      // Intercept and preserve complex custom tables or styled divs as HTML blocks rather than flattening them
+      const isComplexTable = tagName === "table" && !isLayoutTable && (
+        element.querySelectorAll("tr").length > 1 || 
+        element.querySelectorAll("td").length > 1 || 
+        element.style.border ||
+        element.style.borderColor ||
+        (element.getAttribute("border") && element.getAttribute("border") !== "0")
+      );
+
+      const isComplexDiv = tagName === "div" && (
+        element.classList.length > 0 ||
+        element.style.border ||
+        element.style.position ||
+        element.style.borderColor ||
+        element.querySelectorAll("table, div, p").length > 2
+      );
+
+      if (isComplexTable || isComplexDiv) {
+        blocks.push({
+          id: generateId("html"),
+          type: "html",
+          content: { html: element.outerHTML.trim() },
+          styles: {},
+        });
+        return;
+      }
+
       // Handle structural table elements recursively to flatten them out
-      if (tagName === "table" || tagName === "tbody" || tagName === "tr" || tagName === "td" || tagName === "div") {
+      const isStructural =
+        tagName === "table" ||
+        tagName === "tbody" ||
+        tagName === "tr" ||
+        tagName === "td" ||
+        tagName === "div" ||
+        tagName === "center" ||
+        tagName === "html" ||
+        tagName === "body" ||
+        tagName === "head";
+
+      if (isStructural) {
+        // Skip head tag content entirely (stylesheets, metadata)
+        if (tagName === "head") return;
+
         // If there are children, parse them recursively
         if (element.childNodes.length > 0) {
           for (let i = 0; i < element.childNodes.length; i++) {

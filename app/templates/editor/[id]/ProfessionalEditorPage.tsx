@@ -51,6 +51,7 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
   // Local States
   const [templateName, setTemplateName] = useState(template?.name || "New Template")
   const [templateDescription, setTemplateDescription] = useState(template?.description || "")
+  const [currentHtml, setCurrentHtml] = useState(template?.html || "")
   const [isSaving, setIsSaving] = useState(false)
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
   const [showHTML, setShowHTML] = useState(false)
@@ -92,6 +93,41 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
     { type: "email-html", label: "Raw HTML", category: "advanced" }
   ]
 
+  const serializePremiumTemplate = useCallback((
+    originalDocStr: string,
+    editedBodyHtml: string,
+    editedCss: string
+  ): string => {
+    if (typeof window === "undefined") return originalDocStr
+
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(originalDocStr, "text/html")
+
+      // Replace body inner HTML
+      if (doc.body) {
+        doc.body.innerHTML = editedBodyHtml
+      }
+
+      // Find or create the dedicated GrapesJS style block in head
+      if (doc.head) {
+        let styleTag = doc.getElementById("gjs-css")
+        if (!styleTag) {
+          styleTag = doc.createElement("style")
+          styleTag.setAttribute("id", "gjs-css")
+          doc.head.appendChild(styleTag)
+        }
+        styleTag.textContent = editedCss
+      }
+
+      // Serialize back to HTML
+      return doc.documentElement.outerHTML
+    } catch (err) {
+      console.error("DOM Serialization failed:", err)
+      return originalDocStr
+    }
+  }, [])
+
   const handleSave = useCallback(async () => {
     if (!editorRef.current || !template || !canEdit) return
 
@@ -99,8 +135,11 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
       setIsSaving(true)
       setSaveStatus("saving")
       
-      const html = editorRef.current.getHtml()
+      const bodyHtml = editorRef.current.getHtml()
+      const css = editorRef.current.getCss()
       const projectData = editorRef.current.getProjectData()
+
+      const serializedHtml = serializePremiumTemplate(currentHtml, bodyHtml, css)
 
       const response = await fetch(`/api/templates/${template.id}`, {
         method: "PUT",
@@ -108,12 +147,14 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
         body: JSON.stringify({
           name: templateName,
           description: templateDescription,
-          html: html,
+          html: serializedHtml,
           json: JSON.stringify(projectData)
         })
       })
 
       if (response.ok) {
+        const updatedTemplate = await response.json()
+        setCurrentHtml(updatedTemplate.html)
         setUnsavedChanges(false)
         setSaveStatus("saved")
         setTimeout(() => setSaveStatus("idle"), 2000)
@@ -128,44 +169,30 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
     } finally {
       setIsSaving(false)
     }
-  }, [template, canEdit, templateName, templateDescription])
+  }, [template, canEdit, templateName, templateDescription, currentHtml, serializePremiumTemplate])
 
   const handlePreview = useCallback(() => {
     if (!editorRef.current) return
     
-    const html = editorRef.current.getHtml()
+    const bodyHtml = editorRef.current.getHtml()
     const css = editorRef.current.getCss()
+    const serializedHtml = serializePremiumTemplate(currentHtml, bodyHtml, css)
+    
     const newWindow = window.open('', '_blank')
     if (!newWindow) return
     
-    newWindow.document.write(`
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Template Preview</title>
-          <style>
-            ${css}
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
-            .container { max-width: 600px; margin: 0 auto; }
-            .button { background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            ${html}
-          </div>
-        </body>
-      </html>
-    `)
-  }, [])
+    newWindow.document.write(serializedHtml)
+    newWindow.document.close()
+  }, [currentHtml, serializePremiumTemplate])
 
   const handleDuplicate = useCallback(async () => {
     if (!template) return
 
     try {
-      const html = editorRef.current?.getHtml() || template.html
+      const bodyHtml = editorRef.current?.getHtml() || ""
+      const css = editorRef.current?.getCss() || ""
       const projectData = editorRef.current?.getProjectData() || {}
+      const serializedHtml = serializePremiumTemplate(currentHtml, bodyHtml, css)
 
       const response = await fetch("/api/templates", {
         method: "POST",
@@ -174,7 +201,7 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
           name: `${templateName} (Copy)`,
           description: templateDescription,
           category: template.category,
-          html: html,
+          html: serializedHtml,
           json: JSON.stringify(projectData)
         })
       })
@@ -185,13 +212,16 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
     } catch (error) {
       console.error("Error duplicating template:", error)
     }
-  }, [template, templateName, templateDescription, router])
+  }, [template, templateName, templateDescription, router, currentHtml, serializePremiumTemplate])
 
   const handleExport = useCallback(() => {
     if (!editorRef.current) return
     
-    const html = editorRef.current.getHtml()
-    const blob = new Blob([html], { type: 'text/html' })
+    const bodyHtml = editorRef.current.getHtml()
+    const css = editorRef.current.getCss()
+    const serializedHtml = serializePremiumTemplate(currentHtml, bodyHtml, css)
+    
+    const blob = new Blob([serializedHtml], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -200,7 +230,7 @@ export default function ProfessionalTemplateEditorPage({ template }: Professiona
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }, [templateName])
+  }, [templateName, currentHtml, serializePremiumTemplate])
 
   const handleInsertMergeTag = useCallback((tag: string) => {
     if (!editorRef.current) return

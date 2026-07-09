@@ -70,9 +70,6 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Seed all default templates
-      await seedDefaultTemplatesForUser(newUser.id, tx);
-
       return newUser;
     });
 

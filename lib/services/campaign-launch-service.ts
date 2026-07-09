@@ -14,7 +14,7 @@ export interface LaunchOptions {
 export interface LaunchResult {
   success: boolean;
   recipientCount: number;
-  status: "SENT" | "FAILED";
+  status: "SENDING" | "SENT" | "FAILED";
   error?: string;
 }
 
@@ -34,6 +34,18 @@ export class CampaignLaunchService {
         status: "SENDING",
         sentAt: new Date(),
         updatedAt: new Date(),
+        totalSent: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalDelivered: 0,
+        uniqueOpens: 0,
+        totalOpens: 0,
+        uniqueClicks: 0,
+        totalClicks: 0,
+        totalBounced: 0,
+        totalComplained: 0,
+        totalFailed: 0,
+        totalUnsubscribed: 0
       },
     });
 
@@ -124,10 +136,60 @@ export class CampaignLaunchService {
         ? excludedTagsStr.split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean)
         : [];
 
-      // 5. Paginated Keyset Recipient Processing
-      const processedEmails = new Set<string>();
-      let lastMemberId: string | null = null;
+      // PASS 1: Calculate precise deterministic recipientCount
+      const processedEmailsPass1 = new Set<string>();
+      let lastMemberIdPass1: string | null = null;
       let recipientCount = 0;
+
+      while (true) {
+        const contacts = await CampaignAudienceService.streamRecipients(
+          campaign.createdBy,
+          {
+            listIds: targetListIds,
+            segments: targetSegments,
+            includedTags,
+            excludedTags,
+            audienceFilters: campaign.audienceFilters || undefined
+          },
+          {
+            cursorId: lastMemberIdPass1 || undefined,
+            batchSize: 1000
+          }
+        );
+
+        if (contacts.length === 0) break;
+
+        for (const contact of contacts) {
+          if (contact.status !== "ACTIVE") continue;
+
+          const emailLower = contact.email.trim().toLowerCase();
+          if (suppressedSet.has(emailLower) || excludedContactIdsSet.has(contact.id) || processedEmailsPass1.has(emailLower)) {
+            continue;
+          }
+
+          processedEmailsPass1.add(emailLower);
+          recipientCount++;
+        }
+
+        lastMemberIdPass1 = contacts[contacts.length - 1].id;
+      }
+
+      if (recipientCount === 0) {
+        throw new Error("No active recipients found in the selected lists or segments.");
+      }
+
+      // Persist final mathematically guaranteed recipientCount BEFORE any SQS messages exist
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          recipientCount,
+          updatedAt: new Date(),
+        },
+      });
+
+      // PASS 2: Construct payloads and stream to SQS
+      const processedEmailsPass2 = new Set<string>();
+      let lastMemberIdPass2: string | null = null;
       let enqueuedCount = 0;
 
       while (true) {
@@ -141,7 +203,7 @@ export class CampaignLaunchService {
             audienceFilters: campaign.audienceFilters || undefined
           },
           {
-            cursorId: lastMemberId || undefined,
+            cursorId: lastMemberIdPass2 || undefined,
             batchSize: 1000
           }
         );
@@ -153,8 +215,13 @@ export class CampaignLaunchService {
         for (const contact of contacts) {
           if (contact.status !== "ACTIVE") continue;
 
+          // Prevent enqueueing more than the Pass 1 count if audience grew between passes
+          if (enqueuedCount + batchMessages.length >= recipientCount) {
+             break;
+          }
+
           const emailLower = contact.email.trim().toLowerCase();
-          if (suppressedSet.has(emailLower) || excludedContactIdsSet.has(contact.id) || processedEmails.has(emailLower)) {
+          if (suppressedSet.has(emailLower) || excludedContactIdsSet.has(contact.id) || processedEmailsPass2.has(emailLower)) {
             continue;
           }
 
@@ -183,8 +250,7 @@ export class CampaignLaunchService {
             }
           }
 
-          processedEmails.add(emailLower);
-          recipientCount++;
+          processedEmailsPass2.add(emailLower);
 
           batchMessages.push({
             campaignId: campaign.id,
@@ -204,23 +270,28 @@ export class CampaignLaunchService {
           await QueueService.enqueueBatch(batchMessages);
           enqueuedCount += batchMessages.length;
         }
+        
+        if (enqueuedCount >= recipientCount) {
+           break;
+        }
 
-        lastMemberId = contacts[contacts.length - 1].id;
+        lastMemberIdPass2 = contacts[contacts.length - 1].id;
       }
-
-      if (recipientCount === 0) {
-        throw new Error("No active recipients found in the selected lists or segments.");
+      
+      // Safety guarantee: If audience shrank, worker needs the missing messages to complete.
+      if (enqueuedCount < recipientCount) {
+         const missingCount = recipientCount - enqueuedCount;
+         const dummyMessages = Array.from({ length: missingCount }).map(() => ({
+            campaignId,
+            userId: campaign.createdBy,
+            recipient: { email: 'dummy@system.local' },
+            isDummyCompletionMessage: true
+         }));
+         // Enqueue dummies in batches of 100
+         for (let i = 0; i < dummyMessages.length; i += 100) {
+            await QueueService.enqueueBatch(dummyMessages.slice(i, i + 100));
+         }
       }
-
-      // 6. Complete Success State Transition
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          status: "SENT",
-          recipientCount,
-          updatedAt: new Date(),
-        },
-      });
 
       await prisma.campaignActivityLog.create({
         data: {
@@ -235,11 +306,11 @@ export class CampaignLaunchService {
         },
       });
 
-      logger.info({ campaignId, recipientCount }, "CAMPAIGN_LAUNCH_SERVICE: Launch completed successfully");
+      logger.info({ campaignId, recipientCount }, "CAMPAIGN_LAUNCH_SERVICE: All recipients enqueued — campaign remains SENDING until worker completes delivery");
       return {
         success: true,
         recipientCount,
-        status: "SENT",
+        status: "SENDING",
       };
     } catch (launchError: any) {
       logger.error({ campaignId, error: launchError.message }, "CAMPAIGN_LAUNCH_SERVICE: Critical failure during execution");

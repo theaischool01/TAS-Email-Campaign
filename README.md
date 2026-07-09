@@ -121,13 +121,45 @@ node worker.js
 
 ---
 
-## 🚢 Deployment (Vercel)
+## 🚢 Production Architecture & Deployment
 
-1.  **Push to GitHub**: Push your latest code.
-2.  **Connect Vercel**: Import the repository into your Vercel account.
-3.  **Add Variables**: Add all `.env` variables to Vercel Project Settings.
-4.  **Absolute URLs**: Ensure `NEXT_PUBLIC_APP_URL` matches your production domain (e.g., `https://campaigns.yourdomain.com`).
-5.  **Prisma Build**: Ensure your build command includes `prisma generate`.
+The platform is designed to run in a decoupled, multi-service production architecture:
+
+```text
+Next.js (Vercel Web App)
+      ↓
+Campaign APIs & Tracking Pixels
+      ↓
+AWS SQS (Queueing Layer)
+  ┌───┴────────────────────────┐
+  ▼                            ▼
+worker.js             analytics-worker.ts
+(Render Background)   (Render Background)
+  ▼                            ▼
+AWS SES                 Database Ingestion
+```
+
+### 1. Web Application (Vercel)
+1. **Connect Vercel**: Import the repository into your Vercel account.
+2. **Add Variables**: Add all required `.env` variables (e.g. databases, authentication, AWS credentials) to Vercel Project Settings.
+3. **Absolute URLs**: Ensure `NEXT_PUBLIC_APP_URL` matches your production domain.
+4. **Prisma Build**: Verify your build command includes `prisma generate && next build`.
+
+### 2. Background Workers (Render Background Workers)
+Deploy the workers as separate Render Background Workers:
+* **Email dispatch worker (`worker.js`)**: Runs SQS polling and SES sends.
+  * *Start Command*: `npx tsx worker.js`
+* **Analytics ingestion worker (`analytics-worker.ts`)**: Ingests tracking events.
+  * *Start Command*: `npx tsx analytics-worker.ts`
+
+#### Worker Health Server Configuration
+* In production, the Next.js API `/api/health` queries `WorkerHeartbeat` database records to verify worker health. Therefore, the internal HTTP server in `worker.js` is optional and disabled by default.
+* To enable a standalone worker health HTTP port, set:
+  ```env
+  ENABLE_WORKER_HEALTH_SERVER=true
+  PORT=3001
+  ```
+* For standard deployments (including Render Background Workers), leave `ENABLE_WORKER_HEALTH_SERVER=false` (or unset) to prevent port collisions.
 
 ---
 

@@ -11,8 +11,8 @@ const recipientsSchema = z.object({
   recipientListIds: z.array(z.string()).optional(),
   recipientSegmentIds: z.array(z.string()).optional(),
   excludedListIds: z.array(z.string()).optional(),
-  includedTags: z.string().optional(),
-  excludedTags: z.string().optional()
+  includedTags: z.string().nullable().optional(),
+  excludedTags: z.string().nullable().optional()
 }).refine(data => (data.recipientListIds?.length || 0) + (data.recipientSegmentIds?.length || 0) >= 0, {
   message: "Invalid recipient data"
 })

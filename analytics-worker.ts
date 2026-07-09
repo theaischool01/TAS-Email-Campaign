@@ -4,9 +4,40 @@ import { UAParser } from "ua-parser-js"
 import crypto from "crypto"
 import dotenv from "dotenv"
 import { isBot as botDetector } from "./lib/analytics/bot-detector"
+import * as Sentry from "@sentry/node"
+import os from "os"
 
 // Load env variables
 dotenv.config()
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.05 : 1.0,
+  sendDefaultPii: false,
+  environment: process.env.NODE_ENV || "production",
+  release: process.env.APP_VERSION || "1.0.0",
+})
+
+const HOSTNAME = os.hostname()
+const WORKER_ID = `${HOSTNAME}-${process.pid}-${Date.now()}`
+
+Sentry.setTag("workerId", WORKER_ID)
+Sentry.setTag("service", "analytics-worker")
+Sentry.setTag("environment", process.env.NODE_ENV || "production")
+Sentry.setTag("version", process.env.APP_VERSION || "1.0.0")
+
+process.on("uncaughtException", (err) => {
+  console.error("CRASH: uncaughtException", err)
+  Sentry.captureException(err)
+  Sentry.close(2000).then(() => process.exit(1))
+})
+
+process.on("unhandledRejection", (reason) => {
+  console.error("CRASH: unhandledRejection", reason)
+  const err = reason instanceof Error ? reason : new Error(String(reason))
+  Sentry.captureException(err)
+  Sentry.close(2000).then(() => process.exit(1))
+})
 
 const prisma = new PrismaClient()
 
@@ -184,10 +215,20 @@ async function pollAnalyticsQueue() {
           }
         } catch (e: any) {
           console.error("Error processing analytics message:", e.message)
+          Sentry.withScope((scope) => {
+            scope.setTags({
+              workerId: WORKER_ID,
+              version: process.env.APP_VERSION || "1.0.0",
+              environment: process.env.NODE_ENV || "production",
+              sqsMessageId: message.MessageId || "unknown"
+            })
+            Sentry.captureException(e)
+          })
         }
       }
     } catch (error: any) {
       console.error("SQS ReceiveMessage error:", error.message)
+      Sentry.captureException(error)
       // Wait 5 seconds before retrying on SQS error
       await new Promise(r => setTimeout(r, 5000))
     }

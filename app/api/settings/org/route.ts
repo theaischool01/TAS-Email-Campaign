@@ -27,6 +27,11 @@ export async function GET() {
       } : {
         orgName: "My Organisation",
         orgLogo: "",
+        supportEmail: "",
+        phone: "",
+        website: "",
+        address: "",
+        timezone: "UTC",
         defaultFromEmail: "",
         defaultFromName: "",
         awsAccessKey: "",
@@ -50,19 +55,51 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { 
       orgName, 
-      orgLogo
+      orgLogo,
+      supportEmail,
+      phone,
+      website,
+      address,
+      timezone
     } = body
+
+    // Validation rules
+    if (!orgName || typeof orgName !== 'string' || orgName.trim().length < 2 || orgName.trim().length > 100) {
+      return NextResponse.json({ error: "Organization Name is required and must be between 2 and 100 characters." }, { status: 400 })
+    }
+
+    if (supportEmail && (typeof supportEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail))) {
+      return NextResponse.json({ error: "Invalid Support Email format." }, { status: 400 })
+    }
+
+    if (website && typeof website === 'string') {
+      try {
+        new URL(website)
+      } catch (e) {
+        return NextResponse.json({ error: "Invalid Website URL format." }, { status: 400 })
+      }
+    }
 
     const settings = await (prisma as any).settings.upsert({
       where: { userId: session.user.id },
       update: {
         orgName,
-        orgLogo
+        orgLogo,
+        supportEmail,
+        phone,
+        website,
+        address,
+        timezone
       },
       create: {
         userId: session.user.id,
         orgName,
-        orgLogo
+        orgLogo,
+        supportEmail,
+        phone,
+        website,
+        address,
+        timezone
       }
     })
 

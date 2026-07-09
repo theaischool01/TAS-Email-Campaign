@@ -59,6 +59,18 @@ interface ContactList {
   }
 }
 
+type CustomFieldValue = string | number | boolean | Date | string[] | null;
+
+interface CustomFieldRow {
+  id: string;
+  fieldId?: string;
+  key?: string;
+  displayName: string;
+  type: "TEXT" | "NUMBER" | "DATE" | "BOOLEAN" | "DROPDOWN";
+  value: CustomFieldValue;
+  isNewField: boolean;
+}
+
 export default function ContactListDetailPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -73,6 +85,10 @@ export default function ContactListDetailPage() {
   // Custom Fields Schema
   const [customFieldsSchema, setCustomFieldsSchema] = useState<any[]>([])
   const [visibleCustomFields, setVisibleCustomFields] = useState<string[]>([])
+
+  // Dynamic Custom Fields Rows for Add/Edit modals
+  const [selectedCustomFields, setSelectedCustomFields] = useState<CustomFieldRow[]>([])
+  const [editingCustomFields, setEditingCustomFields] = useState<CustomFieldRow[]>([])
   
   // Load defaults once schema is fetched
   useEffect(() => {
@@ -106,7 +122,6 @@ export default function ContactListDetailPage() {
   const [editTags, setEditTags] = useState<string[]>([])
   const [editTagInputText, setEditTagInputText] = useState("")
   const [showEditTagDropdown, setShowEditTagDropdown] = useState(false)
-  const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [editError, setEditError] = useState("")
   const [emailPermissions, setEmailPermissions] = useState({ canEditEmail: true, reason: "" })
@@ -195,21 +210,32 @@ export default function ContactListDetailPage() {
     const formData = new FormData(e.currentTarget)
     formData.append("tags", modalTags.join(","))
     
-    // Build customFields object
+    // Build customFields and newCustomFields lists
     const customFieldsObj: Record<string, any> = {}
-    customFieldsSchema.forEach(field => {
-      const val = formData.get(`cf_${field.key}`)
-      if (val !== null && val !== undefined) {
-        if (field.type === "NUMBER") {
-          customFieldsObj[field.key] = val === "" ? null : Number(val)
-        } else if (field.type === "BOOLEAN") {
-          customFieldsObj[field.key] = val === "true"
-        } else {
-          customFieldsObj[field.key] = val
+    const newCustomFieldsList: any[] = []
+
+    selectedCustomFields.forEach(row => {
+      if (row.isNewField) {
+        if (row.displayName.trim()) {
+          newCustomFieldsList.push({
+            displayName: row.displayName.trim(),
+            type: row.type,
+            value: row.type === "BOOLEAN" ? row.value === true || row.value === "true" : row.value
+          })
         }
+      } else if (row.key) {
+        let val = row.value
+        if (row.type === "NUMBER") {
+          val = val === "" ? null : Number(val)
+        } else if (row.type === "BOOLEAN") {
+          val = val === true || val === "true"
+        }
+        customFieldsObj[row.key] = val
       }
     })
+
     formData.append("customFields", JSON.stringify(customFieldsObj))
+    formData.append("newCustomFields", JSON.stringify(newCustomFieldsList))
     
     try {
       const response = await fetch(`/api/contacts/lists/${params.id}/contacts`, {
@@ -222,6 +248,7 @@ export default function ContactListDetailPage() {
         setShowAddForm(false)
         setModalTags([])
         setTagInputText("")
+        setSelectedCustomFields([])
         fetchContacts()
         e.currentTarget.reset()
       } else {
@@ -264,7 +291,21 @@ export default function ContactListDetailPage() {
     setEditStatus(contact.status || "")
     setEditTags(contact.tags ? contact.tags.split(",").map(t => t.trim()).filter(Boolean) : [])
     setEditTagInputText("")
-    setEditCustomFields(contact.customFields || {})
+    
+    // Map existing contact customFields dictionary to rows format
+    const existingRows = Object.entries(contact.customFields || {}).map(([key, value]) => {
+      const fieldDef = customFieldsSchema.find(f => f.key === key)
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        fieldId: fieldDef?.id,
+        key,
+        displayName: fieldDef?.displayName || key,
+        type: (fieldDef?.type || "TEXT") as any,
+        value: value === null || value === undefined ? "" : value,
+        isNewField: false
+      }
+    })
+    setEditingCustomFields(existingRows)
     
     // Fetch global tags for local autocomplete caching
     fetchGlobalTags()
@@ -282,13 +323,6 @@ export default function ContactListDetailPage() {
     }
   }
 
-  const handleEditCustomFieldChange = (key: string, value: any) => {
-    setEditCustomFields(prev => ({
-      ...prev,
-      [key]: value
-    }))
-  }
-
   // Handle Edit submission
   const handleEditContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -296,6 +330,39 @@ export default function ContactListDetailPage() {
 
     setIsSaving(true)
     setEditError("")
+
+    // Build customFields and newCustomFields lists
+    const customFieldsObj: Record<string, any> = {}
+    const newCustomFieldsList: any[] = []
+
+    // For any field that was originally present but deleted, we must pass null to trigger delete
+    const originalKeys = Object.keys(editingContact.customFields || {})
+    const currentKeys = editingCustomFields.map(r => r.key).filter(Boolean)
+    originalKeys.forEach(k => {
+      if (!currentKeys.includes(k)) {
+        customFieldsObj[k] = null // DELETE
+      }
+    })
+
+    editingCustomFields.forEach(row => {
+      if (row.isNewField) {
+        if (row.displayName.trim()) {
+          newCustomFieldsList.push({
+            displayName: row.displayName.trim(),
+            type: row.type,
+            value: row.type === "BOOLEAN" ? row.value === true || row.value === "true" : row.value
+          })
+        }
+      } else if (row.key) {
+        let val = row.value
+        if (row.type === "NUMBER") {
+          val = val === "" ? null : Number(val)
+        } else if (row.type === "BOOLEAN") {
+          val = val === true || val === "true"
+        }
+        customFieldsObj[row.key] = val
+      }
+    })
 
     try {
       const payload = {
@@ -307,7 +374,8 @@ export default function ContactListDetailPage() {
         city: editCity,
         status: editStatus,
         tags: editTags.join(","),
-        customFields: editCustomFields
+        customFields: customFieldsObj,
+        newCustomFields: newCustomFieldsList
       }
 
       const response = await fetch(`/api/contacts/${editingContact.id}`, {
@@ -329,6 +397,300 @@ export default function ContactListDetailPage() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const renderCustomFieldRows = (
+    rows: any[],
+    setRows: React.Dispatch<React.SetStateAction<any[]>>
+  ) => {
+    return (
+      <div className="space-y-3 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Custom Fields</Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setRows(prev => [...prev, {
+              id: Math.random().toString(36).substring(2, 9),
+              displayName: "",
+              type: "TEXT",
+              value: "",
+              isNewField: false
+            }])}
+            className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-semibold flex items-center gap-1 h-7 px-2"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            + Add Custom Field
+          </Button>
+        </div>
+
+        {rows.length > 0 && (
+          <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-100 max-h-60 overflow-y-auto">
+            {rows.map((row, index) => {
+              // Get available options for field selection
+              const usedFieldIds = rows.map(r => r.fieldId).filter(Boolean)
+              const availableFields = customFieldsSchema.filter(
+                f => !usedFieldIds.includes(f.id) || f.id === row.fieldId
+              )
+              const query = (row.searchQuery || "").toLowerCase()
+              const filteredDropdownFields = availableFields.filter(f =>
+                f.displayName.toLowerCase().includes(query)
+              )
+
+              return (
+                <div key={row.id} className="flex flex-col gap-2 p-2.5 bg-white border border-slate-200 rounded-md shadow-sm relative group">
+                  {/* Remove button */}
+                  <button
+                    type="button"
+                    onClick={() => setRows(prev => prev.filter(r => r.id !== row.id))}
+                    className="absolute top-2.5 right-2.5 text-slate-400 hover:text-red-500 rounded p-1 hover:bg-slate-50 transition-colors"
+                    title="Remove Field"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+
+                  {!row.isNewField ? (
+                    <div className="space-y-2 pr-8">
+                      {!row.fieldId ? (
+                        <div className="relative">
+                          <Label className="text-[11px] font-semibold text-slate-500">Select Field</Label>
+                          <input
+                            type="text"
+                            placeholder="Search field..."
+                            value={row.searchQuery || ""}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setRows(prev => prev.map(r => r.id === row.id ? { ...r, searchQuery: val, showDropdown: true } : r))
+                            }}
+                            onFocus={() => {
+                              setRows(prev => prev.map(r => r.id === row.id ? { ...r, showDropdown: true } : r))
+                            }}
+                            onBlur={() => {
+                              // Use timeout so that onMouseDown on dropdown items is triggered before dropdown is hidden
+                              setTimeout(() => {
+                                setRows(prev => prev.map(r => r.id === row.id ? { ...r, showDropdown: false } : r))
+                              }, 200)
+                            }}
+                            className="w-full text-xs rounded-md border border-slate-300 p-1.5 mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+
+                          {row.showDropdown && (
+                            <div className="absolute z-10 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto w-full mt-1">
+                              {filteredDropdownFields.length > 0 ? (
+                                filteredDropdownFields.map(f => (
+                                  <div
+                                    key={f.id}
+                                    onMouseDown={() => {
+                                      setRows(prev => prev.map(r => r.id === row.id ? {
+                                        ...r,
+                                        fieldId: f.id,
+                                        key: f.key,
+                                        displayName: f.displayName,
+                                        type: f.type,
+                                        value: f.type === "BOOLEAN" ? "false" : "",
+                                        showDropdown: false,
+                                        searchQuery: f.displayName
+                                      } : r))
+                                    }}
+                                    className="p-2 hover:bg-slate-100 cursor-pointer text-xs text-slate-700 transition-colors"
+                                  >
+                                    {f.displayName}
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="p-3 text-center text-xs text-slate-400">
+                                  No results found
+                                  <button
+                                    type="button"
+                                    onMouseDown={() => {
+                                      setRows(prev => prev.map(r => r.id === row.id ? {
+                                        ...r,
+                                        isNewField: true,
+                                        displayName: row.searchQuery || "",
+                                        type: "TEXT",
+                                        value: "",
+                                        showDropdown: false
+                                      } : r))
+                                    }}
+                                    className="block mx-auto mt-2 text-blue-600 hover:text-blue-700 hover:underline font-semibold"
+                                  >
+                                    + Create New Field
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-center mt-1.5">
+                            <span className="text-[10px] text-slate-400">Or:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRows(prev => prev.map(r => r.id === row.id ? {
+                                  ...r,
+                                  isNewField: true,
+                                  displayName: "",
+                                  type: "TEXT",
+                                  value: "",
+                                  showDropdown: false
+                                } : r))
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-700 font-semibold hover:underline"
+                            >
+                              + Create New Field
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center bg-slate-100 px-2 py-1.5 rounded border border-slate-200">
+                            <span className="text-xs font-semibold text-slate-700">{row.displayName}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRows(prev => prev.map(r => r.id === row.id ? {
+                                  ...r,
+                                  fieldId: undefined,
+                                  key: undefined,
+                                  displayName: "",
+                                  value: "",
+                                  searchQuery: ""
+                                } : r))
+                              }}
+                              className="text-[10px] text-red-500 hover:underline font-semibold"
+                            >
+                              Change Field
+                            </button>
+                          </div>
+
+                          <div>
+                            <Label className="text-[11px] font-semibold text-slate-500">Value</Label>
+                            {row.type === "TEXT" && (
+                              <Input
+                                value={row.value || ""}
+                                onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                                placeholder={`Enter ${row.displayName}`}
+                                className="mt-0.5 text-xs h-8"
+                              />
+                            )}
+                            {row.type === "NUMBER" && (
+                              <Input
+                                type="number"
+                                value={row.value || ""}
+                                onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                                placeholder="0"
+                                className="mt-0.5 text-xs h-8"
+                              />
+                            )}
+                            {row.type === "DATE" && (
+                              <Input
+                                type="date"
+                                value={row.value || ""}
+                                onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                                className="mt-0.5 text-xs h-8"
+                              />
+                            )}
+                            {row.type === "BOOLEAN" && (
+                              <select
+                                value={String(row.value)}
+                                onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value === "true" } : r))}
+                                className="w-full text-xs rounded-md border border-slate-300 p-1.5 mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="false">No</option>
+                                <option value="true">Yes</option>
+                              </select>
+                            )}
+                            {row.type === "DROPDOWN" && (
+                              <select
+                                value={row.value || ""}
+                                onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                                className="w-full text-xs rounded-md border border-slate-300 p-1.5 mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">Select option...</option>
+                                {customFieldsSchema.find(f => f.id === row.fieldId)?.options?.map((opt: string) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pr-8">
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Label className="text-[11px] font-semibold text-slate-500">Field Name</Label>
+                          <Input
+                            value={row.displayName || ""}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, displayName: e.target.value } : r))}
+                            placeholder="e.g. Laptop Required"
+                            className="mt-0.5 text-xs h-8"
+                          />
+                        </div>
+                        <div className="w-[100px]">
+                          <Label className="text-[11px] font-semibold text-slate-500">Type</Label>
+                          <select
+                            value={row.type}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, type: e.target.value as any } : r))}
+                            className="w-full text-xs rounded-md border border-slate-300 p-1.5 mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="TEXT">TEXT</option>
+                            <option value="NUMBER">NUMBER</option>
+                            <option value="DATE">DATE</option>
+                            <option value="BOOLEAN">BOOLEAN</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-[11px] font-semibold text-slate-500">Value</Label>
+                        {row.type === "TEXT" && (
+                          <Input
+                            value={row.value || ""}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                            placeholder="Enter value"
+                            className="mt-0.5 text-xs h-8"
+                          />
+                        )}
+                        {row.type === "NUMBER" && (
+                          <Input
+                            type="number"
+                            value={row.value || ""}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                            placeholder="0"
+                            className="mt-0.5 text-xs h-8"
+                          />
+                        )}
+                        {row.type === "DATE" && (
+                          <Input
+                            type="date"
+                            value={row.value || ""}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value } : r))}
+                            className="mt-0.5 text-xs h-8"
+                          />
+                        )}
+                        {row.type === "BOOLEAN" && (
+                          <select
+                            value={String(row.value)}
+                            onChange={(e) => setRows(prev => prev.map(r => r.id === row.id ? { ...r, value: e.target.value === "true" } : r))}
+                            className="w-full text-xs rounded-md border border-slate-300 p-1.5 mt-0.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
   }
 
   const filteredContacts = contacts.filter(contact =>
@@ -605,37 +967,8 @@ export default function ContactListDetailPage() {
                   <Input id="city" name="city" placeholder="New York" />
                 </div>
 
-                {/* Custom Fields Inputs */}
-                {customFieldsSchema.map((field) => (
-                  <div key={field.id} className="space-y-1">
-                    <Label htmlFor={`cf_${field.key}`} className="text-xs font-semibold text-slate-700">
-                      {field.displayName}{field.isRequired && " *"}
-                    </Label>
-                    {field.type === "TEXT" && (
-                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} placeholder={field.displayName} required={field.isRequired} className="mt-1" />
-                    )}
-                    {field.type === "NUMBER" && (
-                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} type="number" placeholder="0" required={field.isRequired} className="mt-1" />
-                    )}
-                    {field.type === "DATE" && (
-                      <Input id={`cf_${field.key}`} name={`cf_${field.key}`} type="date" required={field.isRequired} className="mt-1" />
-                    )}
-                    {field.type === "BOOLEAN" && (
-                      <select id={`cf_${field.key}`} name={`cf_${field.key}`} required={field.isRequired} className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1">
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    )}
-                    {field.type === "DROPDOWN" && (
-                      <select id={`cf_${field.key}`} name={`cf_${field.key}`} required={field.isRequired} className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1">
-                        <option value="">Select option...</option>
-                        {field.options?.map((opt: string) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                ))}
+                {/* Dynamic Custom Fields */}
+                {renderCustomFieldRows(selectedCustomFields, setSelectedCustomFields)}
 
                 <div className="relative">
                   <Label>Tags</Label>
@@ -823,71 +1156,8 @@ export default function ContactListDetailPage() {
                   </div>
                 </div>
 
-                {/* Custom Fields Edit Inputs */}
-                {customFieldsSchema.map((field) => (
-                  <div key={field.id} className="space-y-1">
-                    <Label htmlFor={`edit_cf_${field.key}`} className="text-xs font-semibold text-slate-700">
-                      {field.displayName}{field.isRequired && " *"}
-                    </Label>
-                    {field.type === "TEXT" && (
-                      <Input 
-                        id={`edit_cf_${field.key}`} 
-                        value={editCustomFields[field.key] || ""} 
-                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)} 
-                        placeholder={field.displayName} 
-                        required={field.isRequired}
-                        className="mt-1"
-                      />
-                    )}
-                    {field.type === "NUMBER" && (
-                      <Input 
-                        id={`edit_cf_${field.key}`} 
-                        type="number" 
-                        value={editCustomFields[field.key] !== undefined && editCustomFields[field.key] !== null ? editCustomFields[field.key] : ""} 
-                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value === "" ? "" : Number(e.target.value))} 
-                        placeholder="0" 
-                        required={field.isRequired}
-                        className="mt-1"
-                      />
-                    )}
-                    {field.type === "DATE" && (
-                      <Input 
-                        id={`edit_cf_${field.key}`} 
-                        type="date" 
-                        value={editCustomFields[field.key] || ""} 
-                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)} 
-                        required={field.isRequired}
-                        className="mt-1"
-                      />
-                    )}
-                    {field.type === "BOOLEAN" && (
-                      <select 
-                        id={`edit_cf_${field.key}`} 
-                        value={editCustomFields[field.key] ? "true" : "false"} 
-                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value === "true")}
-                        required={field.isRequired}
-                        className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1"
-                      >
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    )}
-                    {field.type === "DROPDOWN" && (
-                      <select 
-                        id={`edit_cf_${field.key}`} 
-                        value={editCustomFields[field.key] || ""} 
-                        onChange={(e) => handleEditCustomFieldChange(field.key, e.target.value)}
-                        required={field.isRequired}
-                        className="w-full text-sm rounded-md border border-slate-300 p-2 mt-1"
-                      >
-                        <option value="">Select option...</option>
-                        {field.options?.map((opt: string) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                ))}
+                {/* Dynamic Custom Fields */}
+                {renderCustomFieldRows(editingCustomFields, setEditingCustomFields)}
 
                 <div className="relative">
                   <Label className="text-xs font-semibold text-slate-700">Tags</Label>

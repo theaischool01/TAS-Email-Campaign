@@ -44,6 +44,20 @@ export class TrackingRewriter {
         return match
       }
 
+      // Exclude social media links from click tracking
+      const isSocialLink = 
+        trimmedUrl.includes("instagram.com") ||
+        trimmedUrl.includes("linkedin.com") ||
+        trimmedUrl.includes("facebook.com") ||
+        trimmedUrl.includes("youtube.com") ||
+        trimmedUrl.includes("x.com") ||
+        trimmedUrl.includes("twitter.com") ||
+        trimmedUrl.includes("whatsapp.com")
+
+      if (isSocialLink) {
+        return match
+      }
+
       // Resolve TrackedLink ID
       const trackedLinkId = trackedLinks[trimmedUrl]
       if (!trackedLinkId) {

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/next-auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma as prismaClient } from "@/app/lib/prisma"
 import { CampaignService } from "@/lib/services/campaign.service"
 
-const prisma = new PrismaClient() as any
+const prisma = prismaClient as any
 
 export async function POST(
   request: NextRequest,

@@ -23,13 +23,14 @@ const QueuePayloadSchema = z.object({
   campaignId: z.string().min(1),
   userId: z.string().optional(),
   recipient: z.object({
-    email: z.string().email(),
+    email: z.string().email().optional(),
     contactId: z.string().optional(),
     firstName: z.string().optional(),
     lastName: z.string().optional(),
     company: z.string().optional(),
     customFields: z.record(z.any()).optional()
-  })
+  }).optional(),
+  isDummyCompletionMessage: z.boolean().optional()
 });
 
 function isPermanentError(error) {
@@ -71,6 +72,8 @@ logger = createLogger({
 
 Sentry.setTag('workerId', WORKER_ID);
 Sentry.setTag('service', 'email-campaign-worker');
+Sentry.setTag('environment', process.env.NODE_ENV || 'production');
+Sentry.setTag('version', process.env.APP_VERSION || '1.0.0');
 
 let isShuttingDown = false;
 let shutdownStarted = false;
@@ -108,8 +111,9 @@ const http = require('http');
 
 const UnsubscribeTokenService = require('./lib/services/unsubscribe-token');
 const { CampaignLaunchService } = require('./lib/services/campaign-launch-service');
-const { TrackingRewriter } = require('./lib/email/tracking-rewriter');
+const { TrackingRewriter = {} } = require('./lib/email/tracking-rewriter');
 const { decrypt } = require('./lib/security/encryption');
+const { resolveSenderIdentity } = require('./lib/services/sender-identity');
 
 // EMERGENCY LOGGING: Catch any crash and write it to a file
 const logPath = path.join(process.cwd(), 'worker-error.log');
@@ -136,22 +140,26 @@ let globalEmailsProcessed = 0;
 let globalLastProcessedAt = null;
 let isPollingActive = false;
 
-http.createServer((req, res) => {
-  const health = {
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    metrics: {
-      emailsProcessed: globalEmailsProcessed,
-      lastProcessedAt: globalLastProcessedAt,
-      isPollingActive: isPollingActive
+if (process.env.ENABLE_WORKER_HEALTH_SERVER === 'true') {
+  healthServer = http.createServer((req, res) => {
+    const health = {
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      metrics: {
+        emailsProcessed: globalEmailsProcessed,
+        lastProcessedAt: globalLastProcessedAt,
+        isPollingActive: isPollingActive
+      }
     }
-  }
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(health));
-}).listen(PORT, () => {
-  logger.info(`🏥 Worker health endpoint running on port ${PORT}`);
-});
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(health));
+  }).listen(PORT, () => {
+    logger.info(`🏥 Worker health endpoint running on port ${PORT}`);
+  });
+} else {
+  logger.info('🏥 Worker health endpoint is disabled (ENABLE_WORKER_HEALTH_SERVER !== "true")');
+}
 
 const prisma = new PrismaClient();
 
@@ -567,20 +575,22 @@ const campaignWatchdogTask = cron.schedule('* * * * *', async () => {
 // --- Worker Heartbeat Instrumentation ---
 async function registerWorkerStartup() {
   try {
-    await prisma.workerHeartbeat.create({
-      data: {
-        id: WORKER_ID,
-        hostname: HOSTNAME,
-        processId: process.pid,
-        status: 'STARTING',
-        version: process.env.APP_VERSION || 'development',
-        environment: process.env.NODE_ENV || 'production',
-        activeMessages: 0,
-        successfulMessages: 0,
-        failedMessages: 0,
-        memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-        uptimeSeconds: Math.round(process.uptime())
-      }
+    const data = {
+      hostname: HOSTNAME,
+      processId: process.pid,
+      status: 'STARTING',
+      version: process.env.APP_VERSION || 'development',
+      environment: process.env.NODE_ENV || 'production',
+      activeMessages: 0,
+      successfulMessages: 0,
+      failedMessages: 0,
+      memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      uptimeSeconds: Math.round(process.uptime())
+    };
+    await prisma.workerHeartbeat.upsert({
+      where: { id: WORKER_ID },
+      create: { id: WORKER_ID, ...data },
+      update: data
     });
     logger.info({ workerId: WORKER_ID }, 'Worker startup heartbeat registered successfully');
   } catch (err) {
@@ -594,9 +604,22 @@ async function registerWorkerStartup() {
 
 async function setWorkerHealthy() {
   try {
-    await prisma.workerHeartbeat.update({
+    await prisma.workerHeartbeat.upsert({
       where: { id: WORKER_ID },
-      data: { status: 'HEALTHY' }
+      create: {
+        id: WORKER_ID,
+        hostname: HOSTNAME,
+        processId: process.pid,
+        status: 'HEALTHY',
+        version: process.env.APP_VERSION || 'development',
+        environment: process.env.NODE_ENV || 'production',
+        activeMessages: 0,
+        successfulMessages: 0,
+        failedMessages: 0,
+        memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        uptimeSeconds: Math.round(process.uptime())
+      },
+      update: { status: 'HEALTHY' }
     });
     logger.info({ workerId: WORKER_ID }, 'Worker status changed to HEALTHY');
   } catch (err) {
@@ -610,16 +633,25 @@ async function setWorkerHealthy() {
 function startHeartbeatInterval() {
   heartbeatInterval = setInterval(async () => {
     try {
-      await prisma.workerHeartbeat.update({
+      const data = {
+        status: isShuttingDown ? 'SHUTTING_DOWN' : 'HEALTHY',
+        memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        activeMessages,
+        successfulMessages,
+        failedMessages,
+        uptimeSeconds: Math.round(process.uptime())
+      };
+      await prisma.workerHeartbeat.upsert({
         where: { id: WORKER_ID },
-        data: {
-          status: isShuttingDown ? 'SHUTTING_DOWN' : 'HEALTHY',
-          memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-          activeMessages,
-          successfulMessages,
-          failedMessages,
-          uptimeSeconds: Math.round(process.uptime())
-        }
+        create: {
+          id: WORKER_ID,
+          hostname: HOSTNAME,
+          processId: process.pid,
+          version: process.env.APP_VERSION || 'development',
+          environment: process.env.NODE_ENV || 'production',
+          ...data
+        },
+        update: data
       });
       logger.info({ workerId: WORKER_ID }, 'Worker heartbeat updated successfully');
     } catch (err) {
@@ -701,7 +733,46 @@ async function processQueue() {
           const payload = QueuePayloadSchema.parse(parsedBody);
 
           campaignId = payload.campaignId;
+          
+          if (payload.isDummyCompletionMessage) {
+            logger.info({ campaignId }, 'Received dummy completion message (audience shrank). Incrementing totalFailed to satisfy completion target.');
+            const updatedCampaign = await prisma.campaign.update({
+              where: { id: campaignId },
+              data: { totalFailed: { increment: 1 } }
+            });
+            
+            // Replicate completion check logic
+            if (updatedCampaign.totalSent + updatedCampaign.totalFailed >= updatedCampaign.recipientCount) {
+              const completionResult = await prisma.campaign.updateMany({
+                where: { id: campaignId, status: 'SENDING' },
+                data: { status: 'SENT', updatedAt: new Date() }
+              });
+
+              if (completionResult.count > 0) {
+                await prisma.campaignActivityLog.create({
+                  data: {
+                    campaignId,
+                    actorId: 'system-worker',
+                    action: 'CAMPAIGN_COMPLETED',
+                    metadata: {
+                      completedAt: new Date().toISOString(),
+                      totalSent: updatedCampaign.totalSent,
+                      totalFailed: updatedCampaign.totalFailed,
+                      recipientCount: updatedCampaign.recipientCount,
+                      note: 'Completed via dummy message'
+                    }
+                  }
+                }).catch(() => {});
+                logger.info({ campaignId }, '✅ Campaign marked SENT by worker (via dummy completion message)');
+              }
+            }
+            
+            await sqsClient.send(new DeleteMessageCommand({ QueueUrl: qUrl, ReceiptHandle: message.ReceiptHandle }));
+            continue;
+          }
+
           recipient = payload.recipient;
+          if (!recipient) throw new InvalidPayloadError('Missing recipient object');
           contactId = recipient.contactId && recipient.contactId !== 'unknown' ? recipient.contactId : null;
           const emailLower = recipient.email.toLowerCase();
 
@@ -835,8 +906,7 @@ async function processQueue() {
             continue;
           }
 
-          const fromEmail = process.env.DEFAULT_FROM_EMAIL || process.env.SES_FROM_EMAIL || "official@campaign.theaischool.co";
-          const fromName = process.env.DEFAULT_FROM_NAME || "THE AI SCHOOL";
+          const { fromName, fromEmail, replyToEmail } = resolveSenderIdentity(campaign);
           const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
           if (!appUrl) {
@@ -925,6 +995,7 @@ async function processQueue() {
             to: recipient.email,
             subject: campaign.subject,
             html: finalHtml,
+            replyTo: replyToEmail || undefined,
             headers: {
               'List-Unsubscribe': `<${listUnsubscribeUrl}>`,
               'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -1000,7 +1071,34 @@ async function processQueue() {
           }
 
           if (updatedCampaign && updatedCampaign.totalSent + updatedCampaign.totalFailed >= updatedCampaign.recipientCount) {
-            await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'SENT' } });
+            // Use updateMany with a status guard so only one worker wins the race
+            // in multi-worker deployments. count === 0 means another worker already completed it.
+            const completionResult = await prisma.campaign.updateMany({
+              where: { id: campaignId, status: 'SENDING' },
+              data: { status: 'SENT', updatedAt: new Date() }
+            });
+
+            if (completionResult.count > 0) {
+              // This worker owns completion — emit the log exactly once
+              await prisma.campaignActivityLog.create({
+                data: {
+                  campaignId,
+                  actorId: 'system-worker',
+                  action: 'CAMPAIGN_COMPLETED',
+                  metadata: {
+                    completedAt: new Date().toISOString(),
+                    totalSent: updatedCampaign.totalSent,
+                    totalFailed: updatedCampaign.totalFailed,
+                    recipientCount: updatedCampaign.recipientCount
+                  }
+                }
+              }).catch((logErr) => {
+                logger.warn({ campaignId, error: logErr.message }, 'Failed to write CAMPAIGN_COMPLETED activity log — non-fatal');
+              });
+              logger.info({ campaignId, totalSent: updatedCampaign.totalSent, totalFailed: updatedCampaign.totalFailed }, '✅ Campaign marked SENT by worker (completion owner)');
+            } else {
+              logger.info({ campaignId }, '✅ Campaign already completed by another worker — skipping duplicate log');
+            }
           }
 
           const sesMessageId = sendResult?.messageId || sendResult?.info?.messageId || 'unknown';
@@ -1047,14 +1145,22 @@ async function processQueue() {
             const recipientDomain = recipient && recipient.email ? recipient.email.split('@')[1] : 'unknown';
             Sentry.withScope((scope) => {
               scope.setTags({
+                workerId: WORKER_ID,
+                version: process.env.APP_VERSION || '1.0.0',
+                environment: process.env.NODE_ENV || 'production',
                 campaignId: campaignId || 'unknown',
+                recipientEmail: recipient?.email || 'unknown',
                 sqsMessageId: message.MessageId || 'unknown',
                 recipientDomain,
                 deliveryId: delivery?.id || 'unknown',
                 errorName: innerError.name || 'Error'
               });
               scope.setContext('email_job', {
+                workerId: WORKER_ID,
+                version: process.env.APP_VERSION || '1.0.0',
+                environment: process.env.NODE_ENV || 'production',
                 campaignId,
+                recipientEmail: recipient?.email,
                 sqsMessageId: message.MessageId,
                 recipientDomain,
                 deliveryId: delivery?.id

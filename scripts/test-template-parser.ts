@@ -41,7 +41,7 @@ async function runTests() {
 
   for (const t of DEFAULT_EMAIL_TEMPLATES) {
     try {
-      const originalHtml = t.html;
+      const originalHtml = renderBlocksToHTML(t.blocks);
       const originalSize = Buffer.byteLength(originalHtml, "utf-8");
 
       // 1. Run Parser

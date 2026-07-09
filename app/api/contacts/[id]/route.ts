@@ -108,7 +108,12 @@ const patchContactSchema = z.object({
   city: z.string().optional(),
   tags: z.string().optional(),
   status: z.enum(["ACTIVE", "UNSUBSCRIBED", "BOUNCED", "COMPLAINED"]).optional(),
-  customFields: z.record(z.string(), z.any()).optional()
+  customFields: z.record(z.string(), z.any()).optional(),
+  newCustomFields: z.array(z.object({
+    displayName: z.string(),
+    type: z.enum(["TEXT", "NUMBER", "DATE", "BOOLEAN", "DROPDOWN"]),
+    value: z.any()
+  })).optional()
 })
 
 export async function PATCH(
@@ -206,21 +211,54 @@ export async function PATCH(
       normalizedTags = uniqueTags.join(",")
     }
 
-    // 4. Validate custom fields using value-service
-    let operations: any[] = []
-    if (validatedData.customFields !== undefined) {
-      const { CustomValueService } = require("@/lib/custom-fields/value-service")
-      try {
+    const updatedContact = await prisma.$transaction(async (tx: any) => {
+      const clientCustomFields = validatedData.customFields !== undefined ? { ...validatedData.customFields } : null
+
+      if (validatedData.newCustomFields && validatedData.newCustomFields.length > 0) {
+        const { generateCustomFieldKey } = require("@/lib/custom-fields/key-generator")
+        const resolvedCustomFields = clientCustomFields || {}
+        
+        for (const newField of validatedData.newCustomFields) {
+          const displayName = newField.displayName.trim()
+          const key = generateCustomFieldKey(displayName)
+
+          // Check duplicate key or case-insensitive display name
+          let existingField = await tx.contactCustomField.findFirst({
+            where: {
+              userId: session.user.id,
+              OR: [
+                { key },
+                { displayName: { equals: displayName, mode: "insensitive" } }
+              ]
+            }
+          })
+
+          if (!existingField) {
+            existingField = await tx.contactCustomField.create({
+              data: {
+                userId: session.user.id,
+                key,
+                displayName,
+                type: newField.type
+              }
+            })
+          }
+
+          resolvedCustomFields[existingField.key] = newField.value
+        }
+      }
+
+      // Validate custom fields inside the transaction
+      let operations: any[] = []
+      const fieldsToValidate = clientCustomFields || (validatedData.newCustomFields && validatedData.newCustomFields.length > 0 ? {} : null)
+      if (fieldsToValidate) {
+        const { CustomValueService } = require("@/lib/custom-fields/value-service")
         operations = await CustomValueService.validateCustomFieldValues(
           session.user.id,
-          validatedData.customFields
+          fieldsToValidate,
+          tx
         )
-      } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 400 })
       }
-    }
-
-    const updatedContact = await prisma.$transaction(async (tx: any) => {
       // Update legacy contact fields
       const contactUpdate = await tx.contact.update({
         where: { id },

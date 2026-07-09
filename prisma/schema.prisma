@@ -298,6 +298,11 @@ model Settings {
   awsAccessKey     String?
   awsSecretKey     String?
   awsRegion        String?  @default("us-east-1")
+  supportEmail     String?
+  phone            String?
+  website          String?
+  address          String?
+  timezone         String?  @default("UTC")
   updatedAt        DateTime @updatedAt
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

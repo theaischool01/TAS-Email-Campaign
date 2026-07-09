@@ -36,6 +36,14 @@ export function Step1Details({
 }: Step1DetailsProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set())
+  const [defaults, setDefaults] = useState<{ defaultFromName: string; defaultFromEmail: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/settings/defaults')
+      .then(res => res.json())
+      .then(data => setDefaults(data))
+      .catch(err => console.error("Failed to load default settings:", err))
+  }, [])
 
   // Validate form data
   const validateForm = useCallback((formData: CampaignFormData, onlyTouched = false) => {
@@ -201,7 +209,7 @@ export function Step1Details({
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="senderName" className="text-sm font-medium text-slate-700 mb-1.5">
-                Sender Name
+                Sender Name <span className="text-xs text-slate-400 font-normal">(Optional)</span>
               </Label>
               <Input
                 id="senderName"
@@ -218,13 +226,13 @@ export function Step1Details({
                 </p>
               )}
               <p className="text-xs text-slate-400 mt-1.5">
-                Leave blank to use your account name
+                Leave blank to use default: <strong>{defaults?.defaultFromName || "THE AI SCHOOL"}</strong>
               </p>
             </div>
 
             <div>
               <Label htmlFor="senderEmail" className="text-sm font-medium text-slate-700 mb-1.5">
-                Sender Email
+                Sender Email <span className="text-xs text-slate-400 font-normal">(Optional)</span>
               </Label>
               <Input
                 id="senderEmail"
@@ -242,7 +250,7 @@ export function Step1Details({
                 </p>
               )}
               <p className="text-xs text-slate-400 mt-1.5">
-                Leave blank to use your account email
+                Leave blank to use default: <strong>{defaults?.defaultFromEmail || "official@campaign.theaischool.co"}</strong>
               </p>
             </div>
 

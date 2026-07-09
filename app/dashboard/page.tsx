@@ -11,6 +11,7 @@ import { StatCard } from "@/components/dashboard/StatCard"
 import { RecentActivity } from "@/components/dashboard/RecentActivity"
 import { RecentCampaignsWidget } from "@/components/dashboard/RecentCampaignsWidget"
 import Link from "next/link"
+import { SupportCenter } from "@/components/dashboard/SupportCenter"
 
 interface DashboardStats {
   summary: any
@@ -266,6 +267,9 @@ export default async function DashboardPage() {
               <RecentActivity activities={recentActivity} />
             </div>
           </div>
+
+          {/* Support Center */}
+          <SupportCenter />
 
           {/* Quick Actions Footer */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -546,15 +546,24 @@ export function useCampaignWizard() {
 
       const payload = await response.json()
       const data = payload.data || payload
-      // Handle both response formats: { campaign } and { data: { campaign } }
-      const savedCampaign: Campaign = (data as any).campaign || (data as any)
+      // Handle all possible response formats: { campaign: { id } }, { data: { campaign: { id } } }, or flat campaign object
+      let savedCampaign: any = null
+      if (data && typeof data === 'object') {
+        if (data.campaign) {
+          savedCampaign = data.campaign
+        } else {
+          savedCampaign = data
+        }
+      }
 
-      console.log(" AUTOSAVE DEBUG: Campaign saved successfully:", savedCampaign.id)
+      const campaignId = savedCampaign?.id || state.campaignId
 
-      // Additionally save recipients if we are on Step 2 or if we have recipients
-      if (autosavePayload.selectedRecipients.length > 0 || autosavePayload.excludedRecipients.length > 0 || autosavePayload.includedTags || autosavePayload.excludedTags) {
+      console.log(" AUTOSAVE DEBUG: Campaign saved successfully:", campaignId)
+
+      // Guard: only save recipients if we have a valid campaign ID
+      if (campaignId && (autosavePayload.selectedRecipients.length > 0 || autosavePayload.excludedRecipients.length > 0 || autosavePayload.includedTags || autosavePayload.excludedTags)) {
         try {
-          const recipResponse = await fetch(`/api/campaigns/${savedCampaign.id}/recipients`, {
+          const recipResponse = await fetch(`/api/campaigns/${campaignId}/recipients`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -573,11 +582,13 @@ export function useCampaignWizard() {
         }
       }
 
+      const campaignStatus = savedCampaign?.status || state.status
+
       // Lightweight state update - only update what's necessary
       setState(prev => {
         console.log("🔄 AUTOSAVE DEBUG: State updated", {
           oldCampaignId: prev.campaignId,
-          newCampaignId: savedCampaign.id,
+          newCampaignId: campaignId,
           oldMode: prev.mode,
           newMode: 'edit',
           timestamp: new Date().toISOString()
@@ -585,22 +596,22 @@ export function useCampaignWizard() {
 
         return {
           ...prev,
-          campaignId: savedCampaign.id,
+          campaignId: campaignId,
           mode: 'edit',
           autosaveStatus: 'saved',
           lastSavedAt: new Date(),
-          status: savedCampaign.status,
+          status: campaignStatus,
           isDirty: false
         }
       })
 
       // Update URL if this was a create operation
-      if (isCreatingDraft) {
+      if (isCreatingDraft && campaignId) {
         console.log(" AUTOSAVE DEBUG: Updating URL to edit mode")
         window.history.replaceState(
           null,
           '',
-          `/campaigns/${savedCampaign.id}/edit`
+          `/campaigns/${campaignId}/edit`
         )
         return // CRITICAL: Early return to prevent duplicate execution
       }

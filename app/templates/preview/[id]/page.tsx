@@ -128,78 +128,46 @@ export default function TemplatePreviewPage() {
       </div>
 
       {/* Preview Content */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          {/* Preview Header */}
-          <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Email Preview</h2>
-                <p className="text-sm text-gray-600">
-                  {previewMode === "desktop" ? "Desktop view (600px)" : "Mobile view (375px)"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span>Template: {template.name}</span>
-                {template.category && (
-                  <Badge variant="outline" className="ml-2">{template.category}</Badge>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Email Preview Container */}
-          <div 
-            className="bg-white p-4"
-            style={{ 
-              width: '100%',
-              maxWidth: getPreviewWidth(),
-              margin: '0 auto',
-            }}
-          >
-            <div className="border shadow-sm rounded-lg overflow-hidden bg-white">
-              <iframe 
-                sandbox="allow-same-origin"
-                srcDoc={`
-                  <!DOCTYPE html>
-                  <html>
-                    <head>
-                      <style>
-                        body { margin: 0; padding: 0; background-color: white; }
-                        /* Ensure full visibility */
-                        html, body { height: auto !important; min-height: 100%; }
-                      </style>
-                    </head>
-                    <body>
-                      ${replaceMergeTags(template.html)}
-                    </body>
-                  </html>
-                `}
-                title="Email Preview"
-                className="w-full"
-                style={{ 
-                  height: '1200px', // Large initial height
-                  border: 'none',
-                }}
-                onLoad={(e) => {
-                  // Auto-adjust height after load
-                  const iframe = e.currentTarget;
-                  if (iframe.contentWindow) {
-                    try {
-                      iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
-                    } catch (e) {
-                      // Fallback for cross-origin if any
-                      iframe.style.height = '2000px';
-                    }
+      <div className="bg-slate-100 min-h-[calc(100vh-64px)] w-full py-12 px-4 flex flex-col items-center">
+        {/* Email Canvas Wrapper */}
+        <div 
+          className="w-full transition-all duration-300 mx-auto"
+          style={{ 
+            maxWidth: getPreviewWidth(),
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+            <iframe 
+              sandbox="allow-same-origin"
+              srcDoc={replaceMergeTags(template.html)}
+              title="Email Preview"
+              className="w-full transition-all duration-300"
+              style={{ 
+                height: '1200px', // Large initial height
+                border: 'none',
+              }}
+              onLoad={(e) => {
+                // Auto-adjust height after load
+                const iframe = e.currentTarget;
+                if (iframe.contentWindow) {
+                  try {
+                    iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
+                  } catch (e) {
+                    // Fallback for cross-origin if any
+                    iframe.style.height = '2000px';
                   }
-                }}
-              />
-            </div>
+                }
+              }}
+            />
           </div>
+        </div>
 
-          {/* Sample Data Info */}
-          <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Sample Data Used:</h3>
+        {/* Sample Data Info */}
+        <div className="w-full max-w-2xl mt-12 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+            <h3 className="text-sm font-semibold text-gray-900">Sample Data Used:</h3>
+          </div>
+          <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">Personalization Tags:</h4>

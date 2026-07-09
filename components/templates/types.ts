@@ -1,3 +1,12 @@
+export interface ImageSettings {
+  fit?: 'cover' | 'contain' | 'fill';
+  zoom?: number;
+  objectPosition?: {
+    x: number;
+    y: number;
+  };
+}
+
 export interface TemplateBlock {
   id: string;
   type: string;
@@ -11,3 +20,4 @@ export interface ParseResult {
   confidence: "HIGH" | "MEDIUM" | "LOW";
   warnings: string[];
 }
+

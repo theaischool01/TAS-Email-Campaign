@@ -306,6 +306,20 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
         isLoadingContent = true
         setTimeout(() => {
           if (!active) return
+
+          let cleanHtml = initialHtml || ""
+          if (cleanHtml && typeof window !== "undefined") {
+            try {
+              const parser = new DOMParser()
+              const doc = parser.parseFromString(cleanHtml, "text/html")
+              if (doc && doc.body) {
+                cleanHtml = doc.body.innerHTML.trim()
+              }
+            } catch (err) {
+              console.error("DOMParser error during initialization load:", err)
+            }
+          }
+
           if (initialJson) {
             try {
               const parsed = typeof initialJson === 'string' 
@@ -313,14 +327,14 @@ const ProfessionalGrapesJSEditor = forwardRef<ProfessionalGrapesJSEditorRef, Pro
                 : initialJson
               if (parsed && parsed.pages) {
                 editor.loadProjectData(parsed)
-              } else if (initialHtml) {
-                editor.setComponents(initialHtml)
+              } else if (cleanHtml) {
+                editor.setComponents(cleanHtml)
               }
             } catch {
-              if (initialHtml) editor.setComponents(initialHtml)
+              if (cleanHtml) editor.setComponents(cleanHtml)
             }
-          } else if (initialHtml) {
-            editor.setComponents(initialHtml)
+          } else if (cleanHtml) {
+            editor.setComponents(cleanHtml)
           }
           isLoadingContent = false
         }, 100)

@@ -53,3 +53,15 @@ Thumbs.db
 save_trace.log
 worker-error.log
 *.log
+recipients_error_log.txt
+
+# Local temporary and scratch scripts
+/scratch/
+/scripts/backups/
+/scripts/migrations/
+/scripts/add-social-footer.ts
+/scripts/check-failing-campaign.ts
+/scripts/update-welcome-db.ts
+/scripts/verify_launch.ts
+recovered_canvas.txt
+welcome_preview.html

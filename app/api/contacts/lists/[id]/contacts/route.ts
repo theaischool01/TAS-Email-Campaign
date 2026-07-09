@@ -133,19 +133,8 @@ export async function POST(
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
 
-    // Validate custom fields
-    let operations: any[] = []
-    if (customFieldsData && Object.keys(customFieldsData).length > 0) {
-      const { CustomValueService } = require("@/lib/custom-fields/value-service")
-      try {
-        operations = await CustomValueService.validateCustomFieldValues(
-          session.user.id,
-          customFieldsData
-        )
-      } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 400 })
-      }
-    }
+    const newCustomFieldsJson = formData.get("newCustomFields") as string
+    const newCustomFieldsData = newCustomFieldsJson ? JSON.parse(newCustomFieldsJson) : []
 
     // 3-layer Email Validation
     const validation = await validateEmail(email)
@@ -176,97 +165,146 @@ export async function POST(
       .filter(Boolean)
       .join(",")
 
-    // Create new contact and list associations in transaction along with tag creation/association
-    const newContact = await prisma.$transaction(async (tx: any) => {
-      const contact = await tx.contact.create({
-        data: {
-          email: sanitizedEmail,
-          userId: session.user.id,
-          firstName: firstName?.trim() || null,
-          lastName: lastName?.trim() || null,
-          phone: phone?.trim() || null,
-          company: company?.trim() || null,
-          city: city?.trim() || null,
-          status: "ACTIVE",
-          source: "MANUAL"
-        }
-      })
+    let newContact;
+    try {
+      newContact = await prisma.$transaction(async (tx: any) => {
+        const clientCustomFields = { ...customFieldsData }
 
-      // Add contact to the list
-      await tx.contactListMember.create({
-        data: {
-          contactListId: id,
-          contactId: contact.id
-        }
-      })
-      await tx.contactToContactList.create({
-        data: {
-          A: contact.id,
-          B: id
-        }
-      })
+        if (newCustomFieldsData && newCustomFieldsData.length > 0) {
+          const { generateCustomFieldKey } = require("@/lib/custom-fields/key-generator")
+          for (const newField of newCustomFieldsData) {
+            const displayName = newField.displayName.trim()
+            const key = generateCustomFieldKey(displayName)
 
-      // Tag assignments
-      if (rawTags.trim()) {
-        const tagList = rawTags
-          .split(",")
-          .map(t => t.trim())
-          .filter(Boolean)
-        const uniqueTags = Array.from(new Set(tagList))
-
-        for (const name of uniqueTags) {
-          const slug = slugify(name)
-          if (!slug) continue
-
-          let tag = await tx.tag.findUnique({
-            where: {
-              userId_slug: {
+            // Check duplicate key or case-insensitive display name
+            let existingField = await tx.contactCustomField.findFirst({
+              where: {
                 userId: session.user.id,
-                slug
+                OR: [
+                  { key },
+                  { displayName: { equals: displayName, mode: "insensitive" } }
+                ]
               }
+            })
+
+            if (!existingField) {
+              existingField = await tx.contactCustomField.create({
+                data: {
+                  userId: session.user.id,
+                  key,
+                  displayName,
+                  type: newField.type
+                }
+              })
             }
-          })
-          if (!tag) {
-            tag = await tx.tag.create({
+
+            clientCustomFields[existingField.key] = newField.value
+          }
+        }
+
+        // Validate custom fields inside transaction
+        let operations: any[] = []
+        if (Object.keys(clientCustomFields).length > 0) {
+          const { CustomValueService } = require("@/lib/custom-fields/value-service")
+          operations = await CustomValueService.validateCustomFieldValues(
+            session.user.id,
+            clientCustomFields,
+            tx
+          )
+        }
+
+        const contact = await tx.contact.create({
+          data: {
+            email: sanitizedEmail,
+            userId: session.user.id,
+            firstName: firstName?.trim() || null,
+            lastName: lastName?.trim() || null,
+            phone: phone?.trim() || null,
+            company: company?.trim() || null,
+            city: city?.trim() || null,
+            status: "ACTIVE",
+            source: "MANUAL"
+          }
+        })
+
+        // Add contact to the list
+        await tx.contactListMember.create({
+          data: {
+            contactListId: id,
+            contactId: contact.id
+          }
+        })
+        await tx.contactToContactList.create({
+          data: {
+            A: contact.id,
+            B: id
+          }
+        })
+
+        // Tag assignments
+        if (rawTags.trim()) {
+          const tagList = rawTags
+            .split(",")
+            .map(t => t.trim())
+            .filter(Boolean)
+          const uniqueTags = Array.from(new Set(tagList))
+
+          for (const name of uniqueTags) {
+            const slug = slugify(name)
+            if (!slug) continue
+
+            let tag = await tx.tag.findUnique({
+              where: {
+                userId_slug: {
+                  userId: session.user.id,
+                  slug
+                }
+              }
+            })
+            if (!tag) {
+              tag = await tx.tag.create({
+                data: {
+                  name,
+                  slug,
+                  userId: session.user.id,
+                  color: "#3B82F6"
+                }
+              })
+            }
+            await tx.contactTag.create({
               data: {
-                name,
-                slug,
-                userId: session.user.id,
-                color: "#3B82F6"
+                contactId: contact.id,
+                tagId: tag.id
               }
             })
           }
-          await tx.contactTag.create({
-            data: {
-              contactId: contact.id,
-              tagId: tag.id
-            }
-          })
         }
-      }
 
-      // Perform custom fields operations
-      for (const op of operations) {
-        if (op.action === "UPSERT") {
-          await tx.contactFieldValue.upsert({
-            where: {
-              contactId_fieldId: {
+        // Perform custom fields operations
+        for (const op of operations) {
+          if (op.action === "UPSERT") {
+            await tx.contactFieldValue.upsert({
+              where: {
+                contactId_fieldId: {
+                  contactId: contact.id,
+                  fieldId: op.fieldId
+                }
+              },
+              update: op.values,
+              create: {
                 contactId: contact.id,
-                fieldId: op.fieldId
+                fieldId: op.fieldId,
+                ...op.values
               }
-            },
-            update: op.values,
-            create: {
-              contactId: contact.id,
-              fieldId: op.fieldId,
-              ...op.values
-            }
-          })
+            })
+          }
         }
-      }
 
-      return contact
-    })
+        return contact
+      })
+    } catch (txError: any) {
+      return NextResponse.json({ error: txError.message || "Failed to save contact" }, { status: 400 })
+    }
 
     // Fetch the updated values to return a fresh flat customFields structure
     const [freshValues, freshContactTags] = await Promise.all([
