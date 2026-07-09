@@ -6,6 +6,7 @@ import dotenv from "dotenv"
 import { isBot as botDetector } from "./lib/analytics/bot-detector"
 import * as Sentry from "@sentry/node"
 import os from "os"
+import http from "http"
 
 // Load env variables
 dotenv.config()
@@ -60,6 +61,30 @@ if (!QUEUE_URL) {
 console.log("Analytics worker started.")
 console.log(`Listening on queue: ${QUEUE_URL}`)
 
+const PORT = process.env.PORT || 3002;
+let globalEventsProcessed = 0;
+let globalLastProcessedAt: string | null = null;
+let isPollingActive = false;
+
+if (process.env.ENABLE_WORKER_HEALTH_SERVER === "true") {
+  http.createServer((req, res) => {
+    const health = {
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      metrics: {
+        eventsProcessed: globalEventsProcessed,
+        lastProcessedAt: globalLastProcessedAt,
+        isPollingActive: isPollingActive
+      }
+    };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(health));
+  }).listen(PORT, () => {
+    console.log(`🏥 Analytics worker health endpoint running on port ${PORT}`);
+  });
+}
+
 // Helper: Hash IP
 function hashIp(ip: string): string {
   return crypto.createHash("sha256").update(ip + IP_SALT).digest("hex")
@@ -79,6 +104,7 @@ function parseUserAgent(ua: string) {
 }
 
 async function pollAnalyticsQueue() {
+  isPollingActive = true
   while (true) {
     try {
       const response = await sqsClient.send(new ReceiveMessageCommand({
@@ -200,6 +226,9 @@ async function pollAnalyticsQueue() {
                 }
               })
             }
+
+            globalEventsProcessed++
+            globalLastProcessedAt = new Date().toISOString()
 
             console.log(`Processed ${type} event for delivery ${deliveryId} (Bot: ${isBot})`)
 
